@@ -32,6 +32,6 @@ def start_scheduler(bot: Bot):
     # ежедневный запуск в указанное время
     scheduler.add_job(
         job,
-        CronTrigger(hour=SEND_HOUR, minute=SEND_MINUTE)
+        CronTrigger(hour=SEND_HOUR, minute=SEND_MINUTE, timezone=TIMEZONE)
     )
     scheduler.start()
