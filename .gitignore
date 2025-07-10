@@ -1,0 +1,6 @@
+__pycache__/
+.env
+config.py
+birthdays.json
+venv/
+info
