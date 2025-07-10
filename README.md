@@ -93,3 +93,5 @@ OurMate — это умный Telegram‑бот на базе [aiogram](https://
     ```bash
     source venv/bin/activate      # если ещё не активировано  
     python bot.py  
+
+---
