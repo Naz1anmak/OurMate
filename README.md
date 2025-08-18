@@ -200,10 +200,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=your_username
-WorkingDirectory=/path/to/bot
-Environment=PATH=/path/to/bot/venv/bin
-ExecStart=/path/to/bot/venv/bin/python main.py
+User=root
+WorkingDirectory=/root/bot
+EnvironmentFile=/root/bot/.env
+ExecStart=/root/bot/venv/bin/python -u main.py
+StandardOutput=journal
+StandardError=journal
 Restart=always
 RestartSec=10
 
