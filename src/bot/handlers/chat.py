@@ -8,11 +8,12 @@ import asyncio
 from aiogram.types import Message
 from aiogram.enums import ChatAction
 
-from src.config.settings import PROMPT_TEMPLATE_CHAT, OWNER_CHAT_ID
+from src.config.settings import PROMPT_TEMPLATE_CHAT, OWNER_CHAT_ID, CHAT_ID, TIMEZONE
 from src.bot.services.llm_service import LLMService
 from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
 from src.utils.text_utils import get_first_name_by_login
+from src.utils.date_utils import format_birthday_date
 from src.bot.handlers.owner_commands import handle_owner_command
 
 
@@ -64,6 +65,45 @@ async def on_mention_or_reply(message: Message):
     # Проверяем, нужно ли обрабатывать это сообщение
     if not _should_process_message(message, bot_username, bot_info.id):
         return
+
+    # Публичные команды "др" и "др @username":
+    # - доступны всем в беседе CHAT_ID (при упоминании бота или ответе ему)
+    # - доступны владельцу также в ЛС
+    if message.text:
+        normalized_text = message.text.lower().strip()
+        is_group_context = (
+            message.chat.type in ("group", "supergroup") and message.chat.id == CHAT_ID
+        )
+        is_owner_pm = (
+            message.chat.type == "private" and message.from_user and message.from_user.id == OWNER_CHAT_ID
+        )
+
+        if normalized_text == "др" and (is_group_context or is_owner_pm):
+            user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+            tag = "GR" if is_group_context else "PM"
+            print(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др'")
+            notification = birthday_service.get_next_birthday_notification(TIMEZONE)
+            await message.reply(notification or "Нет данных о следующем дне рождения")
+            return
+
+        if normalized_text.startswith("др ") and (is_group_context or is_owner_pm):
+            parts = message.text.strip().split()
+            if len(parts) >= 2 and parts[1].startswith("@"):
+                query_login = parts[1]
+                found_user = None
+                for user in birthday_service.users:
+                    if user.user_login and user.user_login.lower() == query_login.lower():
+                        found_user = user
+                        break
+                user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+                tag = "GR" if is_group_context else "PM"
+                print(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др {query_login}'")
+                if found_user:
+                    pretty_date = format_birthday_date(found_user.birthday)
+                    await message.reply(f"{found_user.name} отмечает день рождения {pretty_date}")
+                else:
+                    await message.reply("Пользователь не найден в списке дней рождения")
+                return
 
     # Получаем логин пользователя
     user_login = _extract_user_login(message, text, bot_username)

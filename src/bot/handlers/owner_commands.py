@@ -4,6 +4,8 @@
 """
 
 from aiogram.types import Message
+import asyncio
+import subprocess
 
 from src.config.settings import OWNER_CHAT_ID
 from src.bot.services.system_service import system_service
@@ -44,8 +46,23 @@ async def handle_owner_command(message: Message) -> bool:
         return True
     
     elif text == "stop bot":
-        response = system_service.stop_bot()
-        await message.answer(response, parse_mode="HTML")
+        # Сначала сообщаем владельцу, затем останавливаем службу в фоне без логов/ответов
+        await message.answer("🛑 <b>Бот останавливается...</b>", parse_mode="HTML")
+        async def _stop_service():
+            try:
+                # Фоновая остановка без захвата вывода, без исключений
+                await asyncio.to_thread(
+                    subprocess.run,
+                    "systemctl stop mybot",
+                    shell=True,
+                    check=False,
+                    capture_output=False,
+                    text=True,
+                )
+            except Exception:
+                # Игнорируем любые ошибки — процесс завершится SIGTERM
+                pass
+        asyncio.create_task(_stop_service())
         return True
     
     elif text == "status":
@@ -70,6 +87,10 @@ async def handle_owner_command(message: Message) -> bool:
 
 <b>Управление:</b>
 • <code>stop bot</code> - Остановить бота
+
+<b>Дни рождения:</b>
+• <code>др</code> — ближайший день рождения (в беседе и в ЛС владельца)
+• <code>др @username</code> — дата дня рождения пользователя (в беседе и в ЛС владельца)
 
 <b>Справка:</b>
 • <code>help</code> или <code>команды</code> - Показать эту справку

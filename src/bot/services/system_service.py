@@ -66,11 +66,14 @@ class SystemService:
         result, success = SystemService.execute_command(command)
 
         if success and result:
-            # Для кратких логов подсветку не применяем, только экранирование и обрезка с конца
+            # Краткие логи: добавляем цветные маркеры и обрезаем с конца
             body = SystemService._format_lines_with_highlight_and_limit(
-                result.splitlines(), max_len=3800, highlights=()
+                result.splitlines(),
+                max_len=3800,
+                highlights=(),
+                emoji_map={"PM;": "🔴", "GR;": "🟡", "FP;": "🟢"},
             )
-            return "📋 <b>Логи бота (последние 50 сообщений):</b>\n\n" + body
+            return "📋 <b>Логи бота (последние 50 сообщений):</b>\n\n<code>" + body + "</code>"
         elif success:
             return "📋 <b>Логи бота:</b>\n\nНет сообщений для отображения"
         else:
@@ -89,15 +92,22 @@ class SystemService:
 
         if success and result:
             body = SystemService._format_lines_with_highlight_and_limit(
-                result.splitlines(), max_len=3800, highlights=("PM;", "GR;", "FP;")
+                result.splitlines(),
+                max_len=3800,
+                highlights=("PM;", "GR;", "FP;"),
+                emoji_map={"PM;": "🔴", "GR;": "🟡", "FP;": "🟢"},
             )
+            # Без <code>, чтобы работало жирное выделение важных строк
             return "📋 <b>Полные логи бота (последние 100 строк):</b>\n\n" + body
         else:
             return f"❌ <b>Ошибка получения логов:</b>\n\n{result}"
 
     @staticmethod
     def _format_lines_with_highlight_and_limit(
-        lines: list[str], max_len: int, highlights: tuple[str, ...]
+        lines: list[str],
+        max_len: int,
+        highlights: tuple[str, ...],
+        emoji_map: dict[str, str] | None = None,
     ) -> str:
         """
         Форматирует строки HTML: делает жирными строки с маркерами и обрезает с конца.
@@ -110,10 +120,22 @@ class SystemService:
         rendered_lines: list[str] = []
 
         def render_line(raw: str) -> str:
-            esc = html.escape(raw)
-            if any(marker in raw for marker in highlights):
-                return f"<b>{esc}</b><br>"
-            return f"{esc}<br>"
+            prefix = ""
+            matched_highlight = False
+            found_marker = None
+            if emoji_map or highlights:
+                for marker in (emoji_map.keys() if emoji_map else highlights):
+                    if marker in raw:
+                        found_marker = marker
+                        break
+                if found_marker and emoji_map and found_marker in emoji_map:
+                    prefix = emoji_map[found_marker] + " "
+                if found_marker and highlights and found_marker in highlights:
+                    matched_highlight = True
+            esc = html.escape(prefix + raw)
+            if matched_highlight:
+                return f"<b>{esc}</b>\n"
+            return f"{esc}\n"
 
         # Набираем строки с конца, пока не упремся в лимит
         current_len = 0
@@ -129,7 +151,7 @@ class SystemService:
 
         body = "".join(reversed(rendered_lines))
         if cutoff_reached:
-            body = "... (логи обрезаны, показан конец)<br>" + body
+            body = "... (логи обрезаны, показан конец)\n" + body
         return body or "Нет строк для отображения"
     
     @staticmethod
@@ -156,14 +178,16 @@ class SystemService:
         Returns:
             str: Статус бота
         """
-        command = "systemctl status mybot --no-pager"
+        command = "systemctl status mybot --no-pager --lines=0"
         result, success = SystemService.execute_command(command)
         
         if success and result:
-            # Ограничиваем длину сообщения
-            if len(result) > 4000:
-                result = result[:4000] + "\n\n... (статус обрезан)"
-            return f"📊 <b>Статус бота:</b>\n\n<code>{result}</code>"
+            # Экранируем и обрезаем с конца, показывая самый свежий фрагмент статуса
+            escaped = html.escape(result)
+            max_len = 3800
+            if len(escaped) > max_len:
+                escaped = "... (статус обрезан, показан конец)\n" + escaped[-max_len:]
+            return f"📊 <b>Статус бота:</b>\n\n<code>{escaped}</code>"
         else:
             return f"❌ <b>Ошибка получения статуса:</b>\n\n{result}"
     
