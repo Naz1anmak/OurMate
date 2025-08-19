@@ -4,9 +4,11 @@
 """
 
 from pprint import pprint
+import asyncio
 from aiogram.types import Message
+from aiogram.enums import ChatAction
 
-from src.config.settings import PROMPT_TEMPLATE_CHAT
+from src.config.settings import PROMPT_TEMPLATE_CHAT, OWNER_CHAT_ID
 from src.bot.services.llm_service import LLMService
 from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
@@ -37,7 +39,6 @@ async def on_mention_or_reply(message: Message):
             "system",
         }
         if normalized_text in owner_commands:
-            from src.config.settings import OWNER_CHAT_ID
             # Если пишет не владелец — отказываем
             if message.from_user.id != OWNER_CHAT_ID:
                 user_login = f"@{message.from_user.username}" if message.from_user.username else ""
@@ -72,9 +73,36 @@ async def on_mention_or_reply(message: Message):
     
     # Формируем сообщения для LLM
     messages = _build_llm_messages(chat_id, text)
-    
-    # Отправляем запрос к LLM
-    answer_body = LLMService.send_chat_request(messages)
+
+    # Временное сообщение о том, что бот думает над ответом
+    temp_msg = None
+    try:
+        temp_msg = await message.reply("🧠 Мне понадобится немного времени, думаю над ответом...")
+    except Exception:
+        temp_msg = None
+
+    # Эффект "печатает..." и запрос к LLM без блокировки event loop
+    stop_event = asyncio.Event()
+
+    async def _typing_indicator():
+        try:
+            while not stop_event.is_set():
+                await message.bot.send_chat_action(message.chat.id, action=ChatAction.TYPING)
+                await asyncio.sleep(4)
+        except Exception:
+            # Безопасно игнорируем ошибки индикатора
+            pass
+
+    typing_task = asyncio.create_task(_typing_indicator())
+    try:
+        # Выполняем синхронный HTTP-запрос в пуле потоков
+        answer_body = await asyncio.to_thread(LLMService.send_chat_request, messages)
+    finally:
+        stop_event.set()
+        try:
+            await typing_task
+        except Exception:
+            pass
     
     # Сохраняем контекст
     context_service.save_context(chat_id, message.text, answer_body)
@@ -82,6 +110,13 @@ async def on_mention_or_reply(message: Message):
     # Формируем финальный ответ
     final_answer = _format_final_answer(first_name, answer_body)
     
+    # Удаляем временное сообщение перед отправкой ответа
+    if temp_msg:
+        try:
+            await temp_msg.delete()
+        except Exception:
+            pass
+
     # Отправляем ответ
     await _send_response(message, final_answer, user_login, text)
 

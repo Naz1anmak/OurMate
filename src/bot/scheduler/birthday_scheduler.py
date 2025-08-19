@@ -32,13 +32,13 @@ class BirthdayScheduler:
         """
         Запускает планировщик и выполняет начальные задачи.
         """
-        # Запускаем задачи при старте
+        # При старте: поздравить, если сегодня ДР, и в ЛС прислать только следующего ДР
         loop = asyncio.get_event_loop()
-        loop.create_task(self._send_birthday_greetings())  # Проверка сегодняшних именинников и уведомление
+        loop.create_task(self._on_startup_check())
         
         # Настраиваем ежедневное расписание
         self.scheduler.add_job(
-            self._send_birthday_greetings,
+            self._daily_check,
             CronTrigger(hour=SEND_HOUR, minute=SEND_MINUTE, timezone=TIMEZONE)
         )
         
@@ -54,21 +54,28 @@ class BirthdayScheduler:
         if notification:
             await self.bot.send_message(OWNER_CHAT_ID, notification)
     
-    async def _send_birthday_greetings(self):
+    async def _on_startup_check(self):
         """
-        Отправляет поздравления именинникам и уведомляет о следующем ДР.
-        Выполняется ежедневно по расписанию.
+        При запуске: отправить поздравления, если сегодня есть ДР, и уведомить владельца
+        о следующем ДР (даже если сегодня есть именинники).
         """
-        # Получаем сегодняшних именинников
         todays_birthdays = birthday_service.get_todays_birthdays(TIMEZONE)
-        
         if todays_birthdays:
-            # Генерируем и отправляем поздравление
             greeting = birthday_service.generate_birthday_message(todays_birthdays)
-            await self.bot.send_message(CHAT_ID, greeting)
-        
-        # Всегда уведомляем о следующем дне рождения
+            if greeting:
+                await self.bot.send_message(CHAT_ID, greeting)
         await self._notify_next_birthday()
+
+    async def _daily_check(self):
+        """
+        Ежедневная проверка: если сегодня есть ДР — поздравить в беседе.
+        Ничего не слать владельцу, если ДР нет (во избежание дублирования информации).
+        """
+        todays_birthdays = birthday_service.get_todays_birthdays(TIMEZONE)
+        if todays_birthdays:
+            greeting = birthday_service.generate_birthday_message(todays_birthdays)
+            if greeting:
+                await self.bot.send_message(CHAT_ID, greeting)
     
     def stop(self):
         """

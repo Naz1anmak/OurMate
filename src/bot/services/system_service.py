@@ -6,6 +6,7 @@
 import subprocess
 import logging
 from typing import Optional
+import html
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class SystemService:
             tuple[str, bool]: (результат, успех выполнения)
         """
         try:
-            logger.info(f"Выполняется команда: {command}")
+            # logger.info(f"Выполняется команда: {command}")
             result = subprocess.run(
                 command,
                 shell=True,
@@ -61,11 +62,15 @@ class SystemService:
         Returns:
             str: Отфильтрованные логи
         """
-        command = "journalctl -u mybot | grep 'PM; \\|GR; \\|FP;' | tail -50"
+        command = "journalctl -u mybot --no-pager | grep 'PM; \\|GR; \\|FP;' | tail -50"
         result, success = SystemService.execute_command(command)
-        
+
         if success and result:
-            return f"📋 <b>Логи бота (последние 50 сообщений):</b>\n\n<code>{result}</code>"
+            # Для кратких логов подсветку не применяем, только экранирование и обрезка с конца
+            body = SystemService._format_lines_with_highlight_and_limit(
+                result.splitlines(), max_len=3800, highlights=()
+            )
+            return "📋 <b>Логи бота (последние 50 сообщений):</b>\n\n" + body
         elif success:
             return "📋 <b>Логи бота:</b>\n\nНет сообщений для отображения"
         else:
@@ -81,14 +86,51 @@ class SystemService:
         """
         command = "journalctl -u mybot --no-pager -n 100"
         result, success = SystemService.execute_command(command)
-        
+
         if success and result:
-            # Ограничиваем длину сообщения
-            if len(result) > 4000:
-                result = result[:4000] + "\n\n... (логи обрезаны)"
-            return f"📋 <b>Полные логи бота (последние 100 строк):</b>\n\n<code>{result}</code>"
+            body = SystemService._format_lines_with_highlight_and_limit(
+                result.splitlines(), max_len=3800, highlights=("PM;", "GR;", "FP;")
+            )
+            return "📋 <b>Полные логи бота (последние 100 строк):</b>\n\n" + body
         else:
             return f"❌ <b>Ошибка получения логов:</b>\n\n{result}"
+
+    @staticmethod
+    def _format_lines_with_highlight_and_limit(
+        lines: list[str], max_len: int, highlights: tuple[str, ...]
+    ) -> str:
+        """
+        Форматирует строки HTML: делает жирными строки с маркерами и обрезает с конца.
+
+        - Каждая строка HTML-экранируется
+        - Строки с любым из маркеров в `highlights` оборачиваются в <b>
+        - Строки соединяются через <br>
+        - Итоговая длина ограничивается `max_len`, начиная с хвоста
+        """
+        rendered_lines: list[str] = []
+
+        def render_line(raw: str) -> str:
+            esc = html.escape(raw)
+            if any(marker in raw for marker in highlights):
+                return f"<b>{esc}</b><br>"
+            return f"{esc}<br>"
+
+        # Набираем строки с конца, пока не упремся в лимит
+        current_len = 0
+        cutoff_reached = False
+        for raw in reversed(lines):
+            piece = render_line(raw)
+            piece_len = len(piece)
+            if current_len + piece_len > max_len:
+                cutoff_reached = True
+                break
+            rendered_lines.append(piece)
+            current_len += piece_len
+
+        body = "".join(reversed(rendered_lines))
+        if cutoff_reached:
+            body = "... (логи обрезаны, показан конец)<br>" + body
+        return body or "Нет строк для отображения"
     
     @staticmethod
     def stop_bot() -> str:
