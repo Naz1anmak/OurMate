@@ -69,6 +69,7 @@ class BirthdayScheduler:
     async def _daily_check(self):
         """
         Ежедневная проверка: если сегодня есть ДР — поздравить в беседе.
+        Если сегодня есть ДР — после поздравления уведомить владельца о следующем ДР.
         Ничего не слать владельцу, если ДР нет (во избежание дублирования информации).
         """
         todays_birthdays = birthday_service.get_todays_birthdays(TIMEZONE)
@@ -76,6 +77,8 @@ class BirthdayScheduler:
             greeting = birthday_service.generate_birthday_message(todays_birthdays)
             if greeting:
                 await self.bot.send_message(CHAT_ID, greeting)
+            # После поздравления сообщаем владельцу о следующем ДР
+            await self._notify_next_birthday()
     
     def stop(self):
         """

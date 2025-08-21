@@ -32,7 +32,7 @@ async def handle_owner_command(message: Message) -> bool:
     # Логируем команду владельца как PM/GR по месту использования
     user_login = f"@{message.from_user.username}" if message.from_user.username else ""
     tag = "GR" if message.chat.type in ("group", "supergroup") else "PM"
-    print(f"{tag}; От {user_login} ({message.from_user.full_name}): {message.text}")
+    print(f"{tag}; От {user_login} ({message.from_user.full_name}): запрос '{message.text}'")
     
     # Обрабатываем команды
     if text == "logs":

@@ -132,7 +132,9 @@ class SystemService:
                     prefix = emoji_map[found_marker] + " "
                 if found_marker and highlights and found_marker in highlights:
                     matched_highlight = True
-            esc = html.escape(prefix + raw)
+
+            full_line = prefix + raw
+            esc = html.escape(full_line)
             if matched_highlight:
                 return f"<b>{esc}</b>\n"
             return f"{esc}\n"
