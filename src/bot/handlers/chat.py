@@ -55,30 +55,41 @@ async def on_mention_or_reply(message: Message):
             # Если это владелец (в ЛС или в группе), передаем обработку специализированному хендлеру
             if await handle_owner_command(message):
                 return
-    
-    chat_id = message.chat.id
-    text = message.text or ""
-    bot = message.bot
-    bot_info = await bot.get_me()
-    bot_username = f"@{bot_info.username}"
-
-    # Проверяем, нужно ли обрабатывать это сообщение
-    if not _should_process_message(message, bot_username, bot_info.id):
-        return
 
     # Публичные команды "др" и "др @username":
     # - доступны всем в беседе CHAT_ID (при упоминании бота или ответе ему)
     # - доступны владельцу также в ЛС
     if message.text:
-        normalized_text = message.text.lower().strip()
+        # Получаем информацию о боте для проверки упоминаний
+        bot = message.bot
+        bot_info = await bot.get_me()
+        bot_username = f"@{bot_info.username}"
+        
+        # Проверяем упоминания и ответы
+        is_mention = any(token == bot_username for token in message.text.split())
+        is_reply = (message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id)
+        
+        # Нормализуем текст, убирая упоминание бота
+        text_for_commands = message.text
+        if is_mention:
+            # Убираем упоминание бота из текста для проверки команд
+            text_for_commands = " ".join([token for token in message.text.split() if token != bot_username])
+        
+        normalized_text = text_for_commands.lower().strip()
+        
         is_group_context = (
             message.chat.type in ("group", "supergroup") and message.chat.id == CHAT_ID
         )
         is_owner_pm = (
             message.chat.type == "private" and message.from_user and message.from_user.id == OWNER_CHAT_ID
         )
+        
+        should_process_birthday_command = (
+            is_owner_pm or 
+            (is_group_context and (is_mention or is_reply))
+        )
 
-        if normalized_text == "др" and (is_group_context or is_owner_pm):
+        if normalized_text == "др" and should_process_birthday_command:
             user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
             tag = "GR" if is_group_context else "PM"
             print(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др'")
@@ -86,8 +97,9 @@ async def on_mention_or_reply(message: Message):
             await message.reply(notification or "Нет данных о следующем дне рождения")
             return
 
-        if normalized_text.startswith("др ") and (is_group_context or is_owner_pm):
-            parts = message.text.strip().split()
+        if normalized_text.startswith("др ") and should_process_birthday_command:
+            # Используем очищенный текст для поиска логина
+            parts = text_for_commands.strip().split()
             if len(parts) >= 2 and parts[1].startswith("@"):
                 query_login = parts[1]
                 found_user = None
@@ -104,6 +116,14 @@ async def on_mention_or_reply(message: Message):
                 else:
                     await message.reply("Пользователь не найден в списке дней рождения")
                 return
+
+    chat_id = message.chat.id
+    text = message.text or ""
+    # bot, bot_info, bot_username уже получены выше для команд "др"
+
+    # Проверяем, нужно ли обрабатывать это сообщение
+    if not _should_process_message(message, bot_username, bot_info.id):
+        return
 
     # Получаем логин пользователя
     user_login = _extract_user_login(message, text, bot_username)
@@ -150,15 +170,19 @@ async def on_mention_or_reply(message: Message):
     # Формируем финальный ответ
     final_answer = _format_final_answer(first_name, answer_body)
     
+    # Экранируем HTML для безопасной отправки
+    import html
+    safe_answer = html.escape(final_answer)
+    
     # Удаляем временное сообщение перед отправкой ответа
     if temp_msg:
         try:
             await temp_msg.delete()
         except Exception:
             pass
-
+    
     # Отправляем ответ
-    await _send_response(message, final_answer, user_login, text)
+    await _send_response(message, safe_answer, user_login, text)
 
 
 def _should_process_message(message: Message, bot_username: str, bot_id: int) -> bool:
@@ -178,7 +202,8 @@ def _should_process_message(message: Message, bot_username: str, bot_id: int) ->
         return True
     
     # В группе обрабатываем только упоминания или ответы на сообщения бота
-    is_mention = bot_username in (message.text or "")
+    # Проверяем точное упоминание бота через @username
+    is_mention = any(token == bot_username for token in (message.text or "").split())
     is_reply = (
         message.reply_to_message
         and message.reply_to_message.from_user.id == bot_id
@@ -203,8 +228,8 @@ def _extract_user_login(message: Message, text: str, bot_username: str) -> str:
     if message.from_user and message.from_user.username:
         return "@" + message.from_user.username
     
-    # Иначе ищем упоминания в тексте
-    if bot_username in text:
+    # Иначе ищем упоминания в тексте (кроме самого бота)
+    if any(token == bot_username for token in text.split()):
         for token in text.split():
             if token.startswith("@") and token != bot_username:
                 return token
@@ -273,10 +298,10 @@ async def _send_response(message: Message, final_answer: str, user_login: str, o
     # Логируем сообщение
     if message.chat.type in ("group", "supergroup"):
         pprint(f"GR; От {user_login} ({message.from_user.full_name}): {original_text}")
-        await message.reply(final_answer, parse_mode="Markdown")
+        await message.reply(final_answer, parse_mode="HTML")
     else:
         pprint(f"PM; От {user_login} ({message.from_user.full_name}): {original_text}")
-        await message.answer(final_answer, parse_mode="Markdown")
+        await message.answer(final_answer, parse_mode="HTML")
 
 
 def register_chat_handlers(dp):

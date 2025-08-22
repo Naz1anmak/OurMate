@@ -20,7 +20,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-
 async def main():
     """
     Главная функция приложения.
@@ -44,7 +43,6 @@ async def main():
     # Запускаем поллинг (получение обновлений)
     logger.info("Бот запущен и готов к работе")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     # Запускаем приложение
