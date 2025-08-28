@@ -25,6 +25,11 @@ async def on_mention_or_reply(message: Message):
     Args:
         message (Message): Входящее сообщение
     """
+    # Инициализируем переменные бота в начале функции
+    bot = message.bot
+    bot_info = await bot.get_me()
+    bot_username = f"@{bot_info.username}"
+    
     # Команды владельца перехватываются ниже (с проверкой прав)
 
     # Блокируем все команды владельца для не-владельцев, чтобы не уходили в LLM
@@ -61,9 +66,7 @@ async def on_mention_or_reply(message: Message):
     # - доступны владельцу также в ЛС
     if message.text:
         # Получаем информацию о боте для проверки упоминаний
-        bot = message.bot
-        bot_info = await bot.get_me()
-        bot_username = f"@{bot_info.username}"
+        # bot, bot_info, bot_username уже получены выше
         
         # Проверяем упоминания и ответы
         is_mention = any(token == bot_username for token in message.text.split())
@@ -117,6 +120,10 @@ async def on_mention_or_reply(message: Message):
                     await message.reply("Пользователь не найден в списке дней рождения")
                 return
 
+    # Обрабатываем только текстовые сообщения для LLM
+    if not message.text:
+        return
+        
     chat_id = message.chat.id
     text = message.text or ""
     # bot, bot_info, bot_username уже получены выше для команд "др"
