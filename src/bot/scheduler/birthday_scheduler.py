@@ -2,7 +2,6 @@
 Планировщик дней рождения.
 Содержит логику для автоматической отправки поздравлений и уведомлений.
 """
-
 import asyncio
 import logging
 from pathlib import Path
@@ -22,9 +21,7 @@ from src.config.settings import (
 from src.bot.services.birthday_service import birthday_service
 from src.utils.date_utils import today_mmdd
 
-
 logger = logging.getLogger(__name__)
-
 
 class BirthdayScheduler:
     """
@@ -200,24 +197,22 @@ class BirthdayScheduler:
     async def _daily_check(self):
         """
         Ежедневная проверка: если сегодня есть ДР — поздравить в беседе.
-        Если сегодня есть ДР — после поздравления уведомить владельца о следующем ДР.
-        Ничего не слать владельцу, если ДР нет (во избежание дублирования информации).
+        После проверки отправляем владельцу уведомление о следующем ДР независимо от того,
+        было ли поздравление (чтобы помнить о ближайшей дате даже без активации пользователей).
         """
         await self._refresh_usernames()
         await self._refresh_access_flags()
         todays_birthdays = birthday_service.get_todays_birthdays(TIMEZONE)
         if todays_birthdays:
-            was_sent = await self._send_birthday_greeting(todays_birthdays)
-            # После поздравления сообщаем владельцу о следующем ДР
-            if was_sent:
-                await self._notify_next_birthday()
+            await self._send_birthday_greeting(todays_birthdays)
+            # Сообщаем владельцу о следующем ДР даже если поздравление не отправилось
+            await self._notify_next_birthday()
     
     def stop(self):
         """
         Останавливает планировщик.
         """
         self.scheduler.shutdown()
-
 
 def start_scheduler(bot: Bot):
     """

@@ -2,9 +2,7 @@
 Сервис для управления контекстом диалогов.
 Хранит историю сообщений для каждого чата.
 """
-
 from typing import Dict, List, Optional
-
 
 class ContextService:
     """
@@ -63,7 +61,6 @@ class ContextService:
         Очищает все сохраненные контексты.
         """
         self._context_store.clear()
-
 
 # Создаем глобальный экземпляр сервиса контекста
 context_service = ContextService()

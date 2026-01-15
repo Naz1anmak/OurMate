@@ -1,7 +1,6 @@
 """
 Планировщик для ежедневного уведомления о парах.
 """
-
 import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -9,7 +8,6 @@ from aiogram import Bot
 
 from src.config.settings import TIMEZONE, CHAT_ID, SCHEDULE_SEND_HOUR, SCHEDULE_SEND_MINUTE
 from src.bot.services.schedule_service import schedule_service
-
 
 class ScheduleScheduler:
     def __init__(self, bot: Bot):
@@ -31,7 +29,6 @@ class ScheduleScheduler:
 
     def stop(self):
         self.scheduler.shutdown()
-
 
 def start_schedule_scheduler(bot: Bot):
     scheduler = ScheduleScheduler(bot)

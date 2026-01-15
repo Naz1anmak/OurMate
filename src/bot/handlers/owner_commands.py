@@ -2,7 +2,6 @@
 Обработчики команд владельца бота.
 Позволяет владельцу управлять сервером через Telegram.
 """
-
 import asyncio
 import subprocess
 from aiogram.types import Message
@@ -11,7 +10,6 @@ from src.config.settings import OWNER_CHAT_ID
 from src.bot.services.system_service import system_service
 from src.bot.services.birthday_service import birthday_service
 from src.utils.log_utils import log_with_ts as _log
-
 
 async def handle_owner_command(message: Message) -> bool:
     """
@@ -132,7 +130,6 @@ async def handle_owner_command(message: Message) -> bool:
         return True
     
     return False
-
 
 def register_owner_handlers(dp):
     """

@@ -2,7 +2,6 @@
 Главный файл приложения OurMate Bot.
 Точка входа для запуска Telegram бота.
 """
-
 import os
 import asyncio
 import logging

@@ -2,13 +2,11 @@
 Утилиты для работы с датами.
 Содержит функции для работы с датами дней рождения и планировщиком.
 """
-
 from datetime import datetime
 from typing import List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from src.models.user import User
-
 
 def _parse_day_month(birthday: str) -> Tuple[int, int]:
     """Парсит дату формата 'D.M' или 'DD.MM' в кортеж (day, month)."""
@@ -22,17 +20,14 @@ def _parse_day_month(birthday: str) -> Tuple[int, int]:
     month = int(month_part)
     return day, month
 
-
 def parse_day_month(birthday: str) -> Tuple[int, int]:
     """Публичная обертка для разбора даты рождения."""
     return _parse_day_month(birthday)
-
 
 def today_mmdd(timezone: ZoneInfo) -> str:
     """Возвращает текущую дату в формате 'D.M' (без ведущих нулей)."""
     now = datetime.now(timezone)
     return f"{now.day}.{now.month}"
-
 
 def get_next_birthday(users: List[User], today_dm: str) -> Optional[User]:
     """
@@ -79,7 +74,6 @@ def get_next_birthday(users: List[User], today_dm: str) -> Optional[User]:
     
     # Находим пользователя с минимальной датой следующего дня рождения
     return min(users, key=next_dt)
-
 
 def format_birthday_date(birthday: str) -> str:
     """

@@ -2,14 +2,12 @@
 Обработчики команд бота.
 Содержит функции для обработки команд типа /start, /help и т.д.
 """
-
 from aiogram import types
 from aiogram.exceptions import TelegramNetworkError
 from aiogram.filters import Command
 
 from src.bot.services.birthday_service import birthday_service
 from src.utils.log_utils import log_with_ts as _log
-
 
 async def cmd_start(message: types.Message):
     """

@@ -2,7 +2,6 @@
 Сервис работы с расписанием (ICS -> события).
 Парсит все файлы по паттерну, кеширует и предоставляет пары на сегодня/завтра.
 """
-
 import json
 from dataclasses import dataclass
 from datetime import datetime, date, time
@@ -14,14 +13,12 @@ from icalendar import Calendar
 
 from src.config.settings import SCHEDULE_FILES_PATTERN, SCHEDULE_CACHE_FILE, TIMEZONE
 
-
 @dataclass
 class ScheduleEvent:
     summary: str
     location: str
     start: datetime
     end: datetime
-
 
 class ScheduleService:
     def __init__(self, timezone: ZoneInfo = TIMEZONE):
@@ -125,7 +122,6 @@ class ScheduleService:
             lines.append(f"• {time_range}")
             lines.append(f"— <b>{e.summary}</b>")
         return "\n".join(lines)
-
 
 # Глобальный экземпляр
 schedule_service = ScheduleService()

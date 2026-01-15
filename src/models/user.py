@@ -2,10 +2,8 @@
 Модель пользователя для работы с данными о днях рождения.
 Содержит структуру данных и методы для работы с пользователями.
 """
-
 from dataclasses import dataclass
 from typing import Optional
-
 
 @dataclass
 class User:

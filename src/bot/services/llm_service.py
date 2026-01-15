@@ -2,12 +2,10 @@
 Сервис для работы с LLM API.
 Содержит функции для отправки запросов к языковой модели.
 """
-
 import requests
 from typing import List, Dict, Any
 
 from src.config.settings import API_URL, API_HEADERS, MODEL
-
 
 class LLMService:
     """

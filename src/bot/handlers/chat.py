@@ -2,9 +2,10 @@
 Обработчики чата.
 Содержит функции для обработки обычных сообщений и упоминаний бота.
 """
-
 import asyncio
 import random
+import re
+import html
 from aiogram.types import Message
 from aiogram.enums import ChatAction
 
@@ -17,7 +18,6 @@ from src.utils.text_utils import get_first_name_by_user_id
 from src.utils.date_utils import format_birthday_date
 from src.bot.handlers.owner_commands import handle_owner_command
 from src.utils.log_utils import log_with_ts as _log
-
 
 async def on_mention_or_reply(message: Message):
     """
@@ -329,6 +329,7 @@ async def on_mention_or_reply(message: Message):
 
     chat_id = message.chat.id
     text = message.text or ""
+    text_for_llm = _strip_bot_mention(text, bot_username)
     # bot, bot_info, bot_username уже получены выше для команд "др"
 
     # Проверяем, нужно ли обрабатывать это сообщение
@@ -342,12 +343,25 @@ async def on_mention_or_reply(message: Message):
     first_name = get_first_name_by_user_id(message.from_user.id, birthday_service.users)
     
     # Формируем сообщения для LLM
-    messages = _build_llm_messages(chat_id, text)
+    messages = _build_llm_messages(chat_id, text_for_llm)
 
     # Временное сообщение о том, что бот думает над ответом
+    thinking_variants = [
+        "🧠 Мне понадобится немного времени, думаю над ответом...",
+        "⌛ Одну секунду, формулирую мысль...",
+        "💭 Обдумываю, чтобы ответить по делу...",
+        "✏️ Проверяю факты, сейчас вернусь...",
+        "🔎 Сверяю детали, почти готово...",
+        "⚙️ Прокручиваю логику в голове...",
+        "🧩 Осталась последняя деталь...",
+        "📐 Привожу мысли в порядок...",
+        "📚 Освежаю материалы, секунду...",
+        "🤔 Хочу ответить точно, чуть-чуть подожди..."
+    ]
+
     temp_msg = None
     try:
-        temp_msg = await message.reply("🧠 Мне понадобится немного времени, думаю над ответом...")
+        temp_msg = await message.reply(random.choice(thinking_variants))
     except Exception:
         temp_msg = None
 
@@ -375,14 +389,13 @@ async def on_mention_or_reply(message: Message):
             pass
     
     # Сохраняем контекст
-    context_service.save_context(chat_id, message.text, answer_body)
+    context_service.save_context(chat_id, text_for_llm, answer_body)
     
     # Формируем финальный ответ
     final_answer = _format_final_answer(first_name, answer_body)
     
-    # Экранируем HTML для безопасной отправки
-    import html
-    safe_answer = html.escape(final_answer)
+    # Экранируем текст и выделяем code-блоки
+    safe_answer = _render_html_with_code(final_answer)
     
     # Удаляем временное сообщение перед отправкой ответа
     if temp_msg:
@@ -393,7 +406,6 @@ async def on_mention_or_reply(message: Message):
     
     # Отправляем ответ
     await _send_response(message, safe_answer, user_login, text)
-
 
 def _should_process_message(message: Message, bot_username: str, bot_id: int) -> bool:
     """
@@ -421,7 +433,6 @@ def _should_process_message(message: Message, bot_username: str, bot_id: int) ->
     
     return is_mention or is_reply
 
-
 def _extract_user_login(message: Message, text: str, bot_username: str) -> str:
     """
     Извлекает логин пользователя из сообщения.
@@ -445,7 +456,6 @@ def _extract_user_login(message: Message, text: str, bot_username: str) -> str:
                 return token
     
     return ""
-
 
 def _build_llm_messages(chat_id: int, current_text: str) -> list:
     """
@@ -476,6 +486,19 @@ def _build_llm_messages(chat_id: int, current_text: str) -> list:
     
     return messages
 
+def _strip_bot_mention(text: str, bot_username: str) -> str:
+    """Убирает прямое упоминание бота, чтобы не попадало в LLM как обращение по логину."""
+    if not text:
+        return text
+    tokens = text.split()
+    filtered = [t for t in tokens if t != bot_username]
+    # Если убрали упоминание — возвращаем очищенный текст, иначе исходный
+    if len(filtered) != len(tokens):
+        return " ".join(filtered).strip(" ,")
+    # Дополнительно чистим ведущий логин в начале строки
+    if text.startswith(bot_username):
+        return text[len(bot_username):].strip(" ,")
+    return text
 
 def _format_final_answer(first_name: str, answer_body: str) -> str:
     """
@@ -493,7 +516,6 @@ def _format_final_answer(first_name: str, answer_body: str) -> str:
         return f"{first_name}, {answer_body[:1].lower() + answer_body[1:]}"
     else:
         return answer_body
-
 
 async def _send_response(message: Message, final_answer: str, user_login: str, original_text: str):
     """
@@ -515,6 +537,36 @@ async def _send_response(message: Message, final_answer: str, user_login: str, o
         _log(f"PM; Бот (LLM): {final_answer}")
         await message.answer(final_answer, parse_mode="HTML")
 
+def _render_html_with_code(text: str) -> str:
+    """
+    Экранирует текст и конвертирует markdown code fences в HTML <pre><code>.
+
+    Поддерживаются блоки вида ```lang\n...```, язык опционален.
+    """
+    parts: list[str] = []
+    last = 0
+    pattern = re.compile(r"```([a-zA-Z0-9#+-]+)?\n([\s\S]*?)```", re.MULTILINE)
+
+    for match in pattern.finditer(text):
+        # Текст до блока кода экранируем как обычный HTML
+        if match.start() > last:
+            parts.append(html.escape(text[last:match.start()]))
+
+        lang = match.group(1)
+        code = match.group(2).rstrip("\n")
+        code_html = html.escape(code)
+        if lang:
+            parts.append(f"<pre><code class=\"language-{lang}\">{code_html}</code></pre>")
+        else:
+            parts.append(f"<pre><code>{code_html}</code></pre>")
+
+        last = match.end()
+
+    # Хвост после последнего блока кода
+    if last < len(text):
+        parts.append(html.escape(text[last:]))
+
+    return "".join(parts)
 
 def register_chat_handlers(dp):
     """

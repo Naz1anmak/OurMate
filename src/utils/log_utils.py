@@ -1,12 +1,10 @@
 """
 Утилиты для логирования с временной меткой в заданном часовом поясе.
 """
-
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from src.config.settings import TIMEZONE, ENV
-
 
 def log_with_ts(message: str) -> None:
     """Печатает лог с таймстемпом в часовом поясе из настроек."""

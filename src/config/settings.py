@@ -2,7 +2,6 @@
 Модуль конфигурации приложения.
 Содержит все настройки, загружаемые из переменных окружения.
 """
-
 from dotenv import load_dotenv
 import os
 from pathlib import Path
@@ -18,7 +17,6 @@ def _get_env(name: str, default=None, cast=None, log_default: bool = False):
     if cast and val is not None:
         return cast(val)
     return val
-
 
 # Загружаем переменные окружения из файла .env
 load_dotenv()

@@ -2,20 +2,18 @@
 Сервис для работы с днями рождения.
 Содержит логику для поиска именинников и генерации поздравлений.
 """
-
 from datetime import date, datetime
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
 from src.models.user import User
 from src.utils.date_utils import today_mmdd, get_next_birthday, parse_day_month
-from src.utils.text_utils import load_birthdays, build_mention_list, build_mention_list_for_prompt, save_birthdays
+from src.utils.text_utils import load_birthdays, build_mention_list, save_birthdays
 from src.bot.services.llm_service import LLMService
 from src.config.settings import (
     PROMPT_TEMPLATE_BIRTHDAY_ACTIVE,
     PROMPT_TEMPLATE_BIRTHDAY_FORMER,
 )
-
 
 class BirthdayService:
     """
@@ -258,7 +256,6 @@ class BirthdayService:
         
         return f"Следующий день рождения:\n{mentions} — {formatted_date}"
     
-    
     def reload_users(self) -> None:
         """
         Перезагружает список пользователей из файла.
@@ -269,7 +266,6 @@ class BirthdayService:
     def save_users(self) -> None:
         """Сохраняет текущий список пользователей в файл."""
         save_birthdays(self.users)
-
 
 # Создаем глобальный экземпляр сервиса дней рождения
 birthday_service = BirthdayService()
