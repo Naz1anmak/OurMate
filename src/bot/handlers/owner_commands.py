@@ -3,12 +3,14 @@
 Позволяет владельцу управлять сервером через Telegram.
 """
 
-from aiogram.types import Message
 import asyncio
 import subprocess
+from aiogram.types import Message
 
 from src.config.settings import OWNER_CHAT_ID
 from src.bot.services.system_service import system_service
+from src.bot.services.birthday_service import birthday_service
+from src.utils.log_utils import log_with_ts as _log
 
 
 async def handle_owner_command(message: Message) -> bool:
@@ -32,7 +34,7 @@ async def handle_owner_command(message: Message) -> bool:
     # Логируем команду владельца как PM/GR по месту использования
     user_login = f"@{message.from_user.username}" if message.from_user.username else ""
     tag = "GR" if message.chat.type in ("group", "supergroup") else "PM"
-    print(f"{tag}; От {user_login} ({message.from_user.full_name}): запрос '{message.text}'")
+    _log(f"{tag}; От {user_login} ({message.from_user.full_name}): запрос '{message.text}'")
     
     # Обрабатываем команды
     if text == "logs":
@@ -75,6 +77,33 @@ async def handle_owner_command(message: Message) -> bool:
         await message.answer(response, parse_mode="HTML")
         return True
     
+    elif text == "проверка ссылок":
+        # Диагностика: гиперссылка + активация бота
+        lines = ["🔍 <b>Проверка ссылок и активации:</b>\n"]
+
+        for user in birthday_service.users:
+            mention = user.mention_html()  # дает ссылку, если есть user_id
+            username_info = f" (@{user.username})" if user.username else ""
+
+            # Эмодзи-сигналы:
+            #  - статус: ✅ для active, ➖ для прочих
+            #  - ссылка/наличие id: если user_id нет — 🚫
+            #  - активация: 🎂 если писал боту (только при наличии user_id)
+            if user.user_id is None:
+                prefix = "🚫"
+            else:
+                prefix = "✅" if user.status == "active" else "➖"
+
+            if user.user_id is not None and user.interacted_with_bot:
+                prefix = f"{prefix}🎂"
+
+            lines.append(f"{prefix} — {mention}{username_info}")
+
+        response = "\n".join(lines)
+
+        await message.answer(response, parse_mode="HTML", disable_web_page_preview=True)
+        return True
+    
     elif text == "help" or text == "команды":
         help_text = """
 🔧 <b>Команды владельца:</b>
@@ -90,7 +119,10 @@ async def handle_owner_command(message: Message) -> bool:
 
 <b>Дни рождения:</b>
 • <code>др</code> — ближайший день рождения (в беседе и в ЛС владельца)
-• <code>др @username</code> — дата дня рождения пользователя (в беседе и в ЛС владельца)
+• <code>др 123456789</code> — дата дня рождения пользователя (в беседе и в ЛС владельца)
+
+<b>Диагностика:</b>
+• <code>проверка ссылок</code> - Проверить ссылки и активацию пользователей (владелец)
 
 <b>Справка:</b>
 • <code>help</code> или <code>команды</code> - Показать эту справку

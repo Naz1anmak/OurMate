@@ -13,33 +13,39 @@ class User:
     Модель пользователя с информацией о дне рождения.
     
     Attributes:
-        user_login (str): Логин пользователя в Telegram (например, "@username")
+        user_id (Optional[int]): Telegram user_id для упоминания по ID
         name (str): Полное имя пользователя
-        birthday (str): Дата дня рождения в формате "MM-DD"
+        birthday (str): Дата дня рождения в формате "D.M" или "DD.MM"
+        status (str): Статус пользователя (например, "active" или "-")
+        interacted_with_bot (bool): Взаимодействовал ли пользователь с ботом
     """
-    user_login: str
+    user_id: Optional[int]
     name: str
+    last_name: str
     birthday: str
+    status: str
+    username: Optional[str] = None
+    interacted_with_bot: bool = False
     
     def get_first_name(self) -> str:
-        """
-        Возвращает первое имя пользователя.
-        
-        Returns:
-            str: Первое слово из полного имени
-        """
+        """Возвращает первое слово из полного имени."""
         return self.name.split()[0]
-    
-    def get_mention_text(self) -> str:
+
+    def mention_html(self) -> str:
+        """Создает HTML-упоминание по user_id или возвращает имя.
+
+        Если user_id отсутствует, возвращает имя без ссылки.
         """
-        Возвращает текст для упоминания пользователя.
-        
-        Returns:
-            str: Имя с логином или только имя, если логин отсутствует
-        """
-        if self.user_login:
-            return f"{self.name} {self.user_login}"
-        return self.name
+        display_name = self.name.lstrip("@")
+        display_name = (
+            display_name
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        if self.user_id is None:
+            return display_name
+        return f'<a href="tg://user?id={self.user_id}">{display_name}</a>'
     
     @classmethod
     def from_dict(cls, data: dict) -> 'User':
@@ -52,10 +58,28 @@ class User:
         Returns:
             User: Объект пользователя
         """
+        raw_id = data.get("user_id", "")
+        user_id: Optional[int]
+        try:
+            user_id = int(raw_id) if raw_id is not None and str(raw_id).strip() else None
+        except (ValueError, TypeError):
+            user_id = None
+
+
+        username = data.get("username")
+        if isinstance(username, str):
+            username = username.lstrip("@")
+        else:
+            username = None
+
         return cls(
-            user_login=data.get('user_login', ''),
-            name=data['name'],
-            birthday=data['birthday']
+            user_id=user_id,
+            name=data["name"],
+            last_name=data.get("last_name", ""),
+            birthday=data["birthday"],
+            status=data.get("status", ""),
+            username=username,
+            interacted_with_bot=data.get("interacted_with_bot", False),
         )
     
     def to_dict(self) -> dict:
@@ -65,8 +89,14 @@ class User:
         Returns:
             dict: Словарь с данными пользователя
         """
-        return {
-            'user_login': self.user_login,
-            'name': self.name,
-            'birthday': self.birthday
+        data = {
+            "user_id": self.user_id,
+            "name": self.name,
+            "last_name": self.last_name,
+            "birthday": self.birthday,
+            "status": self.status,
+            "interacted_with_bot": self.interacted_with_bot,
         }
+        if self.username:
+            data["username"] = self.username
+        return data

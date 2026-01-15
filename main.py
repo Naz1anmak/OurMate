@@ -3,6 +3,7 @@
 Точка входа для запуска Telegram бота.
 """
 
+import os
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
@@ -11,12 +12,16 @@ from aiogram.methods import DeleteWebhook
 from src.config.settings import TOKEN
 from src.bot.handlers import register_handlers
 from src.bot.scheduler.birthday_scheduler import start_scheduler
+from src.bot.scheduler.schedule_scheduler import start_schedule_scheduler
 
 # Настраиваем логирование
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
+if os.getenv("ENV") == "prod":
+    logging.getLogger("aiogram.event").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +43,8 @@ async def main():
     # Удаляем вебхук и запускаем планировщик
     await bot(DeleteWebhook(drop_pending_updates=True))
     start_scheduler(bot)
-    logger.info("Планировщик запущен")
+    start_schedule_scheduler(bot)
+    logger.info("Планировщики запущены")
 
     # Запускаем поллинг (получение обновлений)
     logger.info("Бот запущен и готов к работе")

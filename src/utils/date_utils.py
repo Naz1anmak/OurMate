@@ -4,26 +4,37 @@
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from src.models.user import User
 
 
+def _parse_day_month(birthday: str) -> Tuple[int, int]:
+    """Парсит дату формата 'D.M' или 'DD.MM' в кортеж (day, month)."""
+    if "." not in birthday:
+        raise ValueError(f"Invalid birthday format: {birthday}")
+    parts = birthday.split(".")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid birthday format: {birthday}")
+    day_part, month_part = parts
+    day = int(day_part)
+    month = int(month_part)
+    return day, month
+
+
+def parse_day_month(birthday: str) -> Tuple[int, int]:
+    """Публичная обертка для разбора даты рождения."""
+    return _parse_day_month(birthday)
+
+
 def today_mmdd(timezone: ZoneInfo) -> str:
-    """
-    Возвращает текущую дату в формате 'MM-DD' в указанном часовом поясе.
-    
-    Args:
-        timezone (ZoneInfo): Часовой пояс
-        
-    Returns:
-        str: Дата в формате 'MM-DD'
-    """
-    return datetime.now(timezone).strftime("%m-%d")
+    """Возвращает текущую дату в формате 'D.M' (без ведущих нулей)."""
+    now = datetime.now(timezone)
+    return f"{now.day}.{now.month}"
 
 
-def get_next_birthday(users: List[User], today_mmdd: str) -> Optional[User]:
+def get_next_birthday(users: List[User], today_dm: str) -> Optional[User]:
     """
     Находит пользователя с ближайшим днем рождения.
     
@@ -35,6 +46,10 @@ def get_next_birthday(users: List[User], today_mmdd: str) -> Optional[User]:
         Optional[User]: Пользователь с ближайшим днем рождения или None
     """
     now = datetime.now()
+    try:
+        today_day, today_month = _parse_day_month(today_dm)
+    except ValueError:
+        return None
     
     def next_dt(user: User) -> datetime:
         """
@@ -47,12 +62,12 @@ def get_next_birthday(users: List[User], today_mmdd: str) -> Optional[User]:
             datetime: Дата следующего дня рождения
         """
         try:
-            month, day = map(int, user.birthday.split("-"))
+            day, month = _parse_day_month(user.birthday)
             dt = datetime(now.year, month, day)
             
-            # Если день рождения уже прошел в этом году, 
+            # Если день рождения уже прошел или сегодня,
             # считаем что он будет в следующем году
-            if dt.strftime("%m-%d") <= today_mmdd:
+            if (month, day) <= (today_month, today_day):
                 dt = dt.replace(year=now.year + 1)
             return dt
         except Exception:
@@ -84,5 +99,5 @@ def format_birthday_date(birthday: str) -> str:
         10: "октября", 11: "ноября", 12: "декабря"
     }
     
-    month, day = map(int, birthday.split("-"))
+    day, month = _parse_day_month(birthday)
     return f"{day} {month_names[month]}"
