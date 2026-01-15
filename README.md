@@ -105,8 +105,14 @@ cd OurMate
 
 ### 2. **Создать и активировать виртуальное окружение**
 ```bash
+# macOS/Linux
 python3 -m venv venv
 source venv/bin/activate
+
+# Windows (PowerShell)
+# python -m venv venv
+# .\venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
 ```
 
@@ -145,7 +151,7 @@ PROMPT_TEMPLATE_BIRTHDAY_ACTIVE='Поздравь активных студен�
 PROMPT_TEMPLATE_BIRTHDAY_FORMER='Поздравь отчисленных {mentions}…'          # промпт для отчисленных (по умолчанию берёт ACTIVE)
 
 # Окружение
-ENV=prod                           # при prod уровень логов 'aiogram.event' будет от WARNING
+ENV=prod                           # prod: меньше логов aiogram.event + без таймстемпа в наших print-логах
 ```
 
 ### 4. **Пример `data/birthdays.json`**
@@ -196,7 +202,7 @@ ENV=prod                           # при prod уровень логов 'aiog
 
 **Команда для отписки:**
 - Пользователь может в любой момент отписаться от поздравлений, написав боту `отписаться` в ЛС
-- Для повторной активации нужно снова написать /start
+- Для повторной активации нужно снова написать боту
 
 ### 5. **Расписание (ICS)**
 
@@ -293,7 +299,7 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Создайте .env со своими значениями (BOT_TOKEN, OWNER_CHAT_ID, CHAT_ID, MODEL, LLM_API_KEY, BIRTHDAYS_FILE, TIMEZONE, SEND_HOUR, SEND_MINUTE, PROMPT_TEMPLATE_*).
+3. Создайте .env со своими значениями (ориентируясь на пример из раздела «Установка и запуск»).
 
 4. Создайте файл `/etc/systemd/system/mybot.service`:
 ```ini
@@ -333,8 +339,11 @@ sudo systemctl status mybot
 По умолчанию на некоторых системах логи `systemd-journald` могут храниться только в памяти и теряться после перезагрузки. Чтобы команды владельца `logs`/`full logs` имели доступ к истории после рестартов, включите постоянное хранение журнала:
 
 ```bash
+# Создаём каталог для постоянного хранения
 sudo mkdir -p /var/log/journal
 sudo systemd-tmpfiles --create --prefix /var/log/journal
+
+# Добавляем конфиг journald
 sudo mkdir -p /etc/systemd/journald.conf.d
 sudo tee /etc/systemd/journald.conf.d/00-custom.conf > /dev/null << 'EOF'
 [Journal]
@@ -344,6 +353,8 @@ SystemMaxFileSize=50M
 RateLimitIntervalSec=30
 RateLimitBurst=10000
 EOF
+
+# Перезапускаем journald
 sudo systemctl restart systemd-journald
 ```
 

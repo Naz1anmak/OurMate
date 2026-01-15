@@ -8,8 +8,23 @@ import os
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+def _get_env(name: str, default=None, cast=None, log_default: bool = False):
+    """Возвращает значение переменной окружения с опциональным кастом и логом по умолчанию."""
+    val = os.getenv(name)
+    if val is None:
+        if log_default:
+            print(f"[CONFIG] {name} не задан, используем значение по умолчанию: {default}")
+        val = default
+    if cast and val is not None:
+        return cast(val)
+    return val
+
+
 # Загружаем переменные окружения из файла .env
 load_dotenv()
+
+# Режим окружения
+ENV = _get_env("ENV", "dev", log_default=True)
 
 # ===== TELEGRAM НАСТРОЙКИ =====
 # Токен бота из BotFather
@@ -37,38 +52,45 @@ API_HEADERS = {
 # ===== НАСТРОЙКИ ДНЕЙ РОЖДЕНИЯ =====
 # Путь к файлу с данными о днях рождения
 # По умолчанию ищем файл birthdays.json в папке data относительно корня проекта
-BIRTHDAYS_FILE = Path(os.getenv("BIRTHDAYS_FILE", Path.cwd() / "data" / "birthdays.json"))
+BIRTHDAYS_FILE = Path(_get_env("BIRTHDAYS_FILE", Path.cwd() / "data" / "birthdays.json", log_default=True))
 
 # Файл для фиксации последней даты отправки поздравления
-LAST_BIRTHDAY_GREETING_FILE = Path(os.getenv(
-    "LAST_BIRTHDAY_GREETING_FILE",
-    Path.cwd() / "data" / "cache" / "last_birthday_greeting.txt",
-))
+LAST_BIRTHDAY_GREETING_FILE = Path(
+    _get_env(
+        "LAST_BIRTHDAY_GREETING_FILE",
+        Path.cwd() / "data" / "cache" / "last_birthday_greeting.txt",
+        log_default=True,
+    )
+)
 
 # ===== НАСТРОЙКИ РАСПИСАНИЯ =====
 # Часовой пояс для планировщика (по умолчанию Москва)
-TIMEZONE = ZoneInfo(os.getenv("TIMEZONE", "Europe/Moscow"))
+TIMEZONE = ZoneInfo(_get_env("TIMEZONE", "Europe/Moscow", log_default=True))
 
 # Время отправки поздравлений (по умолчанию 10:00)
-SEND_HOUR = int(os.getenv("SEND_HOUR", 10))
-SEND_MINUTE = int(os.getenv("SEND_MINUTE", 0))
+SEND_HOUR = int(_get_env("SEND_HOUR", 10, log_default=True))
+SEND_MINUTE = int(_get_env("SEND_MINUTE", 0, log_default=True))
 
 # ===== ПРОМПТЫ =====
 # Шаблон промпта для обычного чата
-PROMPT_TEMPLATE_CHAT = os.getenv("PROMPT_TEMPLATE_CHAT")
+PROMPT_TEMPLATE_CHAT = _get_env("PROMPT_TEMPLATE_CHAT", "", log_default=True)
 
 # Шаблоны промптов для поздравлений
 # Active — основной; Former — для отчисленных. Former по умолчанию наследует Active.
-PROMPT_TEMPLATE_BIRTHDAY_ACTIVE = os.getenv("PROMPT_TEMPLATE_BIRTHDAY_ACTIVE")
-PROMPT_TEMPLATE_BIRTHDAY_FORMER = os.getenv("PROMPT_TEMPLATE_BIRTHDAY_FORMER", PROMPT_TEMPLATE_BIRTHDAY_ACTIVE)
+PROMPT_TEMPLATE_BIRTHDAY_ACTIVE = _get_env("PROMPT_TEMPLATE_BIRTHDAY_ACTIVE", "", log_default=True)
+PROMPT_TEMPLATE_BIRTHDAY_FORMER = _get_env(
+    "PROMPT_TEMPLATE_BIRTHDAY_FORMER", PROMPT_TEMPLATE_BIRTHDAY_ACTIVE, log_default=True
+)
 
 # ===== НАСТРОЙКИ РАСПИСАНИЯ =====
 # Паттерн для файлов расписания (ics)
-SCHEDULE_FILES_PATTERN = os.getenv("SCHEDULE_FILES_PATTERN", "data/calendar*.ics")
+SCHEDULE_FILES_PATTERN = _get_env("SCHEDULE_FILES_PATTERN", "data/calendar*.ics", log_default=True)
 
 # Кэш для расписания (после парсинга ics)
-SCHEDULE_CACHE_FILE = Path(os.getenv("SCHEDULE_CACHE_FILE", Path.cwd() / "data" / "cache" / "schedule_cache.json"))
+SCHEDULE_CACHE_FILE = Path(
+    _get_env("SCHEDULE_CACHE_FILE", Path.cwd() / "data" / "cache" / "schedule_cache.json", log_default=True)
+)
 
 # Время отправки расписания
-SCHEDULE_SEND_HOUR = int(os.getenv("SCHEDULE_SEND_HOUR", 8))
-SCHEDULE_SEND_MINUTE = int(os.getenv("SCHEDULE_SEND_MINUTE", 0))
+SCHEDULE_SEND_HOUR = int(_get_env("SCHEDULE_SEND_HOUR", 8, log_default=True))
+SCHEDULE_SEND_MINUTE = int(_get_env("SCHEDULE_SEND_MINUTE", 0, log_default=True))
