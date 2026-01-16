@@ -3,6 +3,7 @@
 Парсит все файлы по паттерну, кеширует и предоставляет пары на сегодня/завтра.
 """
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, date, time
 from pathlib import Path
@@ -12,6 +13,8 @@ from zoneinfo import ZoneInfo
 from icalendar import Calendar
 
 from src.config.settings import SCHEDULE_FILES_PATTERN, SCHEDULE_CACHE_FILE, TIMEZONE
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ScheduleEvent:
@@ -32,14 +35,20 @@ class ScheduleService:
         base_dir = pattern_path.parent if pattern_path.parent != Path('.') else Path.cwd()
         glob_pattern = pattern_path.name
 
-        for ics_path in sorted(base_dir.glob(glob_pattern)):
+        matched_files = sorted(base_dir.glob(glob_pattern))
+        if not matched_files:
+            logger.warning("Файлы расписания не найдены по шаблону '%s'", SCHEDULE_FILES_PATTERN)
+
+        for ics_path in matched_files:
             try:
                 events.extend(self._parse_ics(ics_path))
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Не удалось разобрать файл расписания %s: %s", ics_path, exc)
                 continue
 
         # Сортируем по времени начала
         events.sort(key=lambda e: e.start)
+        logger.info("Расписание загружено: %s событий из %s файлов", len(events), len(matched_files))
         return events
 
     def _parse_ics(self, ics_path: Path) -> List[ScheduleEvent]:
@@ -96,6 +105,7 @@ class ScheduleService:
                 for e in self.events
             ]
             SCHEDULE_CACHE_FILE.write_text(json.dumps(serializable, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.info("Кеш расписания обновлен: %s событий -> %s", len(self.events), SCHEDULE_CACHE_FILE)
         except Exception:
             # Кеш не критичен
             pass

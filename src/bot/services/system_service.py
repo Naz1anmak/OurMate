@@ -67,11 +67,11 @@ class SystemService:
             # Краткие логи: добавляем цветные маркеры и обрезаем с конца
             body = SystemService._format_lines_with_highlight_and_limit(
                 result.splitlines(),
-                max_len=3800,
+                max_len=4000,
                 highlights=(),
                 emoji_map={"PM;": "🔴", "GR;": "🟡", "FP;": "🟢"},
             )
-            return "📋 <b>Логи бота (последние 50 сообщений):</b>\n\n<code>" + body + "</code>"
+            return "📋 <b>Логи бота:</b>\n\n<pre><code>" + body + "</code></pre>"
         elif success:
             return "📋 <b>Логи бота:</b>\n\nНет сообщений для отображения"
         else:
@@ -91,12 +91,12 @@ class SystemService:
         if success and result:
             body = SystemService._format_lines_with_highlight_and_limit(
                 result.splitlines(),
-                max_len=3800,
+                max_len=4000,
                 highlights=("PM;", "GR;", "FP;"),
                 emoji_map={"PM;": "🔴", "GR;": "🟡", "FP;": "🟢"},
             )
             # Без <code>, чтобы работало жирное выделение важных строк
-            return "📋 <b>Полные логи бота (последние 100 строк):</b>\n\n" + body
+            return "📋 <b>Полные логи бота:</b>\n\n" + body
         else:
             return f"❌ <b>Ошибка получения логов:</b>\n\n{result}"
 
@@ -151,7 +151,7 @@ class SystemService:
 
         body = "".join(reversed(rendered_lines))
         if cutoff_reached:
-            body = "... (логи обрезаны, показан конец)\n" + body
+            body = "... (обрезаны до лимита Telegram)\n" + body
         return body or "Нет строк для отображения"
     
     @staticmethod
@@ -184,7 +184,7 @@ class SystemService:
         if success and result:
             # Экранируем и обрезаем с конца, показывая самый свежий фрагмент статуса
             escaped = html.escape(result)
-            max_len = 3800
+            max_len = 4000
             if len(escaped) > max_len:
                 escaped = "... (статус обрезан, показан конец)\n" + escaped[-max_len:]
             return f"📊 <b>Статус бота:</b>\n\n<code>{escaped}</code>"

@@ -113,6 +113,12 @@ class BirthdayScheduler:
                 )
             self._save_greeting_date(today)  # Сохраняем дату отправки
             return True
+
+        if not_interacted:
+            logger.info(
+                "Пропущены поздравления: %s пользователей не активировали бота",
+                len(not_interacted),
+            )
         return False
     
     async def _notify_next_birthday(self):
@@ -170,7 +176,7 @@ class BirthdayScheduler:
         if updated_users:
             birthday_service.save_users()
         filled = sum(1 for user in birthday_service.users if user.username)
-        total = sum(1 for user in birthday_service.users if user.user_id is not None)
+        total = len(birthday_service.users)  # учитываем всех, даже без user_id
         details = f" ({' | '.join(updated_users)})" if updated_users else ""
         duration = time.perf_counter() - started
         logger.info(
@@ -233,13 +239,8 @@ class BirthdayScheduler:
         """
         self.scheduler.shutdown()
 
-def start_scheduler(bot: Bot):
-    """
-    Функция для запуска планировщика (для обратной совместимости).
-    
-    Args:
-        bot (Bot): Экземпляр бота
-    """
+def start_birthday_scheduler(bot: Bot):
+    """Запускает планировщик дней рождения."""
     scheduler = BirthdayScheduler(bot)
     scheduler.start()
     return scheduler

@@ -16,7 +16,7 @@ from src.bot.services.birthday_service import birthday_service
 from src.bot.services.schedule_service import schedule_service
 from src.utils.text_utils import get_first_name_by_user_id
 from src.utils.date_utils import format_birthday_date
-from src.bot.handlers.owner_commands import handle_owner_command
+from src.bot.handlers.owner_commands import handle_owner_command, OWNER_COMMANDS
 from src.utils.log_utils import log_with_ts as _log
 
 async def on_mention_or_reply(message: Message):
@@ -85,7 +85,7 @@ async def on_mention_or_reply(message: Message):
             tag_unsub = "GR" if in_group else "PM"
             if in_group:
                 _log(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): запрос 'отписаться' в группе — отклонено")
-                await message.reply(
+                await message.answer(
                     "❌ Эта команда доступна только в личных сообщениях с ботом.",
                     parse_mode="HTML",
                 )
@@ -119,15 +119,7 @@ async def on_mention_or_reply(message: Message):
                 )
             return
 
-        owner_commands = {
-            "logs",
-            "full logs",
-            "stop bot",
-            "status",
-            "system",
-            "проверка ссылок",
-        }
-        if normalized_text in owner_commands:
+        if normalized_text in OWNER_COMMANDS:
             # Если пишет не владелец — отказываем
             if message.from_user.id != OWNER_CHAT_ID:
                 user_login = f"@{message.from_user.username}" if message.from_user.username else ""
@@ -165,19 +157,17 @@ async def on_mention_or_reply(message: Message):
         
         normalized_text = text_for_commands.lower().strip()
         
-        is_group_context = (
-            message.chat.type in ("group", "supergroup") and message.chat.id == CHAT_ID
-        )
-        is_owner_pm = (
-            message.chat.type == "private" and message.from_user and message.from_user.id == OWNER_CHAT_ID
-        )
-        is_private_non_owner = (
-            message.chat.type == "private" and message.from_user and message.from_user.id != OWNER_CHAT_ID
-        )
-        
-        is_group_trigger = is_group_context and (is_mention or is_reply)
-        should_process_birthday_command = is_owner_pm or is_group_trigger
-        should_process_schedule_command = is_owner_pm or is_group_trigger
+        is_owner = message.from_user and message.from_user.id == OWNER_CHAT_ID
+        is_group_chat = message.chat.type in ("group", "supergroup")
+        is_group_main = is_group_chat and message.chat.id == CHAT_ID
+        is_owner_pm = message.chat.type == "private" and is_owner
+        is_private_non_owner = message.chat.type == "private" and not is_owner
+
+        is_main_trigger = is_group_main and (is_mention or is_reply)
+        is_owner_trigger = is_owner and is_group_chat and (is_mention or is_reply)
+
+        should_process_birthday_command = is_owner_pm or is_main_trigger or is_owner_trigger
+        should_process_schedule_command = is_owner_pm or is_main_trigger or is_owner_trigger
 
         # Запрещаем публичные команды в ЛС для не-владельца, чтобы не уходить в LLM
         if is_private_non_owner and (
@@ -199,7 +189,7 @@ async def on_mention_or_reply(message: Message):
 
         if normalized_text == "др" and should_process_birthday_command:
             user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            tag = "GR" if is_group_context else "PM"
+            tag = "GR" if is_group_chat else "PM"
             _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др'")
             
             # В ЛС владельца — одно уведомление, в беседе — другое
@@ -234,13 +224,13 @@ async def on_mention_or_reply(message: Message):
                     target_username = arg.lstrip("@")
 
             user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            tag = "GR" if is_group_context else "PM"
+            tag = "GR" if is_group_chat else "PM"
 
             if target_id is None:
                 lookup = target_username or ""
                 if not lookup:
                     _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др' без аргумента")
-                    await message.reply("Укажи user_id или @username (др 123456 или др @user). Команда срабатывает по упоминанию бота или ответу на его сообщение.")
+                    await message.answer("Укажи user_id или @username (др 123456 или др @user). Команда срабатывает по упоминанию бота или ответу на его сообщение.")
                     return
                 found_user = next(
                     (u for u in birthday_service.users if u.username and u.username.lower() == lookup.lower()),
@@ -255,7 +245,7 @@ async def on_mention_or_reply(message: Message):
             if found_user:
                 pretty_date = format_birthday_date(found_user.birthday)
                 username_info = f" (@{found_user.username})" if found_user.username else ""
-                await message.reply(
+                await message.answer(
                     f"{found_user.mention_html()}{username_info} отмечает день рождения {pretty_date}",
                     parse_mode="HTML",
                     disable_web_page_preview=True,
@@ -264,7 +254,7 @@ async def on_mention_or_reply(message: Message):
                 _log(
                     f"{tag}; Бот: пользователь не найден в списке дней рождения по запросу '{search_value}' (запрос от {user_login_log} ({message.from_user.full_name}))"
                 )
-                await message.reply("Пользователь не найден в списке дней рождения")
+                await message.answer("Пользователь не найден в списке дней рождения")
             return
         
         no_pairs_today = [
@@ -293,7 +283,7 @@ async def on_mention_or_reply(message: Message):
             events = schedule_service.get_todays_classes(TIMEZONE)
             empty_text = random.choice(no_pairs_today)
             text = schedule_service.format_classes(events, "📚 Пары на сегодня:", empty_text)
-            await message.reply(text, parse_mode="HTML")
+            await message.answer(text, parse_mode="HTML")
             return
 
         # Пары завтра
@@ -303,7 +293,7 @@ async def on_mention_or_reply(message: Message):
             events = schedule_service.get_tomorrows_classes(TIMEZONE)
             empty_text = random.choice(no_pairs_tomorrow)
             text = schedule_service.format_classes(events, "📚 Пары на завтра", empty_text)
-            await message.reply(text, parse_mode="HTML")
+            await message.answer(text, parse_mode="HTML")
             return
 
     # Обрабатываем только текстовые сообщения для LLM
@@ -311,7 +301,12 @@ async def on_mention_or_reply(message: Message):
         return
 
     # Если это другая группа (не основная) и пришли ключевые команды — вежливо отказываем, не зовем LLM
-    if message.chat.type in ("group", "supergroup") and not is_group_context and (is_mention or is_reply):
+    if (
+        message.chat.type in ("group", "supergroup")
+        and not is_group_main
+        and not (message.from_user and message.from_user.id == OWNER_CHAT_ID)
+        and (is_mention or is_reply)
+    ):
         blocked_cmd = (
             normalized_text == "др"
             or normalized_text.startswith("др ")
@@ -321,7 +316,7 @@ async def on_mention_or_reply(message: Message):
         if blocked_cmd:
             user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
             _log(f"GR; От {user_login_log} ({message.from_user.full_name}): команда '{normalized_text}' в чужой группе — отклонено")
-            await message.reply(
+            await message.answer(
                 "❌ <b>Эта команда доступна только в основной беседе.</b>",
                 parse_mode="HTML",
             )

@@ -24,7 +24,7 @@ class ScheduleScheduler:
     async def _daily_classes(self):
         events = schedule_service.get_todays_classes(TIMEZONE)
         if events:
-            text = schedule_service.format_classes(events, "📚 Пары на сегодня", "")
+            text = schedule_service.format_classes(events, "📚 Пары на сегодня:", "")
             await self.bot.send_message(CHAT_ID, text)
 
     def stop(self):
