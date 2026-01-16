@@ -4,6 +4,7 @@
 """
 import asyncio
 import logging
+import time
 from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -146,13 +147,19 @@ class BirthdayScheduler:
         """Обновляет usernames при старте бота, где доступно по user_id."""
         updated_users: list[str] = []
         checked = 0
+        failures = 0
+        failure_samples: list[str] = []
+        started = time.perf_counter()
         for user in birthday_service.users:
             if user.user_id is None:
                 continue
             checked += 1
             try:
                 chat = await self.bot.get_chat(user.user_id)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                failures += 1
+                if len(failure_samples) < 3:
+                    failure_samples.append(f"user_id={user.user_id}: {exc}")
                 continue
             username = getattr(chat, "username", None)
             if username and username != user.username:
@@ -164,8 +171,20 @@ class BirthdayScheduler:
             birthday_service.save_users()
         filled = sum(1 for user in birthday_service.users if user.username)
         total = sum(1 for user in birthday_service.users if user.user_id is not None)
-        details = f" ({' и '.join(updated_users)})" if updated_users else ""
-        logger.info("Обновлены логины: %s/%s/%s%s", len(updated_users), filled, total, details)
+        details = f" ({' | '.join(updated_users)})" if updated_users else ""
+        duration = time.perf_counter() - started
+        logger.info(
+            "Обновлены логины: %s/%s/%s%s; ошибки: %s; проверено: %s; t=%.2fs",
+            len(updated_users),
+            filled,
+            total,
+            details,
+            failures,
+            checked,
+            duration,
+        )
+        if failures and failure_samples:
+            logger.warning("Примеры ошибок при обновлении логинов: %s", "; ".join(failure_samples))
 
     async def _refresh_access_flags(self) -> None:
         """Обновляет interacted_with_bot по факту доступности пользователя для бота."""
