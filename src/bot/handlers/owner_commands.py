@@ -145,14 +145,3 @@ async def handle_owner_command(message: Message) -> bool:
         return True
     
     return False
-
-def register_owner_handlers(dp):
-    """
-    Регистрирует обработчики команд владельца в диспетчере.
-    
-    Args:
-        dp: Диспетчер aiogram
-    """
-    # Обработчик команд владельца будет вызываться перед обычными обработчиками
-    # в функции on_mention_or_reply в chat.py
-    pass

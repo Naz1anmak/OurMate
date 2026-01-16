@@ -22,7 +22,6 @@ class BirthdayService:
     """
     
     def __init__(self):
-        # Загружаем список пользователей при инициализации
         self.users = load_birthdays()
     
     def get_todays_birthdays(self, timezone: ZoneInfo) -> List[User]:

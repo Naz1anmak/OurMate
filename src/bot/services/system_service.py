@@ -71,7 +71,7 @@ class SystemService:
                 highlights=(),
                 emoji_map={"PM;": "🔴", "GR;": "🟡", "FP;": "🟢"},
             )
-            return "📋 <b>Логи бота:</b>\n\n<pre><code>" + body + "</code></pre>"
+            return "📋 <b>Логи бота:</b>\n\n<code>" + body + "</code>"
         elif success:
             return "📋 <b>Логи бота:</b>\n\nНет сообщений для отображения"
         else:
@@ -92,7 +92,7 @@ class SystemService:
             body = SystemService._format_lines_with_highlight_and_limit(
                 result.splitlines(),
                 max_len=4000,
-                highlights=("PM;", "GR;", "FP;"),
+                highlights=("PM;", "GR;", "FP;", "src.bot."),
                 emoji_map={"PM;": "🔴", "GR;": "🟡", "FP;": "🟢"},
             )
             # Без <code>, чтобы работало жирное выделение важных строк
@@ -122,7 +122,12 @@ class SystemService:
             matched_highlight = False
             found_marker = None
             if emoji_map or highlights:
-                for marker in (emoji_map.keys() if emoji_map else highlights):
+                markers: list[str] = []
+                if emoji_map:
+                    markers.extend(emoji_map.keys())
+                if highlights:
+                    markers.extend(highlights)
+                for marker in markers:
                     if marker in raw:
                         found_marker = marker
                         break
@@ -216,7 +221,6 @@ class SystemService:
             return "🖥️ <b>Информация о системе:</b>\n\n" + "\n\n".join(result_parts)
         else:
             return "❌ <b>Ошибка получения информации о системе</b>"
-
 
 # Создаем глобальный экземпляр сервиса
 system_service = SystemService()

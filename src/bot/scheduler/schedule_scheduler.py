@@ -1,7 +1,6 @@
 """
 Планировщик для ежедневного уведомления о парах.
 """
-import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from aiogram import Bot

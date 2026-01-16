@@ -4,7 +4,6 @@
 """
 import asyncio
 import logging
-import time
 from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -155,7 +154,6 @@ class BirthdayScheduler:
         checked = 0
         failures = 0
         failure_samples: list[str] = []
-        started = time.perf_counter()
         for user in birthday_service.users:
             if user.user_id is None:
                 continue
@@ -178,16 +176,14 @@ class BirthdayScheduler:
         filled = sum(1 for user in birthday_service.users if user.username)
         total = len(birthday_service.users)  # учитываем всех, даже без user_id
         details = f" ({' | '.join(updated_users)})" if updated_users else ""
-        duration = time.perf_counter() - started
         logger.info(
-            "Обновлены логины: %s/%s/%s%s; ошибки: %s; проверено: %s; t=%.2fs",
+            "Обновлены логины: %s/%s/%s%s; ошибки: %s; проверено: %s",
             len(updated_users),
             filled,
             total,
             details,
             failures,
             checked,
-            duration,
         )
         if failures and failure_samples:
             logger.warning("Примеры ошибок при обновлении логинов: %s", "; ".join(failure_samples))
