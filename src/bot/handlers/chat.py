@@ -61,9 +61,9 @@ async def on_mention_or_reply(message: Message):
             _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос '{normalized_text}'")
 
             base_help = (
-                "Доступные команды:\n\n"
+                "<b>Доступные команды:</b>\n\n"
                 "• <code>др</code> — ближайший день рождения\n"
-                "• <code>др &lt;user_id&gt;</code> или <code>др @username</code> — дата рождения по id или username\n"
+                "• <code>др &lt;id&gt;</code> или <code>др @username</code> — дата дня рождения по id или username\n"
                 "• <code>пары</code> — пары на сегодня\n"
                 "• <code>пары завтра</code> — пары на завтра\n"
                 "• <code>отписаться</code> — отключить поздравления (в ЛС с ботом)\n"
@@ -74,7 +74,7 @@ async def on_mention_or_reply(message: Message):
 
             if message.from_user.id == OWNER_CHAT_ID:
                 admin_block = (
-                    "\n\n<b>Админские команды:</b>\n"
+                    "\n<b>Админские команды:</b>\n"
                     "• <code>logs</code> — логи бота\n"
                     "• <code>full logs</code> — полные логи\n"
                     "• <code>status</code> — статус службы\n"
@@ -312,7 +312,7 @@ async def on_mention_or_reply(message: Message):
             user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
             _log(f"GR; От {user_login_log} ({message.from_user.full_name}): команда '{normalized_text}' в чужой группе — отклонено")
             await message.answer(
-                "❌ <b>Эта команда доступна в основной беседе или в ЛС для избранных пользователей.</b>",
+                "❌ <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>",
                 parse_mode="HTML",
             )
             return
