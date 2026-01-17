@@ -4,7 +4,6 @@
 """
 import subprocess
 import logging
-from typing import Optional
 import html
 
 logger = logging.getLogger(__name__)

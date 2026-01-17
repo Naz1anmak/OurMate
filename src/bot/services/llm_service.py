@@ -3,9 +3,13 @@
 Содержит функции для отправки запросов к языковой модели.
 """
 import requests
-from typing import List, Dict, Any
+from requests import RequestException
+from typing import List, Dict
 
 from src.config.settings import API_URL, API_HEADERS, MODEL
+
+class LLMServiceError(Exception):
+    """Ошибка при обращении к LLM API."""
 
 class LLMService:
     """
@@ -24,13 +28,27 @@ class LLMService:
         Returns:
             str: Сгенерированный ответ от LLM
         """
-        response = requests.post(API_URL, headers=API_HEADERS, json={
-            "model": MODEL,
-            "messages": messages
-        })
-        
-        data = response.json()
-        full_response = data["choices"][0]["message"]["content"]
+        try:
+            response = requests.post(
+                API_URL,
+                headers=API_HEADERS,
+                json={"model": MODEL, "messages": messages},
+                timeout=30,
+            )
+        except RequestException as exc:
+            raise LLMServiceError(f"HTTP error while calling LLM: {exc}") from exc
+
+        if response.status_code != 200:
+            snippet = response.text[:500] if response.text else ""
+            raise LLMServiceError(
+                f"LLM API returned {response.status_code}. Body: {snippet}"
+            )
+
+        try:
+            data = response.json()
+            full_response = data["choices"][0]["message"]["content"]
+        except Exception as exc:
+            raise LLMServiceError(f"Unexpected LLM response format: {exc}") from exc
         
         # Отделяем мысли от основного ответа
         return LLMService._extract_answer(full_response)

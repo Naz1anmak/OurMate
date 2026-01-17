@@ -28,8 +28,23 @@ async def cmd_start(message: types.Message):
         user_record.interacted_with_bot = True
         birthday_service.save_users()
 
+    # Уведомляем владельца о новом /start (кроме его собственного)
+    if message.from_user.id != OWNER_CHAT_ID:
+        try:
+            await message.bot.send_message(
+                OWNER_CHAT_ID,
+                (
+                    "📲 Новый start\n"
+                    f"От: {message.from_user.full_name} {user_login}\n"
+                    f"user_id: {message.from_user.id}"
+                ),
+            )
+        except TelegramNetworkError as exc:
+            _log(f"PM; Бот: не удалось уведомить владельца о /start: {exc}")
+        except Exception as exc:
+            _log(f"PM; Бот: неожиданная ошибка при уведомлении владельца о /start: {exc}")
+
     # Проверяем, является ли пользователь владельцем
-    
     if message.from_user.id == OWNER_CHAT_ID:
         # Сообщение для владельца
         welcome_text = """

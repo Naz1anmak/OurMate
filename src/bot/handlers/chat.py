@@ -10,7 +10,7 @@ from aiogram.types import Message
 from aiogram.enums import ChatAction
 
 from src.config.settings import PROMPT_TEMPLATE_CHAT, OWNER_CHAT_ID, CHAT_ID, TIMEZONE
-from src.bot.services.llm_service import LLMService
+from src.bot.services.llm_service import LLMService, LLMServiceError
 from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
 from src.bot.services.schedule_service import schedule_service
@@ -18,6 +18,15 @@ from src.utils.text_utils import get_first_name_by_user_id
 from src.utils.date_utils import format_birthday_date
 from src.bot.handlers.owner_commands import handle_owner_command, OWNER_COMMANDS
 from src.utils.log_utils import log_with_ts as _log
+
+def _is_public_command(text: str) -> bool:
+    """Возвращает True для публичных команд др/пары."""
+    return (
+        text == "др"
+        or text.startswith("др ")
+        or text == "пары"
+        or text == "пары завтра"
+    )
 
 async def on_mention_or_reply(message: Message):
     """
@@ -52,15 +61,15 @@ async def on_mention_or_reply(message: Message):
             _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос '{normalized_text}'")
 
             base_help = (
-                "Доступные команды в беседе:\n\n"
+                "Доступные команды:\n\n"
                 "• <code>др</code> — ближайший день рождения\n"
                 "• <code>др &lt;user_id&gt;</code> или <code>др @username</code> — дата рождения по id или username\n"
                 "• <code>пары</code> — пары на сегодня\n"
                 "• <code>пары завтра</code> — пары на завтра\n"
                 "• <code>отписаться</code> — отключить поздравления (в ЛС с ботом)\n"
                 "• <code>help</code> или <code>команды</code> — справка по командам\n\n"
-                "<i>❕ Команды работают при упоминании бота или ответе на его сообщение.</i>\n"
-                "<i>💡 Чтобы получать поздравления, напишите боту любое сообщение в личные сообщения.</i>"
+                "<i>❕ В беседе команды работают при упоминании бота или ответе на его сообщение.</i>\n"
+                "<i>💡 В ЛС команды доступны владельцу и пользователям из списка группы.</i>\n"
             )
 
             if message.from_user.id == OWNER_CHAT_ID:
@@ -162,6 +171,9 @@ async def on_mention_or_reply(message: Message):
         is_group_main = is_group_chat and message.chat.id == CHAT_ID
         is_owner_pm = message.chat.type == "private" and is_owner
         is_private_non_owner = message.chat.type == "private" and not is_owner
+        is_whitelisted_private = is_private_non_owner and any(
+            user.user_id == message.from_user.id for user in birthday_service.users if user.user_id is not None
+        )
 
         is_main_trigger = is_group_main and (is_mention or is_reply)
         is_owner_trigger = is_owner and is_group_chat and (is_mention or is_reply)
@@ -170,19 +182,13 @@ async def on_mention_or_reply(message: Message):
         should_process_schedule_command = is_owner_pm or is_main_trigger or is_owner_trigger
 
         # Запрещаем публичные команды в ЛС для не-владельца, чтобы не уходить в LLM
-        if is_private_non_owner and (
-            normalized_text == "др"
-            or normalized_text.startswith("др ")
-            or normalized_text == "пары"
-            or normalized_text == "пары завтра"
-        ):
+        if is_private_non_owner and not is_whitelisted_private and _is_public_command(normalized_text):
             user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
             _log(
-                f"PM; От {user_login_log} ({message.from_user.full_name}): попытка команды '{normalized_text}' — отклонено (не владелец)"
+                f"PM; От {user_login_log} ({message.from_user.full_name}): попытка команды '{normalized_text}' — отклонено (нет в списке)"
             )
-            await message.reply(
-                "❌ <b>Эта команда доступна только в беседе при упоминании бота.</b>\n\n" \
-                "В ЛС доступны <code>help</code>/<code>команды</code> и <code>отписаться</code>.",
+            await message.answer(
+                "❌ <b>Эта команда доступна только избранным пользователям.</b>",
                 parse_mode="HTML",
             )
             return
@@ -301,17 +307,12 @@ async def on_mention_or_reply(message: Message):
         and not (message.from_user and message.from_user.id == OWNER_CHAT_ID)
         and (is_mention or is_reply)
     ):
-        blocked_cmd = (
-            normalized_text == "др"
-            or normalized_text.startswith("др ")
-            or normalized_text == "пары"
-            or normalized_text == "пары завтра"
-        )
+        blocked_cmd = _is_public_command(normalized_text)
         if blocked_cmd:
             user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
             _log(f"GR; От {user_login_log} ({message.from_user.full_name}): команда '{normalized_text}' в чужой группе — отклонено")
             await message.answer(
-                "❌ <b>Эта команда доступна только в основной беседе.</b>",
+                "❌ <b>Эта команда доступна в основной беседе или в ЛС для избранных пользователей.</b>",
                 parse_mode="HTML",
             )
             return
@@ -343,14 +344,17 @@ async def on_mention_or_reply(message: Message):
         "🔎 Сверяю детали, почти готово...",
         "⚙️ Прокручиваю логику в голове...",
         "🧩 Осталась последняя деталь...",
-        "📐 Привожу мысли в порядок...",
+        "🌀 Привожу мысли в порядок...",
         "📚 Освежаю материалы, секунду...",
         "🤔 Хочу ответить точно, чуть-чуть подожди..."
     ]
 
     temp_msg = None
     try:
-        temp_msg = await message.reply(random.choice(thinking_variants))
+        if message.chat.type == "private":
+            temp_msg = await message.answer(random.choice(thinking_variants))
+        else:
+            temp_msg = await message.reply(random.choice(thinking_variants))
     except Exception:
         temp_msg = None
 
@@ -366,17 +370,52 @@ async def on_mention_or_reply(message: Message):
             # Безопасно игнорируем ошибки индикатора
             pass
 
+    answer_body = None
+    llm_error = None
     typing_task = asyncio.create_task(_typing_indicator())
     try:
         # Выполняем синхронный HTTP-запрос в пуле потоков
         answer_body = await asyncio.to_thread(LLMService.send_chat_request, messages)
+    except LLMServiceError as exc:
+        llm_error = f"LLMServiceError: {exc}"
+    except Exception as exc:
+        llm_error = f"Unexpected LLM error: {exc}"
     finally:
         stop_event.set()
         try:
             await typing_task
         except Exception:
             pass
-    
+
+    if llm_error:
+        tag = "GR" if message.chat.type in ("group", "supergroup") else "PM"
+        user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
+        _log(f"{tag}; Бот: LLM недоступен для {user_login_safe}: {llm_error}")
+        fallback_text = "⚠️ LLM временно недоступен. Попробуй ещё раз через пару минут."
+        if temp_msg:
+            try:
+                await temp_msg.delete()
+            except Exception:
+                pass
+        try:
+            if message.chat.type == "private":
+                await message.answer(fallback_text)
+            else:
+                await message.reply(fallback_text)
+        except Exception:
+            pass
+        owner_notice = (
+            "⚠️ LLM недоступен\n"
+            f"От: {user_login_safe} (chat_id={chat_id}, type={message.chat.type})\n"
+            f"Текст: {text_for_llm[:500]}\n"
+            f"Ошибка: {llm_error}"
+        )
+        try:
+            await message.bot.send_message(OWNER_CHAT_ID, owner_notice)
+        except Exception:
+            pass
+        return
+
     # Сохраняем контекст
     context_service.save_context(chat_id, text_for_llm, answer_body)
     
@@ -465,10 +504,11 @@ def _build_llm_messages(chat_id: int, current_text: str) -> list:
     ]
     
     # Добавляем предыдущий контекст, если есть
-    prev_context = context_service.get_context(chat_id)
-    if prev_context:
-        messages.append({"role": "user", "content": prev_context[0]})
-        messages.append({"role": "assistant", "content": prev_context[1]})
+    prev_pairs = context_service.get_context(chat_id)
+    if prev_pairs:
+        for question, answer in prev_pairs:
+            messages.append({"role": "user", "content": question})
+            messages.append({"role": "assistant", "content": answer})
     
     # Добавляем текущий запрос
     messages.append({"role": "user", "content": current_text})
