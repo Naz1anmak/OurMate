@@ -21,6 +21,7 @@ from src.config.settings import TOKEN
 from src.bot.handlers import register_handlers
 from src.bot.scheduler.birthday_scheduler import start_birthday_scheduler
 from src.bot.scheduler.schedule_scheduler import start_schedule_scheduler
+from src.bot.scheduler.pinned_schedule_scheduler import start_pinned_schedule_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ async def main():
     await bot(DeleteWebhook(drop_pending_updates=True))
     start_birthday_scheduler(bot)
     start_schedule_scheduler(bot)
+    start_pinned_schedule_scheduler(bot)
     logger.info("Планировщики запущены")
 
     # Запускаем поллинг (получение обновлений)

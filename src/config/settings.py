@@ -92,3 +92,18 @@ SCHEDULE_CACHE_FILE = Path(
 # Время отправки расписания
 SCHEDULE_SEND_HOUR = int(_get_env("SCHEDULE_SEND_HOUR", 8, log_default=True))
 SCHEDULE_SEND_MINUTE = int(_get_env("SCHEDULE_SEND_MINUTE", 0, log_default=True))
+
+# Включение/выключение рассылки расписания (ежедневно в SCHEDULE_SEND_HOUR:SCHEDULE_SEND_MINUTE)
+SCHEDULE_BROADCAST_ENABLED = _get_env("SCHEDULE_BROADCAST_ENABLED", "true", log_default=True).lower() == "true"
+
+# Обновление закреплённого сообщения с расписанием
+PINNED_SCHEDULE_ENABLED = _get_env("PINNED_SCHEDULE_ENABLED", "false", log_default=True).lower() == "true"
+PINNED_SCHEDULE_UPDATE_HOUR = int(_get_env("PINNED_SCHEDULE_UPDATE_HOUR", 0, log_default=True))
+PINNED_SCHEDULE_UPDATE_MINUTE = int(_get_env("PINNED_SCHEDULE_UPDATE_MINUTE", 0, log_default=True))
+PINNED_SCHEDULE_MESSAGE_FILE = Path(
+    _get_env(
+        "PINNED_SCHEDULE_MESSAGE_FILE",
+        Path.cwd() / "data" / "cache" / "pinned_schedule_id.txt",
+        log_default=True,
+    )
+)

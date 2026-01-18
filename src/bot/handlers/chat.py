@@ -6,6 +6,7 @@ import asyncio
 import random
 import re
 import html
+from datetime import datetime, date
 from aiogram.types import Message
 from aiogram.enums import ChatAction
 
@@ -263,27 +264,20 @@ async def on_mention_or_reply(message: Message):
                 await message.answer("Пользователь не найден в списке дней рождения")
             return
         
-        no_pairs_templates = [
-            "Пар {day} нет, отдыхайте родные!",
-            "Пар {day} нет, удачного вам дня!",
-            "Пар {day} нет, ловите передышку!",
-            "Пар {day} нет, но я всегда рядом!",
-            "Пар {day} нет, самое время выспаться!",
-            "Пар {day} нет, используйте время с пользой!",
-            "Пар {day} нет, наслаждайтесь свободным днем!",
-            "Пар {day} нет, но я всегда на связи, родные!",
-            "Пар {day} нет, но можно повторить материал 😉",
-            "Пар {day} нет, планируйте свой день как хотите!",
-            "Пар {day} нет, самое время заняться своими делами!",
-            "Пар {day} нет, но я бы на вашем месте все равно поучился!"
-        ]
-
         if normalized_text == "пары" and should_process_schedule_command:
             user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
             _log(f"GR; От {user_login_log} ({message.from_user.full_name}): запрос 'пары'")
             events = schedule_service.get_todays_classes(TIMEZONE)
-            empty_text = random.choice(no_pairs_templates).format(day="сегодня")
-            text = schedule_service.format_classes(events, "📚 Пары на сегодня:", empty_text)
+            empty_text = schedule_service.get_no_pairs_message("сегодня")
+            if events:
+                text = schedule_service.format_classes(events, "📚 Пары на сегодня:", empty_text, wrap_quote=True)
+            else:
+                next_date, next_events = schedule_service.get_next_classes_after(datetime.now(TIMEZONE).date())
+                if next_date and next_events:
+                    next_block = schedule_service.format_next_classes_block(next_date, next_events)
+                    text = f"{empty_text}\n\n{next_block}"
+                else:
+                    text = empty_text
             await message.answer(text, parse_mode="HTML")
             return
 
@@ -291,8 +285,17 @@ async def on_mention_or_reply(message: Message):
             user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
             _log(f"GR; От {user_login_log} ({message.from_user.full_name}): запрос 'пары завтра'")
             events = schedule_service.get_tomorrows_classes(TIMEZONE)
-            empty_text = random.choice(no_pairs_templates).format(day="завтра")
-            text = schedule_service.format_classes(events, "📚 Пары на завтра", empty_text)
+            empty_text = schedule_service.get_no_pairs_message("завтра")
+            if events:
+                text = schedule_service.format_classes(events, "📚 Пары на завтра:", empty_text, wrap_quote=True)
+            else:
+                base_date = date.fromordinal(datetime.now(TIMEZONE).date().toordinal() + 1)
+                next_date, next_events = schedule_service.get_next_classes_after(base_date)
+                if next_date and next_events:
+                    next_block = schedule_service.format_next_classes_block(next_date, next_events)
+                    text = f"{empty_text}\n\n{next_block}"
+                else:
+                    text = empty_text
             await message.answer(text, parse_mode="HTML")
             return
 

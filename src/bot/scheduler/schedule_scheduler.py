@@ -5,7 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from aiogram import Bot
 
-from src.config.settings import TIMEZONE, CHAT_ID, SCHEDULE_SEND_HOUR, SCHEDULE_SEND_MINUTE
+from src.config.settings import TIMEZONE, CHAT_ID, SCHEDULE_SEND_HOUR, SCHEDULE_SEND_MINUTE, SCHEDULE_BROADCAST_ENABLED
 from src.bot.services.schedule_service import schedule_service
 
 class ScheduleScheduler:
@@ -14,6 +14,8 @@ class ScheduleScheduler:
         self.scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 
     def start(self):
+        if not SCHEDULE_BROADCAST_ENABLED:
+            return
         self.scheduler.add_job(
             self._daily_classes,
             CronTrigger(hour=SCHEDULE_SEND_HOUR, minute=SCHEDULE_SEND_MINUTE, timezone=TIMEZONE),
@@ -23,7 +25,7 @@ class ScheduleScheduler:
     async def _daily_classes(self):
         events = schedule_service.get_todays_classes(TIMEZONE)
         if events:
-            text = schedule_service.format_classes(events, "📚 Пары на сегодня:", "")
+            text = schedule_service.format_classes(events, "📚 Пары на сегодня:", "", wrap_quote=True)
             await self.bot.send_message(CHAT_ID, text)
 
     def stop(self):

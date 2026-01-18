@@ -4,10 +4,11 @@
 """
 import json
 import logging
+import random
 from dataclasses import dataclass
 from datetime import datetime, date, time
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from icalendar import Calendar
@@ -15,6 +16,21 @@ from icalendar import Calendar
 from src.config.settings import SCHEDULE_FILES_PATTERN, SCHEDULE_CACHE_FILE, TIMEZONE
 
 logger = logging.getLogger(__name__)
+
+NO_PAIRS_TEMPLATES = [
+    "📚 Пар {day} нет, отдыхайте родные!",
+    "✨ Пар {day} нет, удачного вам дня!",
+    "💤 Пар {day} нет, ловите передышку!",
+    "💚 Пар {day} нет, но я всегда рядом!",
+    "🥳 Пар {day} нет, самое время выспаться!",
+    "🕒 Пар {day} нет, используйте время с пользой!",
+    "☀️ Пар {day} нет, наслаждайтесь свободным днем!",
+    "📞 Пар {day} нет, но я всегда на связи, родные!",
+    "📖 Пар {day} нет, но можно повторить материал 😉",
+    "🗓️ Пар {day} нет, планируйте свой день как хотите!",
+    "🛠️ Пар {day} нет, самое время заняться своими делами!",
+    "📚 Пар {day} нет, но я бы на вашем месте все равно поучился!",
+]
 
 @dataclass
 class ScheduleEvent:
@@ -122,16 +138,76 @@ class ScheduleService:
         tomorrow = date.fromordinal(today.toordinal() + 1)
         return self._events_for_date(tomorrow)
 
-    def format_classes(self, events: List[ScheduleEvent], title: str, empty_text: str) -> str:
+    def get_next_classes_after(self, base_date: date) -> Tuple[Optional[date], List[ScheduleEvent]]:
+        """
+        Возвращает дату и список ближайших будущих пар после указанной даты.
+
+        Args:
+            base_date (date): Дата, после которой ищем ближайшие пары.
+
+        Returns:
+            Tuple[Optional[date], List[ScheduleEvent]]: (дата ближайших пар, список событий) или (None, [])
+        """
+        next_date = None
+        for event in self.events:
+            event_date = event.start.date()
+            if event_date > base_date:
+                next_date = event_date
+                break
+
+        if next_date is None:
+            return None, []
+
+        next_events = [e for e in self.events if e.start.date() == next_date]
+        return next_date, next_events
+
+    def format_classes(
+        self,
+        events: List[ScheduleEvent],
+        title: str,
+        empty_text: str,
+        wrap_quote: bool = False,
+    ) -> str:
         if not events:
             return empty_text
 
-        lines = [title, ""]
+        event_lines: list[str] = []
         for e in events:
             time_range = f"{e.start:%H:%M}-{e.end:%H:%M}"
-            lines.append(f"• {time_range}")
-            lines.append(f"— <b>{e.summary}</b>")
+            event_lines.append(f"• {time_range}")
+            event_lines.append(f"— <b>{e.summary}</b>")
+
+        if wrap_quote:
+            list_block = "\n".join(event_lines)
+            return "\n".join([title, f"<blockquote>{list_block}</blockquote>"])
+
+        lines = [title, "", *event_lines]
         return "\n".join(lines)
+
+    def format_next_classes_block(self, day: date, events: List[ScheduleEvent]) -> str:
+        """Формирует блок о ближайших будущих парах."""
+        day_phrase = self.weekday_with_preposition(day)
+        title = f"<b>📌 Следующие пары {day_phrase}:</b>"
+        return self.format_classes(events, title, "", wrap_quote=True)
+
+    def get_no_pairs_message(self, day_label: str) -> str:
+        """Возвращает случайное сообщение об отсутствии пар на указанную дату."""
+        template = random.choice(NO_PAIRS_TEMPLATES)
+        return template.format(day=day_label)
+
+    @staticmethod
+    def weekday_with_preposition(day: date) -> str:
+        """Возвращает фразу вида 'в понедельник', 'во вторник', ..."""
+        mapping = {
+            0: "в понедельник",
+            1: "во вторник",
+            2: "в среду",
+            3: "в четверг",
+            4: "в пятницу",
+            5: "в субботу",
+            6: "в воскресенье",
+        }
+        return mapping.get(day.weekday(), "в ближайший день")
 
 # Глобальный экземпляр
 schedule_service = ScheduleService()
