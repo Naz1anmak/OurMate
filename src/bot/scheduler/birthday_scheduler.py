@@ -5,6 +5,7 @@
 import asyncio
 import logging
 from pathlib import Path
+import json
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from aiogram import Bot
@@ -22,6 +23,36 @@ from src.bot.services.birthday_service import birthday_service
 from src.utils.date_utils import today_mmdd
 
 logger = logging.getLogger(__name__)
+ACTIVE_USERS_CACHE_FILE = Path("data/cache/active_users_snapshot.json")
+
+def _format_user(user) -> str:
+    username = f"@{user.username}" if user.username else None
+    return f"{username}({user.user_id})" if username else str(user.user_id)
+
+def _format_user_tuple(user_id: int, username: str | None) -> str:
+    username_part = f"@{username}" if username else None
+    return f"{username_part}({user_id})" if username_part else str(user_id)
+
+def _load_active_snapshot() -> dict[int, str | None]:
+    try:
+        if not ACTIVE_USERS_CACHE_FILE.exists():
+            return {}
+        data = json.loads(ACTIVE_USERS_CACHE_FILE.read_text(encoding="utf-8"))
+        return {int(item["user_id"]): item.get("username") for item in data}
+    except Exception:
+        return {}
+
+def _save_active_snapshot(users: list) -> None:
+    try:
+        ACTIVE_USERS_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        payload = [
+            {"user_id": u.user_id, "username": u.username}
+            for u in users
+            if u.user_id is not None and u.interacted_with_bot
+        ]
+        ACTIVE_USERS_CACHE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
 class BirthdayScheduler:
     """
@@ -126,13 +157,17 @@ class BirthdayScheduler:
         Выполняется один раз при запуске.
         """
         notification = birthday_service.get_next_birthday_notification(TIMEZONE)
-        if notification:
+        if not notification:
+            return
+        try:
             await self.bot.send_message(
                 OWNER_CHAT_ID,
                 notification,
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Не удалось отправить уведомление о ближайшем ДР владельцу: %s", exc)
     
     async def _on_startup_check(self):
         """
@@ -177,13 +212,12 @@ class BirthdayScheduler:
         total = len(birthday_service.users)  # учитываем всех, даже без user_id
         details = f" ({' | '.join(updated_users)})" if updated_users else ""
         logger.info(
-            "Обновлены логины: %s/%s/%s%s; ошибки: %s; проверено: %s",
+            "Обновлены логины: %s/%s/%s%s; ошибки: %s",
             len(updated_users),
             filled,
             total,
             details,
             failures,
-            checked,
         )
         if failures and failure_samples:
             logger.warning("Примеры ошибок при обновлении логинов: %s", "; ".join(failure_samples))
@@ -193,6 +227,7 @@ class BirthdayScheduler:
         changed = False
         deactivated = []
         total_users = 0
+        snapshot_before = _load_active_snapshot()
         for user in birthday_service.users:
             if user.user_id is None:
                 continue
@@ -204,16 +239,47 @@ class BirthdayScheduler:
                 if user.interacted_with_bot:
                     user.interacted_with_bot = False
                     changed = True
-                    deactivated.append(user.user_id)
+                    deactivated.append(user)
             else:
-                # Не включаем обратно: активация только вручную/через ЛС
+                # Не включаем обратно автоматически
                 pass
         if changed:
             birthday_service.save_users()
-        active_count = sum(
-            1 for u in birthday_service.users if u.user_id is not None and u.interacted_with_bot
-        )
-        logger.info("Подписаны на поздравления: %s/%s", active_count, total_users)
+        active_users_now = [u for u in birthday_service.users if u.user_id is not None and u.interacted_with_bot]
+        active_count = len(active_users_now)
+
+        activated = []
+        for u in active_users_now:
+            if u.user_id not in snapshot_before:
+                activated.append(u)
+        deactivated_for_delta = []
+        for uid, uname in snapshot_before.items():
+            if all(u.user_id != uid for u in active_users_now):
+                deactivated_for_delta.append((uid, uname))
+
+        delta_parts: list[str] = []
+        if activated:
+            delta_parts.append(" | ".join("+" + _format_user(u) for u in activated))
+        if deactivated or deactivated_for_delta:
+            combined: list[str] = []
+            seen: set[int] = set()
+            for uid, uname in deactivated_for_delta:
+                if uid in seen:
+                    continue
+                seen.add(uid)
+                combined.append("-" + _format_user_tuple(uid, uname))
+            for u in deactivated:
+                if u.user_id in seen:
+                    continue
+                seen.add(u.user_id)
+                combined.append("-" + _format_user(u))
+            if combined:
+                delta_parts.append(" | ".join(combined))
+
+        changes = f" ({' | '.join(delta_parts)})" if delta_parts else ""
+        logger.info("Подписаны на поздравления: %s/%s%s", active_count, total_users, changes)
+
+        _save_active_snapshot(active_users_now)
 
     async def _daily_check(self):
         """

@@ -140,7 +140,7 @@ def _build_pinned_text(today: date) -> Optional[str]:
             lines.append(_format_day_block(day, events))
 
     # Внизу предупреждение
-    warning = "❗️ Расписание для з5130903/40002"
+    warning = "<b><i>❗️ Расписание для з5130903/40002</i></b>"
     lines.append("")
     lines.append(warning)
 

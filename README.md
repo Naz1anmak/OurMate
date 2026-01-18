@@ -123,9 +123,10 @@ OurMate_bot/
 │   ├── birthdays.json                       # Файл с днями рождения
 │   ├── calendar*.ics                        # (опционально) файлы расписания
 │   └── cache/                               # Кеш
-│       ├── last_birthday_greeting.txt
-│       ├── schedule_cache.json
-│       └── pinned_schedule_id.txt
+│       ├── last_birthday_greeting.txt       # Дата последнего поздравление (дедупликация)
+│       ├── schedule_cache.json              # Кеш расписания, собранный из calendar*.ics
+│       └── pinned_schedule_id.txt           # Сообщение с закрепом расписания (message_id)
+│       └── active_users_snapshot.json       # Снапшот подписчиков поздравлений
 ├── main.py                                  # Точка входа
 ├── requirements.txt                         # Зависимости Python
 ├── .env                                     # Переменные окружения
