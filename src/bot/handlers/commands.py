@@ -19,7 +19,8 @@ async def cmd_start(message: types.Message):
     """
     # Логируем информацию о пользователе
     user_login = f"@{message.from_user.username}" if message.from_user.username else ""
-    _log(f"FP; От {user_login} ({message.from_user.full_name}): /start")
+    user_login_part = f"{user_login} " if user_login else ""
+    _log(f"FP; От {user_login_part}({message.from_user.full_name}): /start")
     
     # Отмечаем пользователя активировавшим бота, если он есть в списке
     from src.config.settings import OWNER_CHAT_ID

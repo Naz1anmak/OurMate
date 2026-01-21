@@ -146,7 +146,7 @@ class BirthdayScheduler:
 
         if not_interacted:
             logger.info(
-                "Пропущены поздравления: %s пользователей не активировали бота",
+                "Пропущены поздравления. Не активировали бота: %s",
                 len(not_interacted),
             )
         return False
