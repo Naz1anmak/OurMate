@@ -2,12 +2,16 @@
 Сервис для работы с днями рождения.
 Содержит логику для поиска именинников и генерации поздравлений.
 """
-from datetime import date, datetime
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
 from src.models.user import User
-from src.utils.date_utils import today_mmdd, get_next_birthday, parse_day_month
+from src.utils.date_utils import (
+    today_mmdd,
+    get_next_birthday,
+    parse_day_month,
+    format_next_birthday_date,
+)
 from src.utils.text_utils import load_birthdays, build_mention_list, save_birthdays
 from src.bot.services.llm_service import LLMService
 from src.config.settings import (
@@ -64,6 +68,23 @@ class BirthdayService:
         active = [u for u in users if u.status != "-"]
         former = [u for u in users if u.status == "-"]
         return active, former
+
+    def _get_users_with_same_birthday(self, birthday: str) -> List[User]:
+        """Возвращает всех пользователей с указанной датой рождения."""
+        same_birthday_users: List[User] = []
+        try:
+            target_day, target_month = parse_day_month(birthday)
+        except ValueError:
+            return []
+
+        for user in self.users:
+            try:
+                day, month = parse_day_month(user.birthday)
+                if day == target_day and month == target_month:
+                    same_birthday_users.append(user)
+            except ValueError:
+                continue
+        return same_birthday_users
 
     def generate_birthday_messages(self, users: List[User]) -> tuple[List[str], List[User]]:
         """
@@ -148,112 +169,19 @@ class BirthdayService:
             return None
         
         # Находим ВСЕХ пользователей с этим днем рождения
-        same_birthday_users = []
-        try:
-            target_day, target_month = parse_day_month(next_user.birthday)
-        except ValueError:
-            target_day, target_month = None, None
+        same_birthday_users = self._get_users_with_same_birthday(next_user.birthday)
 
-        for user in self.users:
-            try:
-                day, month = parse_day_month(user.birthday)
-                if day == target_day and month == target_month:
-                    same_birthday_users.append(user)
-            except ValueError:
-                continue
-        
         # Если список пустой, используем next_user
         users_to_mention = same_birthday_users if same_birthday_users else [next_user]
-        
+
         # Получаем дату СЛЕДУЮЩЕГО дня рождения
-        today = datetime.now(timezone).date()
-        try:
-            day, month = parse_day_month(next_user.birthday)
-            # Ищем следующее наступление этого дня/месяца
-            next_year_birthday = date(today.year, month, day)
-            if next_year_birthday <= today:
-                next_year_birthday = date(today.year + 1, month, day)
-            # Форматируем дату: "20 января"
-            formatted_date = next_year_birthday.strftime("%d %B").lstrip('0')
-            # Переводим месяц на русский
-            months_ru = {
-                "January": "января", "February": "февраля", "March": "марта",
-                "April": "апреля", "May": "мая", "June": "июня",
-                "July": "июля", "August": "августа", "September": "сентября",
-                "October": "октября", "November": "ноября", "December": "декабря"
-            }
-            month_ru = next(months_ru[m] for m in months_ru if m in formatted_date)
-            day_str = formatted_date.split()[0].lstrip('0')
-            formatted_date = f"{day_str} {month_ru}"
-        except (ValueError, StopIteration):
-            formatted_date = next_user.birthday
+        formatted_date = format_next_birthday_date(next_user.birthday, timezone)
 
         # Создаем список упоминаний всех людей в этот день
         mentions = build_mention_list(users_to_mention)
-        
+
         notification = f"Следующий день рождения:\n{mentions} — {formatted_date}"
         return notification
-    
-    def get_next_birthday_notification_for_group(self, timezone: ZoneInfo) -> Optional[str]:
-        """
-        Создает уведомление о следующем дне рождения для беседы.
-        Включает всех людей в один и тот же день рождения.
-        
-        Args:
-            timezone: Часовой пояс
-            
-        Returns:
-            Уведомление о ближайшем ДР
-        """
-        next_user = self.get_next_birthday_user(timezone)
-        if not next_user:
-            return None
-        
-        # Находим ВСЕХ пользователей с этим днем рождения
-        same_birthday_users = []
-        try:
-            target_day, target_month = parse_day_month(next_user.birthday)
-        except ValueError:
-            target_day, target_month = None, None
-
-        for user in self.users:
-            try:
-                day, month = parse_day_month(user.birthday)
-                if day == target_day and month == target_month:
-                    same_birthday_users.append(user)
-            except ValueError:
-                continue
-        
-        # Если список пустой, используем next_user
-        users_to_mention = same_birthday_users if same_birthday_users else [next_user]
-        
-        # Получаем дату СЛЕДУЮЩЕГО дня рождения
-        today = datetime.now(timezone).date()
-        try:
-            day, month = parse_day_month(next_user.birthday)
-            # Ищем следующее наступление этого дня/месяца
-            next_year_birthday = date(today.year, month, day)
-            if next_year_birthday <= today:
-                next_year_birthday = date(today.year + 1, month, day)
-            # Форматируем дату: "20 января"
-            formatted_date = next_year_birthday.strftime("%d %B").lstrip('0')
-            # Переводим месяц на русский
-            months_ru = {
-                "January": "января", "February": "февраля", "March": "марта",
-                "April": "апреля", "May": "мая", "June": "июня",
-                "July": "июля", "August": "августа", "September": "сентября",
-                "October": "октября", "November": "ноября", "December": "декабря"
-            }
-            month_ru = next(months_ru[m] for m in months_ru if m in formatted_date)
-            day_str = formatted_date.split()[0].lstrip('0')
-            formatted_date = f"{day_str} {month_ru}"
-        except (ValueError, StopIteration):
-            formatted_date = next_user.birthday
-
-        # Создаем список упоминаний всех людей в этот день
-        mentions = build_mention_list(users_to_mention)
-        
-        return f"Следующий день рождения:\n{mentions} — {formatted_date}"
     
     def reload_users(self) -> None:
         """

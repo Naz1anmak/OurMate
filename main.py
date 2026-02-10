@@ -14,6 +14,14 @@ logging.basicConfig(
 # Шумные события aiogram подавляем всегда
 logging.getLogger("aiogram.event").setLevel(logging.WARNING)
 
+# Приглушаем только сообщения aiogram.dispatcher про "Sleep for ..."
+class _AiogramSleepFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
+        msg = record.getMessage()
+        return "Sleep for" not in msg
+
+logging.getLogger("aiogram.dispatcher").addFilter(_AiogramSleepFilter())
+
 from aiogram import Bot, Dispatcher
 from aiogram.methods import DeleteWebhook
 

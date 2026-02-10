@@ -129,9 +129,24 @@ class ScheduleService:
     def _events_for_date(self, target_date: date) -> List[ScheduleEvent]:
         return [e for e in self.events if e.start.date() == target_date]
 
+    def get_classes_for_date(self, target_date: date) -> List[ScheduleEvent]:
+        return self._events_for_date(target_date)
+
     def get_todays_classes(self, timezone: ZoneInfo) -> List[ScheduleEvent]:
         today = datetime.now(timezone).date()
         return self._events_for_date(today)
+
+    def get_effective_date(self, timezone: ZoneInfo) -> date:
+        """Возвращает 'актуальную' дату: после последней пары переключаемся на завтра."""
+        now = datetime.now(timezone)
+        today = now.date()
+        events = self._events_for_date(today)
+        if not events:
+            return today
+        last_end = max(e.end for e in events)
+        if now >= last_end:
+            return date.fromordinal(today.toordinal() + 1)
+        return today
 
     def get_tomorrows_classes(self, timezone: ZoneInfo) -> List[ScheduleEvent]:
         today = datetime.now(timezone).date()
@@ -184,10 +199,13 @@ class ScheduleService:
         lines = [title, "", *event_lines]
         return "\n".join(lines)
 
-    def format_next_classes_block(self, day: date, events: List[ScheduleEvent]) -> str:
+    def format_next_classes_block(self, day: date, events: List[ScheduleEvent], base_date: date | None = None) -> str:
         """Формирует блок о ближайших будущих парах."""
-        day_phrase = self.weekday_with_preposition(day)
-        title = f"<b>📌 Следующие пары {day_phrase}:</b>"
+        if base_date and day == date.fromordinal(base_date.toordinal() + 1):
+            title = "<b>📌 Пары завтра:</b>"
+        else:
+            day_phrase = self.weekday_with_preposition(day)
+            title = f"<b>📌 Следующие пары {day_phrase} ({day.strftime('%d.%m')}):</b>"
         return self.format_classes(events, title, "", wrap_quote=True)
 
     def get_no_pairs_message(self, day_label: str) -> str:

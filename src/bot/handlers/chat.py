@@ -4,8 +4,6 @@
 """
 import asyncio
 import random
-import re
-import html
 from datetime import datetime, date
 from aiogram.types import Message
 from aiogram.enums import ChatAction
@@ -19,6 +17,12 @@ from src.utils.text_utils import get_first_name_by_user_id
 from src.utils.date_utils import format_birthday_date
 from src.bot.handlers.owner_commands import handle_owner_command, OWNER_COMMANDS
 from src.utils.log_utils import log_with_ts as _log
+from src.utils.render_utils import render_html_with_code
+from src.utils.telegram_cache import (
+    get_cached_bot_identity,
+    get_cached_bot_info,
+    get_cached_bot_username,
+)
 
 def _is_public_command(text: str) -> bool:
     """Возвращает True для публичных команд др/пары."""
@@ -28,6 +32,282 @@ def _is_public_command(text: str) -> bool:
         or text == "пары"
         or text == "пары завтра"
     )
+
+def _build_command_context(message: Message, bot_username: str, bot_id: int) -> dict:
+    text = message.text or ""
+    is_mention = any(token == bot_username for token in text.split())
+    is_reply = (
+        message.reply_to_message
+        and message.reply_to_message.from_user.id == bot_id
+    )
+
+    text_for_commands = text
+    if is_mention:
+        text_for_commands = " ".join([token for token in text.split() if token != bot_username])
+
+    normalized_text = text_for_commands.lower().strip()
+
+    is_owner = message.from_user and message.from_user.id == OWNER_CHAT_ID
+    is_group_chat = message.chat.type in ("group", "supergroup")
+    is_group_main = is_group_chat and message.chat.id == CHAT_ID
+    is_owner_pm = message.chat.type == "private" and is_owner
+    is_private_non_owner = message.chat.type == "private" and not is_owner
+    is_whitelisted_private = is_private_non_owner and any(
+        user.user_id == message.from_user.id for user in birthday_service.users if user.user_id is not None
+    )
+
+    is_main_trigger = is_group_main and (is_mention or is_reply)
+    is_owner_trigger = is_owner and is_group_chat and (is_mention or is_reply)
+
+    should_process_birthday_command = is_owner_pm or is_main_trigger or is_owner_trigger or is_whitelisted_private
+    should_process_schedule_command = is_owner_pm or is_main_trigger or is_owner_trigger or is_whitelisted_private
+
+    return {
+        "text_for_commands": text_for_commands,
+        "normalized_text": normalized_text,
+        "is_mention": is_mention,
+        "is_reply": is_reply,
+        "is_owner": is_owner,
+        "is_group_chat": is_group_chat,
+        "is_group_main": is_group_main,
+        "is_owner_pm": is_owner_pm,
+        "is_private_non_owner": is_private_non_owner,
+        "is_whitelisted_private": is_whitelisted_private,
+        "is_main_trigger": is_main_trigger,
+        "is_owner_trigger": is_owner_trigger,
+        "should_process_birthday_command": should_process_birthday_command,
+        "should_process_schedule_command": should_process_schedule_command,
+    }
+
+async def _handle_help_command(message: Message, normalized_text: str) -> bool:
+    help_commands = {"help", "команды"}
+    if normalized_text not in help_commands:
+        return False
+
+    user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+    tag = "GR" if message.chat.type in ("group", "supergroup") else "PM"
+    _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос '{normalized_text}'")
+
+    base_help = (
+        "<b>Доступные команды:</b>\n\n"
+        "• <code>др</code> — ближайший день рождения\n"
+        "• <code>др &lt;id&gt;</code> или <code>др @username</code> — дата дня рождения по id или username\n"
+        "• <code>пары</code> — пары на сегодня\n"
+        "• <code>пары завтра</code> — пары на завтра\n"
+        "• <code>отписаться</code> — отключить поздравления (в ЛС с ботом)\n"
+        "• <code>help</code> или <code>команды</code> — справка по командам\n\n"
+        "<i>❕ В беседе команды работают при упоминании бота или ответе на его сообщение.</i>\n"
+        "<i>💡 В ЛС команды доступны владельцу и пользователям из списка группы.</i>\n"
+    )
+
+    if message.from_user.id == OWNER_CHAT_ID:
+        admin_block = (
+            "\n<b>Админские команды:</b>\n"
+            "• <code>logs</code> — логи бота\n"
+            "• <code>full logs</code> — полные логи\n"
+            "• <code>status</code> — статус службы\n"
+            "• <code>system</code> — информация о системе\n"
+            "• <code>stop bot</code> — остановить бота\n"
+            "• <code>проверка ссылок</code> — диагностика ссылок/активации"
+        )
+        await message.answer(base_help + admin_block, parse_mode="HTML")
+    else:
+        await message.answer(base_help, parse_mode="HTML")
+    return True
+
+async def _handle_unsubscribe_command(message: Message, normalized_text: str) -> bool:
+    if normalized_text != "отписаться":
+        return False
+
+    user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+    in_group = message.chat.type in ("group", "supergroup")
+    tag_unsub = "GR" if in_group else "PM"
+    if in_group:
+        _log(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): запрос 'отписаться' в группе — отклонено")
+        await message.answer(
+            "❌ Эта команда доступна только в личных сообщениях с ботом.",
+            parse_mode="HTML",
+        )
+        return True
+    else:
+        _log(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): запрос 'отписаться'")
+
+    user = next((u for u in birthday_service.users if u.user_id == message.from_user.id), None)
+    if user:
+        if user.interacted_with_bot:
+            user.interacted_with_bot = False
+            _log(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): успешная отписка от поздравлений")
+            birthday_service.save_users()
+            await message.answer(
+                "✅ Вы отписались от поздравлений.\n\n"
+                "Чтобы снова получать поздравления, напишите боту любое сообщение.",
+                parse_mode="HTML",
+            )
+        else:
+            _log(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): повторная отписка от поздравлений")
+            await message.answer(
+                "ℹ️ Вы и так не подписаны на поздравления.\n\n"
+                "Чтобы получать поздравления, напишите боту любое сообщение.",
+                parse_mode="HTML",
+            )
+    else:
+        _log(f"{tag_unsub}; Бот: пользователь {user_login_log or message.from_user.id} не найден в списке пользователей")
+        await message.answer(
+            "❌ Вы не найдены в списке пользователей.",
+            parse_mode="HTML",
+        )
+    return True
+
+async def _handle_owner_commands(message: Message, normalized_text: str) -> bool:
+    if normalized_text not in OWNER_COMMANDS:
+        return False
+
+    # Если пишет не владелец — отказываем
+    if message.from_user.id != OWNER_CHAT_ID:
+        user_login = f"@{message.from_user.username}" if message.from_user.username else ""
+        if message.chat.type in ("group", "supergroup"):
+            _log(f"GR; От {user_login} ({message.from_user.full_name}): попытка команды '{message.text}' — отказано")
+        else:
+            _log(f"PM; От {user_login} ({message.from_user.full_name}): попытка команды '{message.text}' — отказано")
+        await message.answer(
+            "❌ <b>В доступе отказано</b>\n\nЭта команда доступна только владельцу бота.",
+            parse_mode="HTML",
+        )
+        return True
+
+    # Если это владелец (в ЛС или в группе), передаем обработку специализированному хендлеру
+    if await handle_owner_command(message):
+        return True
+    # Если что-то пошло не так и команда не обработалась — не пускаем дальше в LLM
+    return True
+
+async def _handle_public_commands(message: Message, ctx: dict) -> bool:
+    normalized_text = ctx["normalized_text"]
+    text_for_commands = ctx["text_for_commands"]
+    is_group_chat = ctx["is_group_chat"]
+
+    # Запрещаем публичные команды в ЛС для не-владельца, чтобы не уходить в LLM
+    if ctx["is_private_non_owner"] and not ctx["is_whitelisted_private"] and _is_public_command(normalized_text):
+        user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+        _log(
+            f"PM; От {user_login_log} ({message.from_user.full_name}): попытка команды '{normalized_text}' — отклонено (нет в списке)"
+        )
+        await message.answer(
+            "❌ <b>Эта команда доступна только избранным пользователям.</b>",
+            parse_mode="HTML",
+        )
+        return True
+
+    if normalized_text == "др" and ctx["should_process_birthday_command"]:
+        user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+        tag = "GR" if is_group_chat else "PM"
+        _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др'")
+
+        # В ЛС владельца — одно уведомление, в беседе — другое
+        if ctx["is_owner_pm"]:
+            notification = birthday_service.get_next_birthday_notification(TIMEZONE)
+        else:
+            notification = birthday_service.get_next_birthday_notification(TIMEZONE)
+
+        if notification:
+            await message.bot.send_message(
+                message.chat.id,
+                notification,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+        else:
+            await message.answer("Нет данных о следующем дне рождения")
+        return True
+
+    if normalized_text.startswith("др ") and ctx["should_process_birthday_command"]:
+        parts = text_for_commands.strip().split()
+        target_id = None
+        target_username = None
+
+        if len(parts) >= 2:
+            arg = parts[1]
+            if arg.isdigit():
+                target_id = int(arg)
+            else:
+                target_username = arg.lstrip("@")
+
+        user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+        tag = "GR" if is_group_chat else "PM"
+
+        if target_id is None:
+            lookup = target_username or ""
+            if not lookup:
+                _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др' без аргумента")
+                await message.answer("Укажи user_id или @username (др 123456 или др @user). Команда срабатывает по упоминанию бота или ответу на его сообщение.")
+                return True
+            found_user = next(
+                (u for u in birthday_service.users if u.username and u.username.lower() == lookup.lower()),
+                None,
+            )
+            _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др @{lookup}'")
+        else:
+            found_user = next((u for u in birthday_service.users if u.user_id == target_id), None)
+            _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др {target_id}'")
+
+        search_value = str(target_id) if target_id is not None else f"@{lookup}"
+        if found_user:
+            pretty_date = format_birthday_date(found_user.birthday)
+            username_info = f" (@{found_user.username})" if found_user.username else ""
+            await message.answer(
+                f"{found_user.mention_html()}{username_info} отмечает день рождения {pretty_date}",
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+        else:
+            _log(
+                f"{tag}; Бот: пользователь не найден в списке дней рождения по запросу '{search_value}' (запрос от {user_login_log} ({message.from_user.full_name}))"
+            )
+            await message.answer("Пользователь не найден в списке дней рождения")
+        return True
+
+    if normalized_text == "пары" and ctx["should_process_schedule_command"]:
+        user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+        tag = "GR" if ctx["is_group_chat"] else "PM"
+        _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'пары'")
+        effective_date = schedule_service.get_effective_date(TIMEZONE)
+        events = schedule_service.get_classes_for_date(effective_date)
+        today = datetime.now(TIMEZONE).date()
+        day_label = "завтра" if effective_date == date.fromordinal(today.toordinal() + 1) else "сегодня"
+        title = "📚 Пары на завтра:" if day_label == "завтра" else "📚 Пары на сегодня:"
+        empty_text = schedule_service.get_no_pairs_message(day_label)
+        if events:
+            text = schedule_service.format_classes(events, title, empty_text, wrap_quote=True)
+        else:
+            next_date, next_events = schedule_service.get_next_classes_after(effective_date)
+            if next_date and next_events:
+                next_block = schedule_service.format_next_classes_block(next_date, next_events, base_date=effective_date)
+                text = f"{empty_text}\n\n{next_block}"
+            else:
+                text = empty_text
+        await message.answer(text, parse_mode="HTML")
+        return True
+
+    if normalized_text == "пары завтра" and ctx["should_process_schedule_command"]:
+        user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+        tag = "GR" if ctx["is_group_chat"] else "PM"
+        _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'пары завтра'")
+        events = schedule_service.get_tomorrows_classes(TIMEZONE)
+        empty_text = schedule_service.get_no_pairs_message("завтра")
+        if events:
+            text = schedule_service.format_classes(events, "📚 Пары на завтра:", empty_text, wrap_quote=True)
+        else:
+            base_date = date.fromordinal(datetime.now(TIMEZONE).date().toordinal() + 1)
+            next_date, next_events = schedule_service.get_next_classes_after(base_date)
+            if next_date and next_events:
+                next_block = schedule_service.format_next_classes_block(next_date, next_events, base_date=base_date)
+                text = f"{empty_text}\n\n{next_block}"
+            else:
+                text = empty_text
+        await message.answer(text, parse_mode="HTML")
+        return True
+
+    return False
 
 async def on_mention_or_reply(message: Message):
     """
@@ -49,254 +329,33 @@ async def on_mention_or_reply(message: Message):
     
     # Инициализируем переменные бота в начале функции
     bot = message.bot
-    bot_info = await bot.get_me()
-    bot_username = f"@{bot_info.username}"
-    
+    try:
+        bot_info, cached_username = await get_cached_bot_identity(bot)
+    except Exception as exc:
+        cached_info = get_cached_bot_info()
+        if cached_info is None:
+            _log(f"[SYSTEM] bot.get_me() недоступен: {exc}")
+            return
+        bot_info = cached_info
+        cached_username = get_cached_bot_username()
+    bot_username = cached_username or f"@{bot_info.username}"
+    ctx = _build_command_context(message, bot_username, bot_info.id) if message.text else None
+
     # Команды: help/команды доступны всем; остальные — только владельцу
-    if message.text:
-
-        help_commands = {"help", "команды"}
-        if normalized_text in help_commands:
-            user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            tag = "GR" if message.chat.type in ("group", "supergroup") else "PM"
-            _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос '{normalized_text}'")
-
-            base_help = (
-                "<b>Доступные команды:</b>\n\n"
-                "• <code>др</code> — ближайший день рождения\n"
-                "• <code>др &lt;id&gt;</code> или <code>др @username</code> — дата дня рождения по id или username\n"
-                "• <code>пары</code> — пары на сегодня\n"
-                "• <code>пары завтра</code> — пары на завтра\n"
-                "• <code>отписаться</code> — отключить поздравления (в ЛС с ботом)\n"
-                "• <code>help</code> или <code>команды</code> — справка по командам\n\n"
-                "<i>❕ В беседе команды работают при упоминании бота или ответе на его сообщение.</i>\n"
-                "<i>💡 В ЛС команды доступны владельцу и пользователям из списка группы.</i>\n"
-            )
-
-            if message.from_user.id == OWNER_CHAT_ID:
-                admin_block = (
-                    "\n<b>Админские команды:</b>\n"
-                    "• <code>logs</code> — логи бота\n"
-                    "• <code>full logs</code> — полные логи\n"
-                    "• <code>status</code> — статус службы\n"
-                    "• <code>system</code> — информация о системе\n"
-                    "• <code>stop bot</code> — остановить бота\n"
-                    "• <code>проверка ссылок</code> — диагностика ссылок/активации"
-                )
-                await message.answer(base_help + admin_block, parse_mode="HTML")
-            else:
-                await message.answer(base_help, parse_mode="HTML")
-            return
-        
-        # Команда отписаться (только в ЛС)
-        if normalized_text == "отписаться":
-            user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            in_group = message.chat.type in ("group", "supergroup")
-            tag_unsub = "GR" if in_group else "PM"
-            if in_group:
-                _log(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): запрос 'отписаться' в группе — отклонено")
-                await message.answer(
-                    "❌ Эта команда доступна только в личных сообщениях с ботом.",
-                    parse_mode="HTML",
-                )
-                return
-            else:
-                _log(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): запрос 'отписаться'")
-
-            user = next((u for u in birthday_service.users if u.user_id == message.from_user.id), None)
-            if user:
-                if user.interacted_with_bot:
-                    user.interacted_with_bot = False
-                    _log(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): успешная отписка от поздравлений")
-                    birthday_service.save_users()
-                    await message.answer(
-                        "✅ Вы отписались от поздравлений.\n\n"
-                        "Чтобы снова получать поздравления, напишите боту любое сообщение.",
-                        parse_mode="HTML",
-                    )
-                else:
-                    _log(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): повторная отписка от поздравлений")
-                    await message.answer(
-                        "ℹ️ Вы и так не подписаны на поздравления.\n\n"
-                        "Чтобы получать поздравления, напишите боту любое сообщение.",
-                        parse_mode="HTML",
-                    )
-            else:
-                _log(f"{tag_unsub}; Бот: пользователь {user_login_log or message.from_user.id} не найден в списке пользователей")
-                await message.answer(
-                    "❌ Вы не найдены в списке пользователей.",
-                    parse_mode="HTML",
-                )
+    if ctx:
+        if await _handle_help_command(message, ctx["normalized_text"]):
             return
 
-        if normalized_text in OWNER_COMMANDS:
-            # Если пишет не владелец — отказываем
-            if message.from_user.id != OWNER_CHAT_ID:
-                user_login = f"@{message.from_user.username}" if message.from_user.username else ""
-                if message.chat.type in ("group", "supergroup"):
-                    _log(f"GR; От {user_login} ({message.from_user.full_name}): попытка команды '{message.text}' — отказано")
-                else:
-                    _log(f"PM; От {user_login} ({message.from_user.full_name}): попытка команды '{message.text}' — отказано")
-                await message.answer(
-                    "❌ <b>В доступе отказано</b>\n\nЭта команда доступна только владельцу бота.",
-                    parse_mode="HTML",
-                )
-                return
-            # Если это владелец (в ЛС или в группе), передаем обработку специализированному хендлеру
-            if await handle_owner_command(message):
-                return
-            # Если что-то пошло не так и команда не обработалась — не пускаем дальше в LLM
+        if await _handle_unsubscribe_command(message, ctx["normalized_text"]):
             return
 
-    # Публичные команды "др" и "пары":
-    # - доступны всем в беседе CHAT_ID (при упоминании бота или ответе ему)
-    # - доступны владельцу также в ЛС
-    if message.text:
-        # Получаем информацию о боте для проверки упоминаний
-        # bot, bot_info, bot_username уже получены выше
-        
-        # Проверяем упоминания и ответы
-        is_mention = any(token == bot_username for token in message.text.split())
-        is_reply = (message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id)
-        
-        # Нормализуем текст, убирая упоминание бота
-        text_for_commands = message.text
-        if is_mention:
-            # Убираем упоминание бота из текста для проверки команд
-            text_for_commands = " ".join([token for token in message.text.split() if token != bot_username])
-        
-        normalized_text = text_for_commands.lower().strip()
-        
-        is_owner = message.from_user and message.from_user.id == OWNER_CHAT_ID
-        is_group_chat = message.chat.type in ("group", "supergroup")
-        is_group_main = is_group_chat and message.chat.id == CHAT_ID
-        is_owner_pm = message.chat.type == "private" and is_owner
-        is_private_non_owner = message.chat.type == "private" and not is_owner
-        is_whitelisted_private = is_private_non_owner and any(
-            user.user_id == message.from_user.id for user in birthday_service.users if user.user_id is not None
-        )
-
-        is_main_trigger = is_group_main and (is_mention or is_reply)
-        is_owner_trigger = is_owner and is_group_chat and (is_mention or is_reply)
-
-        should_process_birthday_command = is_owner_pm or is_main_trigger or is_owner_trigger
-        should_process_schedule_command = is_owner_pm or is_main_trigger or is_owner_trigger
-
-        # Запрещаем публичные команды в ЛС для не-владельца, чтобы не уходить в LLM
-        if is_private_non_owner and not is_whitelisted_private and _is_public_command(normalized_text):
-            user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            _log(
-                f"PM; От {user_login_log} ({message.from_user.full_name}): попытка команды '{normalized_text}' — отклонено (нет в списке)"
-            )
-            await message.answer(
-                "❌ <b>Эта команда доступна только избранным пользователям.</b>",
-                parse_mode="HTML",
-            )
+        if await _handle_owner_commands(message, ctx["normalized_text"]):
             return
 
-        if normalized_text == "др" and should_process_birthday_command:
-            user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            tag = "GR" if is_group_chat else "PM"
-            _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др'")
-            
-            # В ЛС владельца — одно уведомление, в беседе — другое
-            if is_owner_pm:
-                # ЛС владельца
-                notification = birthday_service.get_next_birthday_notification(TIMEZONE)
-            else:
-                # Беседа
-                notification = birthday_service.get_next_birthday_notification_for_group(TIMEZONE)
-            
-            if notification:
-                await message.bot.send_message(
-                    message.chat.id,
-                    notification,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                )
-            else:
-                await message.answer("Нет данных о следующем дне рождения")
-            return
-
-        if normalized_text.startswith("др ") and should_process_birthday_command:
-            parts = text_for_commands.strip().split()
-            target_id = None
-            target_username = None
-
-            if len(parts) >= 2:
-                arg = parts[1]
-                if arg.isdigit():
-                    target_id = int(arg)
-                else:
-                    target_username = arg.lstrip("@")
-
-            user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            tag = "GR" if is_group_chat else "PM"
-
-            if target_id is None:
-                lookup = target_username or ""
-                if not lookup:
-                    _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др' без аргумента")
-                    await message.answer("Укажи user_id или @username (др 123456 или др @user). Команда срабатывает по упоминанию бота или ответу на его сообщение.")
-                    return
-                found_user = next(
-                    (u for u in birthday_service.users if u.username and u.username.lower() == lookup.lower()),
-                    None,
-                )
-                _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др @{lookup}'")
-            else:
-                found_user = next((u for u in birthday_service.users if u.user_id == target_id), None)
-                _log(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др {target_id}'")
-
-            search_value = str(target_id) if target_id is not None else f"@{lookup}"
-            if found_user:
-                pretty_date = format_birthday_date(found_user.birthday)
-                username_info = f" (@{found_user.username})" if found_user.username else ""
-                await message.answer(
-                    f"{found_user.mention_html()}{username_info} отмечает день рождения {pretty_date}",
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                )
-            else:
-                _log(
-                    f"{tag}; Бот: пользователь не найден в списке дней рождения по запросу '{search_value}' (запрос от {user_login_log} ({message.from_user.full_name}))"
-                )
-                await message.answer("Пользователь не найден в списке дней рождения")
-            return
-        
-        if normalized_text == "пары" and should_process_schedule_command:
-            user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            _log(f"GR; От {user_login_log} ({message.from_user.full_name}): запрос 'пары'")
-            events = schedule_service.get_todays_classes(TIMEZONE)
-            empty_text = schedule_service.get_no_pairs_message("сегодня")
-            if events:
-                text = schedule_service.format_classes(events, "📚 Пары на сегодня:", empty_text, wrap_quote=True)
-            else:
-                next_date, next_events = schedule_service.get_next_classes_after(datetime.now(TIMEZONE).date())
-                if next_date and next_events:
-                    next_block = schedule_service.format_next_classes_block(next_date, next_events)
-                    text = f"{empty_text}\n\n{next_block}"
-                else:
-                    text = empty_text
-            await message.answer(text, parse_mode="HTML")
-            return
-
-        if normalized_text == "пары завтра" and should_process_schedule_command:
-            user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            _log(f"GR; От {user_login_log} ({message.from_user.full_name}): запрос 'пары завтра'")
-            events = schedule_service.get_tomorrows_classes(TIMEZONE)
-            empty_text = schedule_service.get_no_pairs_message("завтра")
-            if events:
-                text = schedule_service.format_classes(events, "📚 Пары на завтра:", empty_text, wrap_quote=True)
-            else:
-                base_date = date.fromordinal(datetime.now(TIMEZONE).date().toordinal() + 1)
-                next_date, next_events = schedule_service.get_next_classes_after(base_date)
-                if next_date and next_events:
-                    next_block = schedule_service.format_next_classes_block(next_date, next_events)
-                    text = f"{empty_text}\n\n{next_block}"
-                else:
-                    text = empty_text
-            await message.answer(text, parse_mode="HTML")
+        # Публичные команды "др" и "пары":
+        # - доступны всем в беседе CHAT_ID (при упоминании бота или ответе ему)
+        # - доступны владельцу также в ЛС
+        if await _handle_public_commands(message, ctx):
             return
 
     # Обрабатываем только текстовые сообщения для LLM
@@ -304,21 +363,22 @@ async def on_mention_or_reply(message: Message):
         return
 
     # Если это другая группа (не основная) и пришли ключевые команды — вежливо отказываем, не зовем LLM
-    if (
-        message.chat.type in ("group", "supergroup")
-        and not is_group_main
-        and not (message.from_user and message.from_user.id == OWNER_CHAT_ID)
-        and (is_mention or is_reply)
-    ):
-        blocked_cmd = _is_public_command(normalized_text)
-        if blocked_cmd:
-            user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-            _log(f"GR; От {user_login_log} ({message.from_user.full_name}): команда '{normalized_text}' в чужой группе — отклонено")
-            await message.answer(
-                "❌ <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>",
-                parse_mode="HTML",
-            )
-            return
+    if ctx:
+        if (
+            message.chat.type in ("group", "supergroup")
+            and not ctx["is_group_main"]
+            and not (message.from_user and message.from_user.id == OWNER_CHAT_ID)
+            and (ctx["is_mention"] or ctx["is_reply"])
+        ):
+            blocked_cmd = _is_public_command(ctx["normalized_text"])
+            if blocked_cmd:
+                user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+                _log(f"GR; От {user_login_log} ({message.from_user.full_name}): команда '{ctx['normalized_text']}' в чужой группе — отклонено")
+                await message.answer(
+                    "❌ <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>",
+                    parse_mode="HTML",
+                )
+                return
 
     chat_id = message.chat.id
     text = message.text or ""
@@ -331,6 +391,9 @@ async def on_mention_or_reply(message: Message):
 
     # Получаем логин пользователя
     user_login = _extract_user_login(message, text, bot_username)
+    tag = "GR" if message.chat.type in ("group", "supergroup") else "PM"
+    user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
+    _log(f"{tag}; От {user_login_safe}: {text_for_llm}")
     
     # Находим имя пользователя по user_id
     first_name = get_first_name_by_user_id(message.from_user.id, birthday_service.users)
@@ -360,7 +423,6 @@ async def on_mention_or_reply(message: Message):
             temp_msg = await message.reply(random.choice(thinking_variants))
     except Exception:
         temp_msg = None
-
     # Эффект "печатает..." и запрос к LLM без блокировки event loop
     stop_event = asyncio.Event()
 
@@ -426,7 +488,7 @@ async def on_mention_or_reply(message: Message):
     final_answer = _format_final_answer(first_name, answer_body)
     
     # Экранируем текст и выделяем code-блоки
-    safe_answer = _render_html_with_code(final_answer)
+    safe_answer = render_html_with_code(final_answer)
     
     # Удаляем временное сообщение перед отправкой ответа
     if temp_msg:
@@ -561,63 +623,11 @@ async def _send_response(message: Message, final_answer: str, user_login: str, o
     """
     # Логируем сообщение
     if message.chat.type in ("group", "supergroup"):
-        _log(f"GR; От {user_login} ({message.from_user.full_name}): {original_text}")
         _log(f"GR; Бот (LLM): {final_answer}")
         await message.reply(final_answer, parse_mode="HTML")
     else:
-        _log(f"PM; От {user_login} ({message.from_user.full_name}): {original_text}")
         _log(f"PM; Бот (LLM): {final_answer}")
         await message.answer(final_answer, parse_mode="HTML")
-
-def _render_html_with_code(text: str) -> str:
-    """
-    Экранирует текст и конвертирует markdown code fences в HTML <pre><code>.
-
-    Поддерживаются блоки вида ```lang\n...```, язык опционален.
-    """
-    def _apply_basic_markdown(raw: str) -> str:
-        # После html.escape звёздочки/нижние подчёркивания остаются, поэтому конвертируем их в теги
-        s = html.escape(raw)
-
-        def bold_sub(match: re.Match[str]) -> str:
-            return f"<b>{match.group(1)}</b>"
-
-        def italic_sub(match: re.Match[str]) -> str:
-            return f"<i>{match.group(1)}</i>"
-
-        # **bold** и __bold__
-        s = re.sub(r"\*\*(.+?)\*\*", bold_sub, s)
-        s = re.sub(r"__(.+?)__", bold_sub, s)
-
-        # *italic* и _italic_ (но не внутри двойных символов)
-        s = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", italic_sub, s)
-        s = re.sub(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)", italic_sub, s)
-        return s
-
-    parts: list[str] = []
-    last = 0
-    pattern = re.compile(r"```([a-zA-Z0-9#+-]+)?\n([\s\S]*?)```", re.MULTILINE)
-
-    for match in pattern.finditer(text):
-        # Текст до блока кода конвертируем: экранируем + простая Markdown-разметка
-        if match.start() > last:
-            parts.append(_apply_basic_markdown(text[last:match.start()]))
-
-        lang = match.group(1)
-        code = match.group(2).rstrip("\n")
-        code_html = html.escape(code)
-        if lang:
-            parts.append(f"<pre><code class=\"language-{lang}\">{code_html}</code></pre>")
-        else:
-            parts.append(f"<pre><code>{code_html}</code></pre>")
-
-        last = match.end()
-
-    # Хвост после последнего блока кода
-    if last < len(text):
-        parts.append(_apply_basic_markdown(text[last:]))
-
-    return "".join(parts)
 
 def register_chat_handlers(dp):
     """

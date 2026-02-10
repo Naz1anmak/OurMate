@@ -2,11 +2,26 @@
 Утилиты для работы с датами.
 Содержит функции для работы с датами дней рождения и планировщиком.
 """
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from src.models.user import User
+
+MONTH_NAMES_RU = {
+    1: "января",
+    2: "февраля",
+    3: "марта",
+    4: "апреля",
+    5: "мая",
+    6: "июня",
+    7: "июля",
+    8: "августа",
+    9: "сентября",
+    10: "октября",
+    11: "ноября",
+    12: "декабря",
+}
 
 def _parse_day_month(birthday: str) -> Tuple[int, int]:
     """Парсит дату формата 'D.M' или 'DD.MM' в кортеж (day, month)."""
@@ -85,13 +100,26 @@ def format_birthday_date(birthday: str) -> str:
     Returns:
         str: Отформатированная дата (например, "15 января")
     """
-    # Словарь названий месяцев на русском языке
-    month_names = {
-        1: "января", 2: "февраля", 3: "марта",
-        4: "апреля", 5: "мая", 6: "июня",
-        7: "июля", 8: "августа", 9: "сентября",
-        10: "октября", 11: "ноября", 12: "декабря"
-    }
-    
     day, month = _parse_day_month(birthday)
-    return f"{day} {month_names[month]}"
+    return f"{day} {MONTH_NAMES_RU[month]}"
+
+def format_next_birthday_date(birthday: str, timezone: ZoneInfo) -> str:
+    """
+    Возвращает ближайшую будущую дату дня рождения в формате "20 января".
+
+    Args:
+        birthday (str): Дата в формате "D.M" или "DD.MM"
+        timezone (ZoneInfo): Часовой пояс
+
+    Returns:
+        str: Отформатированная дата или исходная строка при ошибке
+    """
+    try:
+        day, month = _parse_day_month(birthday)
+        today = datetime.now(timezone).date()
+        next_bday = date(today.year, month, day)
+        if next_bday <= today:
+            next_bday = date(today.year + 1, month, day)
+        return f"{next_bday.day} {MONTH_NAMES_RU[next_bday.month]}"
+    except Exception:
+        return birthday

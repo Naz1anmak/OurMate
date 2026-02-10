@@ -109,18 +109,21 @@ def start_pinned_schedule_scheduler(bot: Bot):
 
 def _build_pinned_text(today: date) -> Optional[str]:
     """Формирует текст закреплённого сообщения. None => ничего не отправлять/удалить."""
-    today_events = schedule_service.get_todays_classes(TIMEZONE)
+    effective_date = schedule_service.get_effective_date(TIMEZONE)
+    today_events = schedule_service.get_classes_for_date(effective_date)
     lines = []
     used_next_date: Optional[date] = None
+    day_label = "завтра" if effective_date == date.fromordinal(today.toordinal() + 1) else "сегодня"
+    title = "📚 Пары на завтра:" if day_label == "завтра" else "📚 Пары сегодня:"
 
     # Блок на сегодня
     if today_events:
-        lines.append(schedule_service.format_classes(today_events, "📚 Пары сегодня:", "", wrap_quote=True))
+        lines.append(schedule_service.format_classes(today_events, title, "", wrap_quote=True))
     else:
-        base_empty = schedule_service.get_no_pairs_message("сегодня")
-        next_date, next_events = schedule_service.get_next_classes_after(today)
+        base_empty = schedule_service.get_no_pairs_message(day_label)
+        next_date, next_events = schedule_service.get_next_classes_after(effective_date)
         if next_date and next_events:
-            next_block = schedule_service.format_next_classes_block(next_date, next_events)
+            next_block = schedule_service.format_next_classes_block(next_date, next_events, base_date=effective_date)
             used_next_date = next_date
             lines.append(f"{base_empty}\n\n{next_block}")
         else:
@@ -128,7 +131,7 @@ def _build_pinned_text(today: date) -> Optional[str]:
             return None
 
     # Полный список по дням, начиная с сегодня
-    grouped = _group_events_from(today)
+    grouped = _group_events_from(effective_date)
     if grouped:
         # Между блоками — пустая строка
         for idx, (day, events) in enumerate(grouped):

@@ -116,6 +116,8 @@ OurMate_bot/
 │   │   └── user.py                          # Модель пользователя
 │   ├── utils/                               # Вспомогательные функции
 │   │   ├── date_utils.py                    # Работа с датами
+│   │   ├── render_utils.py                  # HTML-рендер с поддержкой Markdown
+│   │   ├── telegram_cache.py                # Кеш bot.get_me()
 │   │   └── text_utils.py                    # Работа с текстом
 │   └── config/                              # Конфигурация
 │       └── settings.py                      # Настройки приложения
@@ -360,10 +362,10 @@ sudo mkdir -p /etc/systemd/journald.conf.d
 sudo tee /etc/systemd/journald.conf.d/00-custom.conf > /dev/null << 'EOF'
 [Journal]
 Storage=persistent
-SystemMaxUse=300M
-SystemMaxFileSize=50M
+SystemMaxUse=1G
+SystemMaxFileSize=100M
 RateLimitIntervalSec=30
-RateLimitBurst=10000
+RateLimitBurst=2000
 EOF
 
 # Перезапускаем journald
