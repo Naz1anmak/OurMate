@@ -6,7 +6,6 @@ from __future__ import annotations
 import html
 import re
 
-
 def render_html_with_code(text: str) -> str:
     """
     Экранирует текст и конвертирует markdown code fences в HTML <pre><code>.
@@ -23,6 +22,9 @@ def render_html_with_code(text: str) -> str:
         def italic_sub(match: re.Match[str]) -> str:
             return f"<i>{match.group(1)}</i>"
 
+        def code_inline_sub(match: re.Match[str]) -> str:
+            return f"<code>{match.group(1)}</code>"
+
         # **bold** и __bold__
         s = re.sub(r"\*\*(.+?)\*\*", bold_sub, s)
         s = re.sub(r"__(.+?)__", bold_sub, s)
@@ -30,6 +32,9 @@ def render_html_with_code(text: str) -> str:
         # *italic* и _italic_ (но не внутри двойных символов)
         s = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", italic_sub, s)
         s = re.sub(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)", italic_sub, s)
+
+        # `inline code`
+        s = re.sub(r"`([^`]+?)`", code_inline_sub, s)
         return s
 
     parts: list[str] = []

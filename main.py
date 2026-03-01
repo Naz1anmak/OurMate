@@ -11,6 +11,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+
 # Шумные события aiogram подавляем всегда
 logging.getLogger("aiogram.event").setLevel(logging.WARNING)
 
@@ -44,20 +45,24 @@ async def main():
     bot = Bot(TOKEN)
     dp = Dispatcher()
 
-    # Регистрируем обработчики сообщений
-    register_handlers(dp)
-    logger.info("Обработчики зарегистрированы")
+    try:
+        # Регистрируем обработчики сообщений
+        register_handlers(dp)
+        logger.info("Обработчики зарегистрированы")
 
-    # Удаляем вебхук и запускаем планировщик
-    await bot(DeleteWebhook(drop_pending_updates=True))
-    start_birthday_scheduler(bot)
-    start_schedule_scheduler(bot)
-    start_pinned_schedule_scheduler(bot)
-    logger.info("Планировщики запущены")
+        # Удаляем вебхук и запускаем планировщик
+        await bot(DeleteWebhook(drop_pending_updates=True))
+        start_birthday_scheduler(bot)
+        start_schedule_scheduler(bot)
+        start_pinned_schedule_scheduler(bot)
+        logger.info("Планировщики запущены")
 
-    # Запускаем поллинг (получение обновлений)
-    logger.info("Бот запущен и готов к работе")
-    await dp.start_polling(bot)
+        # Запускаем поллинг (получение обновлений)
+        logger.info("Бот запущен и готов к работе")
+        await dp.start_polling(bot)
+    finally:
+        # Корректно закрываем HTTP-сессию, даже при Ctrl+C
+        await bot.session.close()
 
 if __name__ == "__main__":
     # Запускаем приложение
