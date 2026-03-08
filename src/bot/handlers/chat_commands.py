@@ -1,5 +1,4 @@
 """Обработчики команд для чата (общие для PM и групп)."""
-
 from datetime import datetime, date
 from aiogram.types import Message
 

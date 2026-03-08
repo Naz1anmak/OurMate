@@ -4,7 +4,7 @@
 """
 from aiogram.types import Message
 
-from src.config.settings import OWNER_CHAT_ID, CHAT_ID
+from src.config.settings import OWNER_CHAT_ID
 from src.bot.services.birthday_service import birthday_service
 from src.bot.handlers.chat_context import build_command_context, is_public_command
 from src.bot.handlers.chat_commands import (

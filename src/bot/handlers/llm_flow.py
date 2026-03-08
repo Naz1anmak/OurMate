@@ -1,5 +1,4 @@
 """Потоковая и финальная отправка ответов LLM."""
-
 import asyncio
 import random
 import time
@@ -17,11 +16,21 @@ from src.utils.log_utils import log_with_ts as _log
 from src.utils.render_utils import render_html_with_code
 
 ENV_VALUE = (os.getenv("ENV") or "").strip().lower()
-IS_DEV = ENV_VALUE in ("dev", "development")
+# Если переменная окружения не задана, используем значение из settings (по умолчанию dev)
+IS_DEV = ENV_VALUE in ("dev", "development") or str(ENV).strip().lower() in ("dev", "development")
 
 def _log_dev(message: str) -> None:
     if IS_DEV:
         _log(message)
+
+def _ends_on_boundary(text: str) -> bool:
+    """Проверяем, что буфер заканчивается на границе слова/предложения, чтобы не рвать слова."""
+    if not text:
+        return False
+    last = text[-1]
+    if last.isspace():
+        return True
+    return last in {".", "!", "?", ",", ";", ":", "…", ")", "]", "}" , "»"}
 
 def format_final_answer(first_name: str, answer_body: str, has_context: bool) -> str:
     """Форматирует финальный ответ с обращением по имени, если контекст пуст."""
@@ -67,7 +76,7 @@ async def try_streaming_response(
     user_login_safe = user_login or (message.from_user.full_name if message.from_user else "") or str(message.from_user.id if message.from_user else message.chat.id)
     min_edit_interval = min_edit_interval_group if is_group_chat else min_edit_interval_pm
     # Адаптивная задержка редактирования: начинаем быстрее, затем плавно замедляемся, чтобы не ловить FLOOD
-    interval_growth = 0.35 if is_group_chat else 0.2
+    interval_growth = 0.2
     interval_cap = 3.0 if is_group_chat else 1.5
     min_edit_chars = min_edit_chars_group if is_group_chat else min_edit_chars_pm
 
@@ -155,11 +164,20 @@ async def try_streaming_response(
                     return False, placeholder_msg
 
             effective_min_edit_interval = min(min_edit_interval + edit_count * interval_growth, interval_cap)
+            time_since_flush = now - last_flush
+            len_delta = len(buffer) - last_sent_len
+            boundary_ok = _ends_on_boundary(buffer)
+            hard_timeout = effective_min_edit_interval * 4.0  # дольше ждём конца слова/предложения
+            min_chunk_force = max(8, int(min_edit_chars * 0.4))  # не шлём совсем крошечные куски при таймауте
 
             if (
                 placeholder_msg
                 and now >= edit_block_until
-                and ((len(buffer) - last_sent_len) >= min_edit_chars or (now - last_flush) >= effective_min_edit_interval)
+                and (
+                    (boundary_ok and (len_delta >= min_edit_chars or time_since_flush >= effective_min_edit_interval))
+                    or len_delta >= min_edit_chars  # достаточно текста — шлём, даже если нет границы слова
+                    or (time_since_flush >= hard_timeout and len_delta >= min_chunk_force)
+                )
                 and (not is_group_chat or edit_count < max_edits_group)
             ):
                 try:
@@ -208,6 +226,7 @@ async def try_streaming_response(
                     parse_mode="HTML",
                 )
                 sent_any = True
+                _log_dev(f"{tag}; Stream finished via placeholder: edits={edit_count}, chars={len(buffer)}")
                 return True, placeholder_msg
             except TelegramRetryAfter as exc:
                 tag = "GR" if is_group_chat else "PM"
@@ -238,6 +257,7 @@ async def try_streaming_response(
             else:
                 await message.reply(safe_answer, parse_mode="HTML")
                 sent_any = True
+            _log_dev(f"{tag}; Stream finished direct send: edits={edit_count}, placeholder={bool(placeholder_msg)}, chars={len(buffer)}")
             return True, placeholder_msg
         except TelegramRetryAfter as exc:
             tag = "GR" if is_group_chat else "PM"
@@ -265,7 +285,8 @@ async def try_streaming_response(
             safe_answer = render_html_with_code(final_answer)
             context_service.save_context(message.chat.id, text_for_llm, final_answer)
             tag = "GR" if is_group_chat else "PM"
-            _log(f"{tag}; Бот (LLM stream partial): {final_answer}")
+            _log(f"{tag}; Бот (LLM stream partial, err={exc}): {final_answer}")
+            timed_out = "timed out" in str(exc).lower()
             try:
                 if placeholder_msg:
                     await message.bot.edit_message_text(
@@ -282,6 +303,15 @@ async def try_streaming_response(
                     else:
                         await message.reply(safe_answer, parse_mode="HTML")
                         sent_any = True
+                if timed_out:
+                    notice = "🌀 Возникла ошибка... Попробуй спросить ещё раз, если ответ неполный."
+                    try:
+                        if message.chat.type == "private":
+                            await message.answer(notice)
+                        else:
+                            await message.reply(notice)
+                    except Exception:
+                        pass
             except TelegramRetryAfter as exc:
                 tag = "GR" if is_group_chat else "PM"
                 _log_dev(f"{tag}; Draft stream partial edit throttled: {exc}")

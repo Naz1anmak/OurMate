@@ -1,7 +1,5 @@
 """Обработчик для личных сообщений."""
-
 import asyncio
-import random
 from aiogram.enums import ChatAction
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import Message

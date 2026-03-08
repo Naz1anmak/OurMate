@@ -1,5 +1,4 @@
 """Вспомогательные функции для построения контекста и подготовки сообщений LLM."""
-
 from aiogram.types import Message
 
 from src.config.settings import PROMPT_TEMPLATE_CHAT, OWNER_CHAT_ID, CHAT_ID

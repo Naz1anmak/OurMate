@@ -1,5 +1,4 @@
 """Обработчик для групповых сообщений."""
-
 import asyncio
 import random
 from aiogram.enums import ChatAction

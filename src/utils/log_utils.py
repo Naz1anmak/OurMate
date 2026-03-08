@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 
 from src.config.settings import TIMEZONE, ENV
 
-
 def log_with_ts(message: str) -> None:
     """Печатает лог: в prod чистое сообщение, в dev — с таймстемпом."""
     is_dev = str(ENV).lower() in ("dev", "development")
