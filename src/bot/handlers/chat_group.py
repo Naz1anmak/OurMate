@@ -2,7 +2,7 @@
 import asyncio
 import random
 from aiogram.enums import ChatAction
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import TelegramRetryAfter, TelegramBadRequest
 from aiogram.types import Message
 
 from src.config.settings import OWNER_CHAT_ID
@@ -18,20 +18,13 @@ from src.bot.handlers.chat_context import (
     strip_bot_mention,
     build_llm_messages,
 )
-from src.bot.handlers.llm_flow import try_streaming_response, format_final_answer
-
-THINKING_VARIANTS = [
-    "🧠 Мне понадобится немного времени, думаю над ответом...",
-    "⌛ Одну секунду, формулирую мысль...",
-    "💭 Обдумываю, чтобы ответить по делу...",
-    "✏️ Проверяю факты, сейчас вернусь...",
-    "🔎 Сверяю детали, почти готово...",
-    "⚙️ Прокручиваю логику в голове...",
-    "🧩 Осталась последняя деталь...",
-    "🌀 Привожу мысли в порядок...",
-    "📚 Освежаю материалы, секунду...",
-    "🤔 Хочу ответить точно, чуть-чуть подожди...",
-]
+from src.bot.handlers.llm_flow import (
+    try_streaming_response,
+    format_final_answer,
+    PLACEHOLDER_VARIANTS,
+    _trim_html,
+    ERROR_NOTICE,
+)
 
 async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
     chat_id = message.chat.id
@@ -65,7 +58,7 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
     if temp_msg is None and len(text_for_llm.strip()) >= 8 and (placeholder_msg is not None or text_for_llm.strip()):
         _log("GR; Stream placeholder missing, creating new for fallback")
         try:
-            placeholder = random.choice(THINKING_VARIANTS)
+            placeholder = random.choice(PLACEHOLDER_VARIANTS)
             temp_msg = await message.reply(placeholder)
         except Exception:
             temp_msg = None
@@ -102,7 +95,7 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
 
     final_answer = format_final_answer(first_name, answer_body, has_context)
     context_service.save_context(chat_id, text_for_llm, final_answer)
-    safe_answer = render_html_with_code(final_answer)
+    safe_answer = _trim_html(render_html_with_code(final_answer))
 
     if temp_msg:
         try:
@@ -128,6 +121,14 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
                 return
             except Exception:
                 pass
+        except TelegramBadRequest as exc:
+            if "message is too long" in str(exc).lower():
+                try:
+                    await message.reply(ERROR_NOTICE)
+                except Exception:
+                    pass
+                return
+            raise
         except Exception:
             try:
                 await temp_msg.delete()
@@ -141,6 +142,14 @@ async def _send_response_gr(message: Message, final_answer: str, user_login: str
     _log(f"GR; Бот (LLM) для {user_login_safe}: {final_answer}")
     try:
         await message.reply(final_answer, parse_mode="HTML")
+    except TelegramBadRequest as exc:
+        if "message is too long" in str(exc).lower():
+            try:
+                await message.reply(ERROR_NOTICE)
+            except Exception:
+                pass
+            return
+        raise
     except TelegramRetryAfter as exc:
         _log(f"GR; Final send throttled: {exc}")
         try:
@@ -159,7 +168,7 @@ async def _handle_llm_error_gr(
 ):
     user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
     _log(f"GR; Бот: LLM недоступен для {user_login_safe}: {llm_error}")
-    fallback_text = "⚠️ LLM временно недоступен. Попробуй ещё раз через пару минут."
+    fallback_text = "⚠️ Я временно недоступен. Попробуй ещё раз через пару минут."
     fallback_sent = False
 
     if temp_msg:

@@ -72,8 +72,8 @@ class LLMService:
             "stream_options": {"include_usage": True},
         }
 
-        # Таймауты стрима: до 120с на весь ответ и до 25с между чанками
-        timeout = aiohttp.ClientTimeout(total=120, sock_read=25)
+        # Таймауты стрима: до 90с на весь ответ и до 12с между чанками
+        timeout = aiohttp.ClientTimeout(total=90, sock_read=12)
         ssl_context = ssl.create_default_context(cafile=certifi.where())
         try:
             async with aiohttp.ClientSession(timeout=timeout, connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:

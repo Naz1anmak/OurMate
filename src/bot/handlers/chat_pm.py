@@ -19,19 +19,6 @@ from src.bot.handlers.chat_context import (
 )
 from src.bot.handlers.llm_flow import try_streaming_response, format_final_answer
 
-THINKING_VARIANTS = [
-    "🧠 Мне понадобится немного времени, думаю над ответом...",
-    "⌛ Одну секунду, формулирую мысль...",
-    "💭 Обдумываю, чтобы ответить по делу...",
-    "✏️ Проверяю факты, сейчас вернусь...",
-    "🔎 Сверяю детали, почти готово...",
-    "⚙️ Прокручиваю логику в голове...",
-    "🧩 Осталась последняя деталь...",
-    "🌀 Привожу мысли в порядок...",
-    "📚 Освежаю материалы, секунду...",
-    "🤔 Хочу ответить точно, чуть-чуть подожди...",
-]
-
 async def handle_private_chat(message: Message, bot_username: str, bot_id: int):
     chat_id = message.chat.id
     text = message.text or ""
