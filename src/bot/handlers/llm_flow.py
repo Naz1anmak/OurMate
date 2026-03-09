@@ -1,12 +1,11 @@
 """Потоковая и финальная отправка ответов LLM."""
 import asyncio
-import random
 import time
 import html as _html
 import re
 
 from aiogram.enums import ChatAction
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import TelegramRetryAfter, TelegramBadRequest
 from aiogram.types import Message
 from aiogram.methods import SendMessageDraft
 
@@ -17,25 +16,18 @@ import os
 from src.config.settings import ENV, OWNER_CHAT_ID
 from src.utils.log_utils import log_with_ts as _log
 from src.utils.render_utils import render_html_with_code
+from src.bot.handlers.placeholder_variants import pick_placeholder_variant
+from src.utils.emoji_utils import make_custom_emoji_payload
 
 ENV_VALUE = (os.getenv("ENV") or "").strip().lower()
 # Если переменная окружения не задана, используем значение из settings (по умолчанию dev)
 IS_DEV = ENV_VALUE in ("dev", "development") or str(ENV).strip().lower() in ("dev", "development")
 
-PLACEHOLDER_VARIANTS = [
-    "🧠 Мне понадобится немного времени, думаю над ответом...",
-    "⌛ Одну секунду, формулирую мысль...",
-    "💭 Обдумываю, чтобы ответить по делу...",
-    "✏️ Проверяю факты, сейчас вернусь...",
-    "🔎 Сверяю детали, почти готово...",
-    "⚙️ Прокручиваю логику в голове...",
-    "🧩 Осталась последняя деталь...",
-    "🌀 Привожу мысли в порядок...",
-    "📚 Освежаю материалы, секунду...",
-    "🤔 Хочу ответить точно, чуть-чуть подожди...",
-]
-
-ERROR_NOTICE = "🌀 Не удалось получить ответ. Попробуй ещё раз через пару секунд."
+ERROR_NOTICE_PLAIN = "⚠️ Не удалось получить ответ. Попробуй ещё раз через пару секунд."
+ERROR_NOTICE_TEXT, ERROR_NOTICE_ENTITIES = make_custom_emoji_payload(
+    ERROR_NOTICE_PLAIN,
+    "5197170531379459422",
+)
 
 def _log_dev(message: str) -> None:
     if IS_DEV:
@@ -49,6 +41,16 @@ def _ends_on_boundary(text: str) -> bool:
     if last.isspace():
         return True
     return last in {".", "!", "?", ",", ";", ":", "…", ")", "]", "}" , "»"}
+
+_SAFE_BOUNDARY_CHARS = set(" \n\t.,!?;:)]}»")
+
+def _find_safe_flush_len(buffer: str, last_sent_len: int, search_back: int = 120) -> int:
+    """Находит безопасный срез под отправку, отдавая предпочтение пробелам/знакам препинания."""
+    start = max(last_sent_len, len(buffer) - search_back)
+    for idx in range(len(buffer) - 1, start - 1, -1):
+        if buffer[idx] in _SAFE_BOUNDARY_CHARS:
+            return idx + 1
+    return len(buffer)
 
 _TAG_RE = re.compile(r"<[^>]+>")
 
@@ -147,24 +149,85 @@ async def try_streaming_response(
     draft_id: int | None = None
 
     if use_placeholder:
-        placeholder_text = random.choice(PLACEHOLDER_VARIANTS)
+        placeholder_variant = pick_placeholder_variant()
+        placeholder_text, placeholder_entities = placeholder_variant.reply_payload()
         try:
-            placeholder_msg = await message.reply(placeholder_text)
+            placeholder_msg = await message.reply(placeholder_text, entities=placeholder_entities)
             sent_any = True
-        except Exception:
-            placeholder_msg = None
+            _log_dev(f"{tag}; Placeholder sent with custom emoji")
+        except Exception as exc:
+            _log_dev(f"{tag}; Placeholder send failed, retry plain: {exc}")
+            try:
+                placeholder_msg = await message.reply(placeholder_text)
+                sent_any = True
+                _log_dev(f"{tag}; Placeholder sent without entities")
+            except Exception as exc2:
+                _log_dev(f"{tag}; Placeholder plain send failed: {exc2}")
+                placeholder_msg = None
     elif use_draft_stream:
         # Генерируем уникальный draft_id на поток, чтобы не переиспользовать старые драфты
         draft_id = int(time.monotonic_ns() % 900_000_000) + (message.chat.id % 1000) + 1
 
-    async def send_pm_no_reply(text: str) -> Message:
+    async def send_pm_no_reply(text: str, entities: list | None = None, parse_mode: str | None = "HTML") -> Message:
         sent = await message.bot.send_message(
             chat_id=message.chat.id,
             text=text,
-            parse_mode="HTML",
+            parse_mode=parse_mode,
             allow_sending_without_reply=True,
+            entities=entities,
         )
         return sent
+
+    async def send_notice_custom_or_plain() -> bool:
+        try:
+            if is_group_chat:
+                await message.reply(ERROR_NOTICE_TEXT, entities=ERROR_NOTICE_ENTITIES)
+            else:
+                await send_pm_no_reply(ERROR_NOTICE_TEXT, ERROR_NOTICE_ENTITIES, parse_mode=None)
+            return True
+        except TelegramBadRequest as exc:
+            _log_dev(f"{tag}; Notice custom emoji failed, fallback plain: {exc}")
+            try:
+                if is_group_chat:
+                    await message.reply(ERROR_NOTICE_PLAIN, parse_mode=None)
+                else:
+                    await send_pm_no_reply(ERROR_NOTICE_PLAIN, parse_mode=None)
+                return True
+            except Exception as exc2:
+                _log_dev(f"{tag}; Plain notice send failed: {exc2}")
+                return False
+        except Exception as exc:
+            _log_dev(f"{tag}; Notice send unexpected failure: {exc}")
+            return False
+
+    async def edit_placeholder_to_notice() -> bool:
+        if not placeholder_msg:
+            return False
+        try:
+            await message.bot.edit_message_text(
+                chat_id=placeholder_msg.chat.id,
+                message_id=placeholder_msg.message_id,
+                text=ERROR_NOTICE_TEXT,
+                entities=ERROR_NOTICE_ENTITIES,
+                parse_mode=None,
+            )
+            return True
+        except TelegramBadRequest as exc:
+            _log_dev(f"{tag}; Notice edit custom emoji failed, fallback plain: {exc}")
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=placeholder_msg.chat.id,
+                    message_id=placeholder_msg.message_id,
+                    text=ERROR_NOTICE_PLAIN,
+                    parse_mode=None,
+                )
+                return True
+            except Exception as exc2:
+                _log_dev(f"{tag}; Notice edit plain send failed: {exc2}")
+                return False
+        except Exception as exc:
+            _log_dev(f"{tag}; Notice edit unexpected failure: {exc}")
+            return False
 
     buffer_prefix = f"{first_name}, " if (first_name and not has_context) else ""
     buffer = buffer_prefix
@@ -254,8 +317,13 @@ async def try_streaming_response(
                 and reason is not None
                 and (not is_group_chat or edit_count < max_edits_group)
             ):
+                flush_buffer = buffer
+                if reason in {"nonboundary+chars", "hard_timeout"} and not boundary_ok:
+                    safe_flush_len = _find_safe_flush_len(buffer, last_sent_len)
+                    if safe_flush_len > last_sent_len:
+                        flush_buffer = buffer[:safe_flush_len]
                 try:
-                    rendered_buffer = _trim_html(render_html_with_code(buffer))
+                    rendered_buffer = _trim_html(render_html_with_code(flush_buffer))
                     if use_draft_stream:
                         await message.bot(
                             SendMessageDraft(
@@ -286,7 +354,7 @@ async def try_streaming_response(
                     _log_dev(f"{tag}; Draft stream edit failed, fallback: {exc}")
                     return False, placeholder_msg
                 else:
-                    last_sent_len = len(buffer)
+                    last_sent_len = len(flush_buffer)
                     last_flush = now
 
         if not buffer:
@@ -315,6 +383,22 @@ async def try_streaming_response(
                 finished_label = "placeholder" if use_placeholder else "edited message"
                 _log_dev(f"{tag}; Stream finished via {finished_label}: edits={edit_count}, chars={len(buffer)}")
                 return True, placeholder_msg
+            except TelegramBadRequest as exc:
+                tag = "GR" if is_group_chat else "PM"
+                _log_dev(f"{tag}; Draft stream final edit bad HTML, retry plain: {exc}")
+                safe_plain = _trim_html(_html.escape(final_answer))
+                try:
+                    await message.bot.edit_message_text(
+                        chat_id=placeholder_msg.chat.id,
+                        message_id=placeholder_msg.message_id,
+                        text=safe_plain,
+                        parse_mode="HTML",
+                    )
+                    sent_any = True
+                    return True, placeholder_msg
+                except Exception as exc2:
+                    _log_dev(f"{tag}; Draft stream plain retry failed: {exc2}")
+                    # fall through to generic handling below
             except TelegramRetryAfter as exc:
                 tag = "GR" if is_group_chat else "PM"
                 _log_dev(f"{tag}; Draft stream final edit throttled: {exc}")
@@ -335,14 +419,8 @@ async def try_streaming_response(
             except Exception as exc:
                 tag = "GR" if is_group_chat else "PM"
                 _log_dev(f"{tag}; Draft stream final edit failed, sending notice: {exc}")
-                try:
-                    if is_group_chat:
-                        await message.reply(ERROR_NOTICE)
-                    else:
-                        await send_pm_no_reply(ERROR_NOTICE)
-                    sent_any = True
-                except Exception as exc2:
-                    _log_dev(f"{tag}; Draft stream final notice send failed: {exc2}")
+                notice_sent = await send_notice_custom_or_plain()
+                sent_any = sent_any or notice_sent
                 return True, placeholder_msg
 
         try:
@@ -354,6 +432,21 @@ async def try_streaming_response(
                 sent_any = True
             _log_dev(f"{tag}; Stream finished direct send: edits={edit_count}, draft={use_draft_stream}, chars={len(buffer)}")
             return True, placeholder_msg
+        except TelegramBadRequest as exc:
+            tag = "GR" if is_group_chat else "PM"
+            _log_dev(f"{tag}; Draft stream final send bad HTML, retry plain: {exc}")
+            safe_plain = _trim_html(_html.escape(final_answer))
+            try:
+                if message.chat.type == "private":
+                    await send_pm_no_reply(safe_plain, parse_mode=None)
+                    sent_any = True
+                else:
+                    await message.reply(safe_plain, parse_mode="HTML")
+                    sent_any = True
+                return True, placeholder_msg
+            except Exception as exc2:
+                _log_dev(f"{tag}; Draft stream plain send failed: {exc2}")
+                return False, placeholder_msg
         except TelegramRetryAfter as exc:
             tag = "GR" if is_group_chat else "PM"
             _log_dev(f"{tag}; Draft stream send throttled: {exc}")
@@ -385,27 +478,13 @@ async def try_streaming_response(
             f"Ошибка: {exc}"
         )
 
-        try:
-            if placeholder_msg:
-                await message.bot.edit_message_text(
-                    chat_id=placeholder_msg.chat.id,
-                    message_id=placeholder_msg.message_id,
-                    text=ERROR_NOTICE,
-                    parse_mode="HTML",
-                )
-                sent_any = True
-            else:
-                if message.chat.type == "private":
-                    await send_pm_no_reply(ERROR_NOTICE)
-                    sent_any = True
-                else:
-                    await message.reply(ERROR_NOTICE)
-                    sent_any = True
-        except TelegramRetryAfter as exc2:
-            _log_dev(f"{tag}; Notice throttled: {exc2}")
-            return False, placeholder_msg
-        except Exception as exc2:
-            _log_dev(f"{tag}; Notice send failed: {exc2}")
+        notice_sent = False
+        if placeholder_msg:
+            notice_sent = await edit_placeholder_to_notice()
+        else:
+            notice_sent = await send_notice_custom_or_plain()
+
+        if not notice_sent:
             return False, placeholder_msg
 
         try:

@@ -8,6 +8,7 @@
 ## 📖 Описание
 
 OurMate — это умный Telegram‑бот на базе [aiogram](https://docs.aiogram.dev/) и внешней LLM. 
+
 Работает на aiogram 3.26.0 и Telegram Bot API 9.5.
 
 Он умеет:
@@ -106,6 +107,7 @@ OurMate_bot/
 │   │   │   ├── chat_group.py                # Обработка групп (стрим + фолбэк)
 │   │   │   ├── chat_commands.py             # Общие публичные/владельческие команды
 │   │   │   ├── llm_flow.py                  # Стриминг LLM ответов
+│   │   │   ├── placeholder_variants.py      # Плейсхолдеры с кастомными эмодзи
 │   │   │   ├── commands.py                  # Обработка команд (/start)
 │   │   │   └── owner_commands.py            # Команды владельца
 │   │   ├── services/                        # Бизнес-логика
@@ -124,6 +126,7 @@ OurMate_bot/
 │   │   ├── date_utils.py                    # Работа с датами
 │   │   ├── render_utils.py                  # HTML-рендер с поддержкой Markdown
 │   │   ├── telegram_cache.py                # Кеш bot.get_me()
+│   │   ├── emoji_utils.py                   # Общий helper для custom emoji
 │   │   └── text_utils.py                    # Работа с текстом
 │   └── config/                              # Конфигурация
 │       └── settings.py                      # Настройки приложения

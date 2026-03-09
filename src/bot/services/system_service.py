@@ -6,6 +6,8 @@ import subprocess
 import logging
 import html
 
+EMOJI_ID_CROSS = "5465665476971471368"
+
 logger = logging.getLogger(__name__)
 
 class SystemService:
@@ -74,7 +76,7 @@ class SystemService:
         elif success:
             return "📋 <b>Логи бота:</b>\n\nНет сообщений для отображения"
         else:
-            return f"❌ <b>Ошибка получения логов:</b>\n\n{result}"
+            return f"<tg-emoji emoji-id=\"{EMOJI_ID_CROSS}\">❌</tg-emoji> <b>Ошибка получения логов:</b>\n\n{result}"
     
     @staticmethod
     def get_full_logs() -> str:
@@ -97,7 +99,7 @@ class SystemService:
             # Без <code>, чтобы работало жирное выделение важных строк
             return "📋 <b>Полные логи бота:</b>\n\n" + body
         else:
-            return f"❌ <b>Ошибка получения логов:</b>\n\n{result}"
+            return f"<tg-emoji emoji-id=\"{EMOJI_ID_CROSS}\">❌</tg-emoji> <b>Ошибка получения логов:</b>\n\n{result}"
 
     @staticmethod
     def _format_lines_with_highlight_and_limit(
@@ -172,7 +174,7 @@ class SystemService:
         if success:
             return "🛑 <b>Бот остановлен</b>\n\nКоманда выполнена успешно"
         else:
-            return f"❌ <b>Ошибка остановки бота:</b>\n\n{result}"
+            return f"<tg-emoji emoji-id=\"{EMOJI_ID_CROSS}\">❌</tg-emoji> <b>Ошибка остановки бота:</b>\n\n{result}"
     
     @staticmethod
     def get_bot_status() -> str:
@@ -193,7 +195,7 @@ class SystemService:
                 escaped = "... (статус обрезан, показан конец)\n" + escaped[-max_len:]
             return f"📊 <b>Статус бота:</b>\n\n<code>{escaped}</code>"
         else:
-            return f"❌ <b>Ошибка получения статуса:</b>\n\n{result}"
+            return f"<tg-emoji emoji-id=\"{EMOJI_ID_CROSS}\">❌</tg-emoji> <b>Ошибка получения статуса:</b>\n\n{result}"
     
     @staticmethod
     def get_system_info() -> str:
@@ -219,7 +221,7 @@ class SystemService:
         if result_parts:
             return "🖥️ <b>Информация о системе:</b>\n\n" + "\n\n".join(result_parts)
         else:
-            return "❌ <b>Ошибка получения информации о системе</b>"
+            return f"<tg-emoji emoji-id=\"{EMOJI_ID_CROSS}\">❌</tg-emoji> <b>Ошибка получения информации о системе</b>"
 
 # Создаем глобальный экземпляр сервиса
 system_service = SystemService()

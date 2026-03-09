@@ -3,11 +3,17 @@
 Содержит функции для обработки команд типа /start, /help и т.д.
 """
 from aiogram import types
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramNetworkError, TelegramBadRequest
 from aiogram.filters import Command
 
 from src.bot.services.birthday_service import birthday_service
 from src.utils.log_utils import log_with_ts as _log
+
+EMOJI_ID_ROBOT = "5372981976804366741"
+EMOJI_ID_CHAT = "5443038326535759644"
+EMOJI_ID_INFO = "5220197908342648622"
+EMOJI_ID_LINK = "5375129357373165375"
+EMOJI_ID_START = "5406809207947142040"
 
 async def cmd_start(message: types.Message):
     """
@@ -35,10 +41,11 @@ async def cmd_start(message: types.Message):
             await message.bot.send_message(
                 OWNER_CHAT_ID,
                 (
-                    "📲 Новый start\n"
+                    f"<tg-emoji emoji-id=\"{EMOJI_ID_START}\">📲</tg-emoji> Новый /start\n"
                     f"От: {message.from_user.full_name} {user_login}\n"
                     f"user_id: {message.from_user.id}"
                 ),
+                parse_mode="HTML",
             )
         except TelegramNetworkError as exc:
             _log(f"PM; Бот: не удалось уведомить владельца о /start: {exc}")
@@ -47,75 +54,73 @@ async def cmd_start(message: types.Message):
 
     # Проверяем, является ли пользователь владельцем
     if message.from_user.id == OWNER_CHAT_ID:
-        # Сообщение для владельца
-        welcome_text = """
-🤖 <b>Привет, владелец!</b>
-
-Я бот с подключенной нейросетью. Помимо обычного чата, у вас есть доступ к специальным командам:
-
-<b>Команды управления:</b>
-• <code>logs</code> — Логи бота
-• <code>full logs</code> — Полные логи
-• <code>status</code> — Статус службы
-• <code>system</code> — Информация о системе
-• <code>stop bot</code> — Остановить бота
-• <code>проверка ссылок</code> — Диагностика ссылок/активации
-• <code>help</code> или <code>команды</code> — Справка по командам
-
-<b>Команды по дням рождения:</b>
-• <code>др</code> — Ближайший день рождения
-• <code>др &lt;user_id&gt;</code> или <code>др @username</code> — Дата рождения по id или username
-
-<b>Команды по расписанию:</b>
-• <code>пары</code> — Пары на сегодня (в группе, при упоминании бота)
-• <code>пары завтра</code> — Пары на завтра (в группе, при упоминании бота)
-
-<b>Управление подпиской:</b>
-• <code>отписаться</code> — Отключить поздравления (в ЛС с ботом)
-
-<b>Обычный чат:</b>
-Просто напишите мне сообщение, и я отвечу с помощью нейросети.
-        """
+        welcome_text = (
+            f"<tg-emoji emoji-id=\"{EMOJI_ID_ROBOT}\">🤖</tg-emoji> <b>Привет, владелец!</b>\n\n"
+            "Я бот с подключенной нейросетью. Помимо обычного чата, у вас есть доступ к специальным командам:\n\n"
+            "<b>Команды управления:</b>\n"
+            "• <code>logs</code> — Логи бота\n"
+            "• <code>full logs</code> — Полные логи\n"
+            "• <code>status</code> — Статус службы\n"
+            "• <code>system</code> — Информация о системе\n"
+            "• <code>stop bot</code> — Остановить бота\n"
+            "• <code>проверка ссылок</code> — Диагностика ссылок/активации\n"
+            "• <code>help</code> или <code>команды</code> — Справка по командам\n\n"
+            "<b>Команды по дням рождения:</b>\n"
+            "• <code>др</code> — Ближайший день рождения\n"
+            "• <code>др &lt;user_id&gt;</code> или <code>др @username</code> — Дата рождения по id или username\n\n"
+            "<b>Команды по расписанию:</b>\n"
+            "• <code>пары</code> — Пары на сегодня (в группе, при упоминании бота)\n"
+            "• <code>пары завтра</code> — Пары на завтра (в группе, при упоминании бота)\n\n"
+            "<b>Управление подпиской:</b>\n"
+            "• <code>отписаться</code> — Отключить поздравления (в ЛС с ботом)\n\n"
+            "<b>Обычный чат:</b>\n"
+            "Просто напишите мне сообщение, и я отвечу с помощью нейросети."
+        )
     else:
-        # Сообщение для обычных пользователей
-        welcome_text = """
-🤖 <b>Привет!</b>
+        welcome_text = (
+            f"<tg-emoji emoji-id=\"{EMOJI_ID_ROBOT}\">🤖</tg-emoji> <b>Привет!</b>\n\n"
+            "Я бот с подключенной нейросетью. Чтобы задать мне вопрос — просто напиши его тут, а в группе упомяни меня через @ или ответь на моё сообщение.\n\n"
+            f"<tg-emoji emoji-id=\"{EMOJI_ID_CHAT}\">💬</tg-emoji> Я запоминаю контекст наших диалогов, поэтому могу поддерживать осмысленную беседу.\n\n"
+            "<b>Команды по дням рождения:</b>\n"
+            "• <code>др</code> — Ближайший день рождения\n"
+            "• <code>др &lt;id&gt;</code> или <code>др @username</code> — Дата дня рождения пользователя по id или username\n\n"
+            "<b>Команды по расписанию:</b>\n"
+            "• <code>пары</code> — Пары на сегодня\n"
+            "• <code>пары завтра</code> — Пары на завтра\n\n"
+            "<b>Управление подпиской:</b>\n"
+            "• <code>отписаться</code> — Отключить поздравления\n\n"
+            "<b>Справка:</b>\n"
+            "• <code>help</code> или <code>команды</code>\n\n"
+            f"<i><tg-emoji emoji-id=\"{EMOJI_ID_INFO}\">❕</tg-emoji> В беседе нужно упомянуть бота или ответить на его сообщение.</i>\n\n"
+            "<b>Команды управления (для владельца):</b>\n"
+            "• <code>logs</code> — Логи бота\n"
+            "• <code>full logs</code> — Полные логи\n"
+            "• <code>status</code> — Статус службы\n"
+            "• <code>system</code> — Информация о системе\n"
+            "• <code>stop bot</code> — Остановить бота\n"
+            "• <code>проверка ссылок</code> — Диагностика ссылок/активации\n\n"
+            "<b>Хотите больше функций?</b>\n"
+            "Вы можете клонировать этого бота для своей беседы и настроить под себя:\n\n"
+            f"<tg-emoji emoji-id=\"{EMOJI_ID_LINK}\">🔗</tg-emoji> <a href=\"https://github.com/Naz1anmak/OurMate\">GitHub репозиторий</a>"
+        )
 
-Я бот с подключенной нейросетью. Чтобы задать мне вопрос — просто напиши его тут, а в группе упомяни меня через @ или ответь на моё сообщение.
+    welcome_text_plain = (
+        welcome_text
+        .replace(f"<tg-emoji emoji-id=\"{EMOJI_ID_ROBOT}\">🤖</tg-emoji>", "🤖")
+        .replace(f"<tg-emoji emoji-id=\"{EMOJI_ID_CHAT}\">💬</tg-emoji>", "💬")
+        .replace(f"<tg-emoji emoji-id=\"{EMOJI_ID_INFO}\">❕</tg-emoji>", "❕")
+        .replace(f"<tg-emoji emoji-id=\"{EMOJI_ID_LINK}\">🔗</tg-emoji>", "🔗")
+    )
 
-💬 Я запоминаю контекст наших диалогов, поэтому могу поддерживать осмысленную беседу.
-
-<b>Команды по дням рождения:</b>
-• <code>др</code> — Ближайший день рождения
-• <code>др &lt;id&gt;</code> или <code>др @username</code> — Дата дня рождения пользователя по id или username
-
-<b>Команды по расписанию:</b>
-• <code>пары</code> — Пары на сегодня
-• <code>пары завтра</code> — Пары на завтра
-
-<b>Управление подпиской:</b>
-• <code>отписаться</code> — Отключить поздравления
-
-<b>Справка:</b>
-• <code>help</code> или <code>команды</code>
-
-<i>❕ В беседе нужно упомянуть бота или ответить на его сообщение.</i>
-
-<b>Команды управления (для владельца):</b>
-• <code>logs</code> — Логи бота
-• <code>full logs</code> — Полные логи
-• <code>status</code> — Статус службы
-• <code>system</code> — Информация о системе
-• <code>stop bot</code> — Остановить бота
-• <code>проверка ссылок</code> — Диагностика ссылок/активации
-
-<b>Хотите больше функций?</b>
-Вы можете клонировать этого бота для своей беседы и настроить под себя:
-
-🔗 <a href="https://github.com/Naz1anmak/OurMate">GitHub репозиторий</a>
-        """
     try:
         await message.answer(welcome_text, parse_mode="HTML")
+    except TelegramBadRequest as exc:
+        try:
+            await message.answer(welcome_text_plain, parse_mode="HTML")
+        except Exception:
+            _log(
+                f"PM; Бот: ошибка отправки приветствия для {user_login or message.from_user.id}: {exc}"
+            )
     except TelegramNetworkError as exc:
         _log(
             f"PM; Бот: ошибка отправки приветствия для {user_login or message.from_user.id}: {exc}"

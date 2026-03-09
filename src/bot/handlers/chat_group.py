@@ -1,6 +1,5 @@
 """Обработчик для групповых сообщений."""
 import asyncio
-import random
 from aiogram.enums import ChatAction
 from aiogram.exceptions import TelegramRetryAfter, TelegramBadRequest
 from aiogram.types import Message
@@ -21,10 +20,15 @@ from src.bot.handlers.chat_context import (
 from src.bot.handlers.llm_flow import (
     try_streaming_response,
     format_final_answer,
-    PLACEHOLDER_VARIANTS,
     _trim_html,
-    ERROR_NOTICE,
+    ERROR_NOTICE_PLAIN,
+    ERROR_NOTICE_TEXT,
+    ERROR_NOTICE_ENTITIES,
 )
+from src.bot.handlers.placeholder_variants import pick_placeholder_variant
+from src.utils.emoji_utils import make_custom_emoji_payload
+
+ERROR_CUSTOM_EMOJI_ID = "5447644880824181073"
 
 async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
     chat_id = message.chat.id
@@ -58,8 +62,15 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
     if temp_msg is None and len(text_for_llm.strip()) >= 8 and (placeholder_msg is not None or text_for_llm.strip()):
         _log("GR; Stream placeholder missing, creating new for fallback")
         try:
-            placeholder = random.choice(PLACEHOLDER_VARIANTS)
-            temp_msg = await message.reply(placeholder)
+            placeholder = pick_placeholder_variant()
+            placeholder_text, placeholder_entities = placeholder.reply_payload()
+            temp_msg = await message.reply(placeholder_text, entities=placeholder_entities)
+        except TelegramBadRequest as exc:
+            _log(f"GR; Fallback placeholder custom emoji failed, plain retry: {exc}")
+            try:
+                temp_msg = await message.reply(placeholder_text)
+            except Exception:
+                temp_msg = None
         except Exception:
             temp_msg = None
 
@@ -124,7 +135,12 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
         except TelegramBadRequest as exc:
             if "message is too long" in str(exc).lower():
                 try:
-                    await message.reply(ERROR_NOTICE)
+                    await message.reply(ERROR_NOTICE_TEXT, entities=ERROR_NOTICE_ENTITIES)
+                except TelegramBadRequest:
+                    try:
+                        await message.reply(ERROR_NOTICE_PLAIN, parse_mode=None)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 return
@@ -145,7 +161,12 @@ async def _send_response_gr(message: Message, final_answer: str, user_login: str
     except TelegramBadRequest as exc:
         if "message is too long" in str(exc).lower():
             try:
-                await message.reply(ERROR_NOTICE)
+                await message.reply(ERROR_NOTICE_TEXT, entities=ERROR_NOTICE_ENTITIES)
+            except TelegramBadRequest:
+                try:
+                    await message.reply(ERROR_NOTICE_PLAIN, parse_mode=None)
+                except Exception:
+                    pass
             except Exception:
                 pass
             return
@@ -168,7 +189,10 @@ async def _handle_llm_error_gr(
 ):
     user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
     _log(f"GR; Бот: LLM недоступен для {user_login_safe}: {llm_error}")
-    fallback_text = "⚠️ Я временно недоступен. Попробуй ещё раз через пару минут."
+    fallback_text, fallback_entities = make_custom_emoji_payload(
+        "⚠️ Я временно недоступен. Попробуй ещё раз через пару минут.",
+        ERROR_CUSTOM_EMOJI_ID,
+    )
     fallback_sent = False
 
     if temp_msg:
@@ -177,6 +201,7 @@ async def _handle_llm_error_gr(
                 chat_id=temp_msg.chat.id,
                 message_id=temp_msg.message_id,
                 text=fallback_text,
+                entities=fallback_entities,
             )
             fallback_sent = True
             temp_msg = None
@@ -188,6 +213,7 @@ async def _handle_llm_error_gr(
                     chat_id=temp_msg.chat.id,
                     message_id=temp_msg.message_id,
                     text=fallback_text,
+                    entities=fallback_entities,
                 )
                 fallback_sent = True
                 temp_msg = None
@@ -201,17 +227,18 @@ async def _handle_llm_error_gr(
 
     if not fallback_sent:
         try:
-            await message.reply(fallback_text)
+            await message.reply(fallback_text, entities=fallback_entities)
         except Exception:
             pass
 
     owner_notice = (
-        "⚠️ LLM недоступен\n"
+        f"⚠️ LLM недоступен\n"
         f"От: {user_login_safe} (chat_id={chat_id}, type={message.chat.type})\n"
         f"Текст: {text_for_llm[:500]}\n"
         f"Ошибка: {llm_error}"
     )
+    owner_entities = [fallback_entities[0]]
     try:
-        await message.bot.send_message(OWNER_CHAT_ID, owner_notice)
+        await message.bot.send_message(OWNER_CHAT_ID, owner_notice, entities=owner_entities)
     except Exception:
         pass

@@ -1,7 +1,7 @@
 """Обработчик для личных сообщений."""
 import asyncio
 from aiogram.enums import ChatAction
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import TelegramRetryAfter, TelegramBadRequest
 from aiogram.types import Message
 
 from src.config.settings import OWNER_CHAT_ID
@@ -18,6 +18,10 @@ from src.bot.handlers.chat_context import (
     build_llm_messages,
 )
 from src.bot.handlers.llm_flow import try_streaming_response, format_final_answer
+from src.utils.emoji_utils import make_custom_emoji_payload
+
+ERROR_CUSTOM_EMOJI_ID = "5447644880824181073"
+ERROR_NOTICE_PLAIN_PM = "⚠️ LLM временно недоступен. Попробуй ещё раз через пару минут."
 
 async def handle_private_chat(message: Message, bot_username: str, bot_id: int):
     chat_id = message.chat.id
@@ -137,18 +141,37 @@ async def _handle_llm_error_pm(
 ):
     user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
     _log(f"PM; Бот: LLM недоступен для {user_login_safe}: {llm_error}")
-    fallback_text = "⚠️ LLM временно недоступен. Попробуй ещё раз через пару минут."
+    fallback_text, fallback_entities = make_custom_emoji_payload(
+        ERROR_NOTICE_PLAIN_PM,
+        ERROR_CUSTOM_EMOJI_ID,
+    )
     fallback_sent = False
 
-    if temp_msg:
+    async def _edit_notice() -> bool:
+        if not temp_msg:
+            return False
         try:
             await message.bot.edit_message_text(
                 chat_id=temp_msg.chat.id,
                 message_id=temp_msg.message_id,
                 text=fallback_text,
+                entities=fallback_entities,
+                parse_mode=None,
             )
-            fallback_sent = True
-            temp_msg = None
+            return True
+        except TelegramBadRequest as exc:
+            _log(f"PM; Fallback notice edit custom failed, plain retry: {exc}")
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=temp_msg.chat.id,
+                    message_id=temp_msg.message_id,
+                    text=ERROR_NOTICE_PLAIN_PM,
+                    parse_mode=None,
+                )
+                return True
+            except Exception as exc2:
+                _log(f"PM; Fallback notice edit plain failed: {exc2}")
+                return False
         except TelegramRetryAfter as exc:
             _log(f"PM; Fallback error edit throttled: {exc}")
             try:
@@ -157,22 +180,38 @@ async def _handle_llm_error_pm(
                     chat_id=temp_msg.chat.id,
                     message_id=temp_msg.message_id,
                     text=fallback_text,
+                    entities=fallback_entities,
+                    parse_mode=None,
                 )
-                fallback_sent = True
-                temp_msg = None
+                return True
             except Exception:
-                pass
+                return False
         except Exception:
-            pass
+            return False
+
+    async def _send_notice() -> bool:
+        try:
+            await message.answer(fallback_text, entities=fallback_entities, parse_mode=None)
+            return True
+        except TelegramBadRequest as exc:
+            _log(f"PM; Fallback notice send custom failed, plain retry: {exc}")
+            try:
+                await message.answer(ERROR_NOTICE_PLAIN_PM, parse_mode=None)
+                return True
+            except Exception as exc2:
+                _log(f"PM; Fallback notice plain send failed: {exc2}")
+                return False
+        except Exception:
+            return False
+
+    if temp_msg:
+        fallback_sent = await _edit_notice()
 
     if not fallback_sent:
-        try:
-            await message.answer(fallback_text)
-        except Exception:
-            pass
+        fallback_sent = await _send_notice()
 
     owner_notice = (
-        "⚠️ LLM недоступен\n"
+        f"⚠️ LLM недоступен\n"
         f"От: {user_login_safe} (chat_id={chat_id}, type={message.chat.type})\n"
         f"Текст: {text_for_llm[:500]}\n"
         f"Ошибка: {llm_error}"
