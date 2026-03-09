@@ -7,7 +7,8 @@
 
 ## 📖 Описание
 
-OurMate — это умный Telegram‑бот на базе [aiogram](https://docs.aiogram.dev/) и внешней LLM.
+OurMate — это умный Telegram‑бот на базе [aiogram](https://docs.aiogram.dev/) и внешней LLM. 
+Работает на aiogram 3.26.0 и Telegram Bot API 9.5.
 
 Он умеет:
 - Отвечать на упоминания и личные сообщения с контекстом предыдущих диалогов (LLM)
@@ -16,7 +17,7 @@ OurMate — это умный Telegram‑бот на базе [aiogram](https://
 - Парсить `calendar*.ics`, кешировать расписание и отдавать пары на сегодня/завтра командами или рассылкой в назначенное время (если пары есть)
 - Предоставлять **владельцу расширенные административные команды** для контроля сервера и бота
 
-📺 Для первоначальной настройки LLM и получения API использован сервис _io.net_ — пример развертывания показан в видео: https://youtu.be/5BgVrPteZbQ
+📺 Для работы с LLM используется прямой ключ DeepSeek (endpoint `https://api.deepseek.com/v1/chat/completions`).
 
 ---
 
@@ -174,8 +175,9 @@ OWNER_CHAT_ID=987654321         # ваш личный chat_id
 CHAT_ID=-1001234567890          # chat_id группы для поздравлений
 
 # LLM API настройки
-MODEL=deepseek-ai/DeepSeek-R1-0528
-LLM_API_KEY=io-v2-…             # ключ LLM API
+API_URL=https://api.deepseek.com/v1/chat/completions
+MODEL=deepseek-chat
+LLM_API_KEY=sk-…                # прямой ключ DeepSeek
 
 # Настройки дней рождения
 BIRTHDAYS_FILE=data/birthdays.json

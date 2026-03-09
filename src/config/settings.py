@@ -35,8 +35,8 @@ OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID"))
 CHAT_ID = int(os.getenv("CHAT_ID"))
 
 # ===== LLM API НАСТРОЙКИ =====
-# URL API для работы с языковой моделью
-API_URL = "https://api.intelligence.io.solutions/api/v1/chat/completions"
+# URL API для работы с языковой моделью (по умолчанию DeepSeek прямой endpoint)
+API_URL = _get_env("API_URL", "https://api.deepseek.com/v1/chat/completions", log_default=True)
 
 # Модель для использования (например, "deepseek-ai/DeepSeek-R1-0528")
 MODEL = os.getenv("MODEL")
