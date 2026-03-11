@@ -4,12 +4,15 @@
 """
 import asyncio
 import subprocess
+import shutil
 from aiogram.types import Message
 
-from src.config.settings import OWNER_CHAT_ID
+from src.config.settings import OWNER_CHAT_ID, ENV
 from src.bot.services.system_service import system_service
 from src.bot.services.birthday_service import birthday_service
 from src.utils.log_utils import log_with_ts as _log
+
+IS_DEV = str(ENV).strip().lower() in ("dev", "development")
 
 # Набор команд, доступных только владельцу
 OWNER_COMMANDS = {
@@ -56,17 +59,34 @@ async def handle_owner_command(message: Message) -> bool:
         return True
     
     elif text == "stop bot":
+        if IS_DEV:
+            await message.answer(
+                f"<tg-emoji emoji-id=\"5447644880824181073\">⚠️</tg-emoji> <b>Dev-режим:</b> остановка через команду недоступна локально.\n"
+                "Останови процесс вручную в терминале.",
+                parse_mode="HTML",
+            )
+            return True
+
         # Сначала сообщаем владельцу, затем останавливаем службу в фоне без логов/ответов
         await message.answer("🛑 <b>Бот останавливается...</b>", parse_mode="HTML")
+
+        if shutil.which("systemctl"):
+            stop_command = "systemctl stop mybot"
+        elif shutil.which("service"):
+            stop_command = "service mybot stop"
+        else:
+            stop_command = "echo 'Не найден подходящий способ остановки'"
+
         async def _stop_service():
             try:
                 # Фоновая остановка без захвата вывода, без исключений
                 await asyncio.to_thread(
                     subprocess.run,
-                    "systemctl stop mybot",
+                    stop_command,
                     shell=True,
                     check=False,
-                    capture_output=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                     text=True,
                 )
             except Exception:

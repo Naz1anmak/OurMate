@@ -40,7 +40,8 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
 
     user_login = extract_user_login(message, text, bot_username)
     user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
-    _log(f"GR; От {user_login_safe}: {text_for_llm}")
+    full_name = message.from_user.full_name or ""
+    _log(f"GR; От {user_login_safe} ({full_name}): {text_for_llm}")
 
     first_name = get_first_name_by_user_id(message.from_user.id, birthday_service.users)
     existing_context = context_service.get_context(chat_id)
@@ -105,7 +106,8 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
         return
 
     final_answer = format_final_answer(first_name, answer_body, has_context)
-    context_service.save_context(chat_id, text_for_llm, final_answer)
+    # В контекст сохраняем ответ без префикса имени
+    context_service.save_context(chat_id, text_for_llm, format_final_answer("", answer_body, has_context))
     safe_answer = _trim_html(render_html_with_code(final_answer))
 
     if temp_msg:

@@ -33,7 +33,8 @@ async def handle_private_chat(message: Message, bot_username: str, bot_id: int):
 
     user_login = extract_user_login(message, text, bot_username)
     user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
-    _log(f"PM; От {user_login_safe}: {text_for_llm}")
+    full_name = message.from_user.full_name or ""
+    _log(f"PM; От {user_login_safe} ({full_name}): {text_for_llm}")
 
     first_name = get_first_name_by_user_id(message.from_user.id, birthday_service.users)
     existing_context = context_service.get_context(chat_id)
@@ -51,6 +52,7 @@ async def handle_private_chat(message: Message, bot_username: str, bot_id: int):
     if streamed:
         return
 
+    _log(f"PM; Stream не прошёл — запускаю полный запрос для {user_login_safe}")
     stop_event = asyncio.Event()
 
     async def _typing_indicator():

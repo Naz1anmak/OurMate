@@ -118,6 +118,7 @@ async def try_streaming_response(
     user_login: str,
     text_for_llm: str,
     has_context: bool,
+    user_id: int | None = None,
     min_edit_interval_group: float = 1.2,
     min_edit_interval_pm: float = 0.8,
     min_edit_chars_group: int = 110,
@@ -229,7 +230,7 @@ async def try_streaming_response(
             _log_dev(f"{tag}; Notice edit unexpected failure: {exc}")
             return False
 
-    buffer_prefix = f"{first_name}, " if (first_name and not has_context) else ""
+    buffer_prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
     buffer = buffer_prefix
     last_sent_len = len(buffer)
     lowercase_after_prefix = bool(buffer_prefix)
@@ -258,9 +259,7 @@ async def try_streaming_response(
 
             # Если совсем нет первых токенов дольше порога — отказываемся от стрима
             if first_token_at is None and (time.monotonic() - start_time) >= max_first_token_wait:
-                _log_dev(f"{tag}; Stream abort: no tokens for {max_first_token_wait:.1f}s")
-                return False, placeholder_msg
-
+                  _log(f"{tag}; Stream abort: no tokens for {max_first_token_wait:.1f}s, fallback")
             buffer += token
             if first_token_at is None:
                 first_token_at = time.monotonic()
@@ -351,7 +350,7 @@ async def try_streaming_response(
                     _log_dev(f"{tag}; Draft stream edit throttled: {exc}")
                     edit_block_until = time.monotonic() + exc.retry_after
                 except Exception as exc:
-                    _log_dev(f"{tag}; Draft stream edit failed, fallback: {exc}")
+                    _log(f"{tag}; Stream edit failed, fallback: {exc}")
                     return False, placeholder_msg
                 else:
                     last_sent_len = len(flush_buffer)
@@ -368,7 +367,10 @@ async def try_streaming_response(
 
         final_answer = format_final_answer(first_name, buffer, has_context)
         safe_answer = _trim_html(render_html_with_code(final_answer))
-        context_service.save_context(message.chat.id, text_for_llm, final_answer)
+        # В группах сохраняем в контекст ответ без префикса имени,
+        # чтобы история не засорялась чужими именами
+        context_to_save = format_final_answer("", buffer, has_context) if is_group_chat else final_answer
+        context_service.save_context(message.chat.id, text_for_llm, context_to_save)
         _log(f"{tag}; Бот (LLM stream) для {user_login_safe}: {final_answer}")
 
         if placeholder_msg:
@@ -445,7 +447,7 @@ async def try_streaming_response(
                     sent_any = True
                 return True, placeholder_msg
             except Exception as exc2:
-                _log_dev(f"{tag}; Draft stream plain send failed: {exc2}")
+                _log(f"{tag}; Stream plain send failed, fallback: {exc2}")
                 return False, placeholder_msg
         except TelegramRetryAfter as exc:
             tag = "GR" if is_group_chat else "PM"
@@ -460,13 +462,12 @@ async def try_streaming_response(
                     sent_any = True
                 return True, placeholder_msg
             except Exception as exc:
-                _log_dev(f"{tag}; Draft stream send failed after retry, fallback: {exc}")
+                _log(f"{tag}; Stream send failed after retry, fallback: {exc}")
                 return False, placeholder_msg
         except Exception as exc:
             tag = "GR" if is_group_chat else "PM"
-            _log_dev(f"{tag}; Draft stream final send failed, fallback: {exc}")
+            _log(f"{tag}; Stream final send failed, fallback: {exc}")
             return False, placeholder_msg
-
     except LLMServiceError as exc:
         tag = "GR" if is_group_chat else "PM"
         _log_dev(f"{tag}; Stream error, sending notice only: {exc}")
@@ -498,7 +499,7 @@ async def try_streaming_response(
         # Если уже что-то отправили в поток, не дублируем ответ во fallback
         if sent_any:
             return True, placeholder_msg
-        _log_dev(f"{tag}; Stream unexpected error, fallback: {exc}")
+        _log(f"{tag}; Stream unexpected error, fallback: {exc}")
         return False, placeholder_msg
     finally:
         try:

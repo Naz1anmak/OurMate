@@ -198,7 +198,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
             _log(
                 f"{tag}; Бот: пользователь не найден в списке дней рождения по запросу '{search_value}' (запрос от {user_login_log} ({message.from_user.full_name}))"
             )
-            await message.answer("Пользователь не найден в списке дней рождения")
+            await message.answer("Пользователь не найден в списке дней рождения.")
         return True
 
     if normalized_text == "пары" and ctx["should_process_schedule_command"]:

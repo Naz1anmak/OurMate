@@ -5,8 +5,12 @@
 import subprocess
 import logging
 import html
+import platform
+import shutil
 
 EMOJI_ID_CROSS = "5465665476971471368"
+EMOJI_ID_COMPUTER = "5431376038628171216"
+EMOJI_ID_STATUS = "5231200819986047254"
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +44,11 @@ class SystemService:
             if result.returncode == 0:
                 return result.stdout.strip(), True
             else:
-                error_msg = f"Ошибка выполнения команды: {result.stderr.strip()}"
-                logger.error(error_msg)
+                stderr = (result.stderr or "").strip()
+                stdout = (result.stdout or "").strip()
+                details = stderr or stdout or f"код возврата {result.returncode}, stderr пустой"
+                error_msg = f"Ошибка выполнения команды (rc={result.returncode}): {details}"
+                logger.warning("Команда завершилась с ошибкой: %s | command=%s", error_msg, command)
                 return error_msg, False
                 
         except subprocess.TimeoutExpired:
@@ -184,7 +191,14 @@ class SystemService:
         Returns:
             str: Статус бота
         """
-        command = "systemctl status mybot --no-pager --lines=0"
+        if shutil.which("systemctl"):
+            command = "systemctl status mybot --no-pager --lines=0"
+        elif platform.system() == "Darwin":
+            command = "launchctl list | grep -i mybot || echo 'Служба mybot не найдена в launchctl'"
+        elif shutil.which("service"):
+            command = "service mybot status || echo 'Служба mybot не найдена через service'"
+        else:
+            command = "echo 'Не найден подходящий менеджер служб (systemctl/service/launchctl)'"
         result, success = SystemService.execute_command(command)
         
         if success and result:
@@ -193,7 +207,7 @@ class SystemService:
             max_len = 4000
             if len(escaped) > max_len:
                 escaped = "... (статус обрезан, показан конец)\n" + escaped[-max_len:]
-            return f"📊 <b>Статус бота:</b>\n\n<code>{escaped}</code>"
+            return f"<tg-emoji emoji-id=\"{EMOJI_ID_STATUS}\">📊</tg-emoji> <b>Статус бота:</b>\n\n<code>{escaped}</code>"
         else:
             return f"<tg-emoji emoji-id=\"{EMOJI_ID_CROSS}\">❌</tg-emoji> <b>Ошибка получения статуса:</b>\n\n{result}"
     
@@ -205,11 +219,17 @@ class SystemService:
         Returns:
             str: Информация о системе
         """
+        is_macos = platform.system() == "Darwin"
+        memory_command = "vm_stat | head -n 12" if is_macos else "free -h"
+
         commands = [
             ("uptime", "Время работы системы"),
-            ("free -h", "Использование памяти"),
+            (memory_command, "Использование памяти"),
             ("df -h /", "Использование диска"),
-            ("ps aux | grep mybot | grep -v grep", "Процессы бота")
+            (
+                "pgrep -af 'mybot|OurMate_bot|python.*main.py' || echo 'Процессы бота не найдены'",
+                "Процессы бота",
+            ),
         ]
         
         result_parts = []
@@ -219,7 +239,7 @@ class SystemService:
                 result_parts.append(f"<b>{description}:</b>\n<code>{output}</code>")
         
         if result_parts:
-            return "🖥️ <b>Информация о системе:</b>\n\n" + "\n\n".join(result_parts)
+            return f"<tg-emoji emoji-id=\"{EMOJI_ID_COMPUTER}\">🖥️</tg-emoji> <b>Информация о системе:</b>\n\n" + "\n\n".join(result_parts)
         else:
             return f"<tg-emoji emoji-id=\"{EMOJI_ID_CROSS}\">❌</tg-emoji> <b>Ошибка получения информации о системе</b>"
 

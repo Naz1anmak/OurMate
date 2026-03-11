@@ -96,7 +96,7 @@ def strip_bot_mention(text: str, bot_username: str) -> str:
     return text
 
 
-def build_llm_messages(chat_id: int, current_text: str) -> list:
+def build_llm_messages(chat_id: int, current_text: str, user_id: int | None = None) -> list:
     """Формирует список сообщений для отправки в LLM."""
     messages = [{"role": "system", "content": PROMPT_TEMPLATE_CHAT}]
 

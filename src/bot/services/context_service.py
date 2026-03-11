@@ -11,37 +11,19 @@ class ContextService:
     Хранит последние пары вопрос–ответ для каждого чата с ограничением по времени.
     """
     
-    def __init__(self, ttl_seconds: int = 24 * 60 * 60, max_pairs: int = 2):
+    def __init__(self, group_ttl_seconds: int = 24 * 60 * 60, max_pairs: int = 3):
         # Словарь для хранения контекста: chat_id -> список пар (вопрос, ответ, timestamp)
         self._context_store: Dict[int, List[Tuple[str, str, float]]] = {}
-        self._ttl_seconds = ttl_seconds
+        self._group_ttl_seconds = group_ttl_seconds
         self._max_pairs = max_pairs
-    
+
     def get_context(self, chat_id: int) -> Optional[List[Tuple[str, str]]]:
-        """
-        Получает контекст для указанного чата в пределах TTL.
-        
-        Args:
-            chat_id (int): ID чата
-            
-        Returns:
-            Optional[List[Tuple[str, str]]]: Список пар (вопрос, ответ) или None, если контекста нет
-        """
         fresh_pairs = self._prune_and_get(chat_id)
         if not fresh_pairs:
             return None
         return [(q, a) for q, a, _ in fresh_pairs]
-    
+
     def save_context(self, chat_id: int, question: str, answer: str) -> None:
-        """
-        Сохраняет контекст для указанного чата.
-        Сохраняет до `max_pairs` последних пар внутри окна TTL.
-        
-        Args:
-            chat_id (int): ID чата
-            question (str): Вопрос пользователя
-            answer (str): Ответ бота
-        """
         now = time.time()
         current_pairs = self._prune_and_get(chat_id)
         current_pairs.append((question, answer, now))
@@ -77,11 +59,21 @@ class ContextService:
         """
         self._context_store.clear()
 
+    def _get_ttl(self, chat_id: int) -> int | None:
+        """Возвращает TTL: None (бессрочно) для ЛС, group_ttl_seconds для групп."""
+        if chat_id > 0:  # ЛС — положительный user_id
+            return None
+        return self._group_ttl_seconds
+
     def _prune_and_get(self, chat_id: int) -> List[Tuple[str, str, float]]:
         """Удаляет устаревшие пары и возвращает свежие для чата."""
         now = time.time()
         pairs = self._context_store.get(chat_id, [])
-        fresh = [item for item in pairs if now - item[2] <= self._ttl_seconds]
+        ttl = self._get_ttl(chat_id)
+        if ttl is None:
+            fresh = list(pairs)
+        else:
+            fresh = [item for item in pairs if now - item[2] <= ttl]
         self._context_store[chat_id] = fresh
         return fresh
 
