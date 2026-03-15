@@ -219,10 +219,15 @@ class BirthdayScheduler:
 
     async def _refresh_access_flags(self) -> None:
         """Обновляет interacted_with_bot по факту доступности пользователя для бота."""
+        import ssl
+        from aiohttp import ClientOSError
+        from aiogram.exceptions import TelegramForbiddenError
         changed = False
         deactivated = []
         total_users = 0
         snapshot_before = _load_active_snapshot()
+        network_errors = 0
+        other_errors = 0
         for user in birthday_service.users:
             if user.user_id is None:
                 continue
@@ -230,11 +235,16 @@ class BirthdayScheduler:
             try:
                 # Неблокирующий пинг: если бот заблокирован, получим исключение
                 await self.bot.send_chat_action(user.user_id, action=ChatAction.TYPING)
-            except Exception:
+            except TelegramForbiddenError:
+                # Только если Telegram явно вернул 403 Forbidden (бот заблокирован)
                 if user.interacted_with_bot:
                     user.interacted_with_bot = False
                     changed = True
                     deactivated.append(user)
+            except (ClientOSError, ssl.SSLError):
+                network_errors += 1
+            except Exception:
+                other_errors += 1
             else:
                 # Не включаем обратно автоматически
                 pass
@@ -272,7 +282,14 @@ class BirthdayScheduler:
                 delta_parts.append(" | ".join(combined))
 
         changes = f" ({' | '.join(delta_parts)})" if delta_parts else ""
-        logger.info("Подписаны на поздравления: %s/%s%s", active_count, total_users, changes)
+        logger.info(
+            "Подписаны на поздравления: %s/%s%s; сетевых ошибок: %s; прочих ошибок: %s",
+            active_count,
+            total_users,
+            changes,
+            network_errors,
+            other_errors,
+        )
 
         _save_active_snapshot(active_users_now)
 

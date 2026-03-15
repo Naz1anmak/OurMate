@@ -50,16 +50,38 @@ async def main():
         register_handlers(dp)
         logger.info("Обработчики зарегистрированы")
 
-        # Удаляем вебхук и запускаем планировщик
-        await bot(DeleteWebhook(drop_pending_updates=True))
+        # Retry для DeleteWebhook
+        max_retries = 5
+        for attempt in range(1, max_retries + 1):
+            try:
+                await bot(DeleteWebhook(drop_pending_updates=True))
+                logger.info("DeleteWebhook успешно выполнен")
+                break
+            except Exception as exc:
+                logger.warning(f"Ошибка DeleteWebhook (попытка {attempt}/{max_retries}): {exc}")
+                if attempt == max_retries:
+                    logger.error("DeleteWebhook не удалось после всех попыток, продолжаем запуск.")
+                else:
+                    await asyncio.sleep(5 * attempt)
+
         start_birthday_scheduler(bot)
         start_schedule_scheduler(bot)
         start_pinned_schedule_scheduler(bot)
         logger.info("Планировщики запущены")
 
-        # Запускаем поллинг (получение обновлений)
-        logger.info("Бот запущен и готов к работе")
-        await dp.start_polling(bot)
+        # Бесконечный polling с backoff: задержка растет на 10 секунд каждую попытку, максимум 20 минут
+        attempt = 1
+        while True:
+            try:
+                logger.info("Бот запущен и готов к работе")
+                await dp.start_polling(bot)
+                break  # polling завершился штатно
+            except Exception as exc:
+                logger.warning(f"Ошибка polling (попытка {attempt}): {exc}")
+                delay = min(10 * attempt, 1200)  # максимум 20 минут
+                logger.info(f"Следующая попытка polling через {delay} секунд")
+                await asyncio.sleep(delay)
+                attempt += 1
     finally:
         # Корректно закрываем HTTP-сессию, даже при Ctrl+C
         await bot.session.close()

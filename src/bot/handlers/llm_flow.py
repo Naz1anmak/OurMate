@@ -259,7 +259,8 @@ async def try_streaming_response(
 
             # Если совсем нет первых токенов дольше порога — отказываемся от стрима
             if first_token_at is None and (time.monotonic() - start_time) >= max_first_token_wait:
-                  _log(f"{tag}; Stream abort: no tokens for {max_first_token_wait:.1f}s, fallback")
+                _log(f"{tag}; Stream abort: no tokens for {max_first_token_wait:.1f}s, fallback")
+                return False, placeholder_msg
             buffer += token
             if first_token_at is None:
                 first_token_at = time.monotonic()
