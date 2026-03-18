@@ -11,6 +11,8 @@ OurMate — это умный Telegram‑бот на базе [aiogram](https://
 
 Работает на aiogram 3.26.0 и Telegram Bot API 9.5.
 
+Поддерживает работу через HTTP/SOCKS5‑прокси для Telegram Bot API (Для macOS рекомендуется использовать Python, установленный через Homebrew, чтобы избежать проблем с сертификатами).
+
 Он умеет:
 - Отвечать на упоминания и личные сообщения с контекстом предыдущих диалогов (LLM)
 - Ежедневно в заданное время проверять JSON-файл с днями рождения и **поздравлять в группе**
@@ -52,6 +54,7 @@ OurMate — это умный Telegram‑бот на базе [aiogram](https://
 - Все токены и ключи хранятся в одном файле
 - Промпты для чата и поздравлений можно менять без правки кода
 - Установка времени для уведомлений
+- Поддержка прокси для Telegram Bot API
 
 ---
 
@@ -134,7 +137,7 @@ OurMate_bot/
 │   ├── birthdays.json                       # Файл с днями рождения
 │   ├── calendar*.ics                        # (опционально) файлы расписания
 │   └── cache/                               # Кеш
-│       ├── last_birthday_greeting.txt       # Дата последнего поздравление (дедупликация)
+│       ├── last_birthday_greeting.txt       # Дата последнего поздравления (дедупликация)
 │       ├── schedule_cache.json              # Кеш расписания, собранный из calendar*.ics
 │       └── pinned_schedule_id.txt           # Сообщение с закрепом расписания (message_id)
 │       └── active_users_snapshot.json       # Снапшот подписчиков поздравлений
@@ -173,21 +176,25 @@ pip install -r requirements.txt
 
 ```ini
 # Telegram настройки
-BOT_TOKEN=123456789:AA…         # токен вашего Telegram-бота
-OWNER_CHAT_ID=987654321         # ваш личный chat_id
-CHAT_ID=-1001234567890          # chat_id группы для поздравлений
+BOT_TOKEN=123456789:AA…             # токен вашего Telegram-бота
+OWNER_CHAT_ID=987654321             # ваш личный chat_id
+CHAT_ID=-1001234567890              # chat_id группы для поздравлений
+
+# Поддержка прокси для Telegram Bot API (формат login:password@host:port или host:port):
+TELEGRAM_PROXY_URL=172...35:443     # адрес прокси 
+TELEGRAM_PROXY_ENABLED=true         # включить/выключить прокси (true/false)
 
 # LLM API настройки
 API_URL=https://api.deepseek.com/v1/chat/completions
 MODEL=deepseek-chat
-LLM_API_KEY=sk-…                # прямой ключ DeepSeek
+LLM_API_KEY=sk-…                    # прямой ключ DeepSeek
 
 # Настройки дней рождения
 BIRTHDAYS_FILE=data/birthdays.json
 LAST_BIRTHDAY_GREETING_FILE=data/cache/last_birthday_greeting.txt
 
 # Настройки расписания дней рождения
-TIMEZONE=Europe/Moscow          # время для проверки и отправки поздравлений
+TIMEZONE=Europe/Moscow              # время для проверки и отправки поздравлений
 SEND_HOUR=10
 SEND_MINUTE=0
 
@@ -205,11 +212,11 @@ PINNED_SCHEDULE_UPDATE_MINUTE=0     # время обновления закре
 PINNED_SCHEDULE_MESSAGE_FILE=data/cache/pinned_schedule_id.txt
 
 # Промпты
-# промпт для ответов в лс и беседе
+# для ответов в лс и беседе
 PROMPT_TEMPLATE_CHAT='Ты — бот, отвечающий…'         
-# промпт для действующих учащихся 
+# для действующих учащихся 
 PROMPT_TEMPLATE_BIRTHDAY_ACTIVE='Поздравь активных студентов {mentions}…'  
-# промпт для отчисленных (по умолчанию берёт ACTIVE)
+# для отчисленных (по умолчанию берёт ACTIVE)
 PROMPT_TEMPLATE_BIRTHDAY_FORMER='Поздравь отчисленных {mentions}…'          
 
 # Окружение

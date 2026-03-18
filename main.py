@@ -2,7 +2,6 @@
 Главный файл приложения OurMate Bot.
 Точка входа для запуска Telegram бота.
 """
-import os
 import asyncio
 import logging
 
@@ -24,9 +23,10 @@ class _AiogramSleepFilter(logging.Filter):
 logging.getLogger("aiogram.dispatcher").addFilter(_AiogramSleepFilter())
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.methods import DeleteWebhook
 
-from src.config.settings import TOKEN
+from src.config.settings import TOKEN, TELEGRAM_PROXY_URL, TELEGRAM_PROXY_ENABLED
 from src.bot.handlers import register_handlers
 from src.bot.scheduler.birthday_scheduler import start_birthday_scheduler
 from src.bot.scheduler.schedule_scheduler import start_schedule_scheduler
@@ -39,10 +39,18 @@ async def main():
     Главная функция приложения.
     Инициализирует и запускает бота.
     """
-    logger.info("Запуск OurMate Bot...")
+    logger.info("Запуск бота...")
     
     # Создаем экземпляры бота и диспетчера
-    bot = Bot(TOKEN)
+    if TELEGRAM_PROXY_ENABLED and TELEGRAM_PROXY_URL:
+        logger.info(f"Using proxy: {TELEGRAM_PROXY_URL}")
+        proxy_url = TELEGRAM_PROXY_URL.strip()
+        if not proxy_url.startswith("socks5://"):
+            proxy_url = f"socks5://{proxy_url}"
+        session = AiohttpSession(proxy=proxy_url)
+        bot = Bot(TOKEN, session=session)
+    else:
+        bot = Bot(TOKEN)
     dp = Dispatcher()
 
     try:

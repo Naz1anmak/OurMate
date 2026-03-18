@@ -34,6 +34,10 @@ OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID"))
 # ID группы для отправки поздравлений
 CHAT_ID = int(os.getenv("CHAT_ID"))
 
+# Опциональный прокси для Telegram Bot API (пример: login:password@host:port или host:port)
+TELEGRAM_PROXY_URL = _get_env("TELEGRAM_PROXY_URL", "", log_default=False).strip()
+TELEGRAM_PROXY_ENABLED = _get_env("TELEGRAM_PROXY_ENABLED", "false", log_default=False).lower() == "true"
+
 # ===== LLM API НАСТРОЙКИ =====
 # URL API для работы с языковой моделью (по умолчанию DeepSeek прямой endpoint)
 API_URL = _get_env("API_URL", "https://api.deepseek.com/v1/chat/completions", log_default=True)
