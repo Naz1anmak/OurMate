@@ -32,9 +32,12 @@ async def handle_private_chat(message: Message, bot_username: str, bot_id: int):
         return
 
     user_login = extract_user_login(message, text, bot_username)
-    user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
-    full_name = message.from_user.full_name or ""
-    _log(f"PM; От {user_login_safe} ({full_name}): {text_for_llm}")
+    user_name = message.from_user.full_name or str(message.from_user.id)
+    user_login_safe = user_login or user_name
+    if user_login:
+        _log(f"PM; От {user_login} ({user_name}): {text_for_llm}")
+    else:
+        _log(f"PM; От {user_name}: {text_for_llm}")
 
     first_name = get_first_name_by_user_id(message.from_user.id, birthday_service.users)
     existing_context = context_service.get_context(chat_id)

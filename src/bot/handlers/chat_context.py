@@ -95,6 +95,46 @@ def strip_bot_mention(text: str, bot_username: str) -> str:
         return text[len(bot_username):].strip(" ,")
     return text
 
+def build_group_llm_input(
+    message: Message,
+    current_text: str,
+    bot_id: int,
+    max_reply_len: int = 1200,
+) -> str:
+    """Собирает вход в LLM для групп: добавляет контекст реплая только на чужие сообщения."""
+    base_text = (current_text or "").strip()
+    reply = message.reply_to_message
+    if not reply:
+        return base_text
+
+    # Если это reply на сообщение самого бота, дополнительный reply-context не нужен.
+    if reply.from_user and reply.from_user.id == bot_id:
+        return base_text
+
+    reply_text = ((reply.text or reply.caption) or "").strip()
+    if not reply_text:
+        return base_text
+
+    if len(reply_text) > max_reply_len:
+        reply_text = reply_text[:max_reply_len].rstrip() + "…"
+
+    reply_author = None
+    if reply.from_user:
+        reply_author = reply.from_user.full_name or (f"@{reply.from_user.username}" if reply.from_user.username else None)
+    reply_author = reply_author or "пользователь"
+
+    if base_text:
+        return (
+            f"Контекст реплая от {reply_author}:\n"
+            f"{reply_text}\n\n"
+            f"Текущее сообщение: {base_text}"
+        )
+
+    return (
+        f"Контекст реплая от {reply_author}:\n"
+        f"{reply_text}\n\n"
+        "Пользователь обратился к тебе в реплае без дополнительного текста."
+    )
 
 def build_llm_messages(chat_id: int, current_text: str, user_id: int | None = None) -> list:
     """Формирует список сообщений для отправки в LLM."""
