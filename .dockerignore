@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+.env
+.env.*
+README.md
+data/
+.idea/
+.vscode/
+*.log

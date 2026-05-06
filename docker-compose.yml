@@ -1,0 +1,18 @@
+services:
+  bot:
+    container_name: ourmate-bot
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: Europe/Moscow
+    volumes:
+      # Папка с birthdays.json, кэшами планировщиков и .ics-файлами расписания.
+      # Bind-mount, чтобы можно было править birthdays.json и подкидывать .ics
+      # прямо на VPS, без захода в контейнер.
+      - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
