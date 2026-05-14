@@ -41,6 +41,7 @@ class E:
     # ── 🛠 Системные / админские ───────────────────────────────
     COMPUTER = Emoji("🖥️", premium_id="5431376038628171216")
     STATUS = Emoji("📊", premium_id="5231200819986047254")
+    CLIPBOARD = Emoji("📋", premium_id="5258389041006518073")
     BOOKS = Emoji("📚", premium_id="5373098009640836781")
     PARTY = Emoji("🎉", premium_id="5436040291507247633")
 

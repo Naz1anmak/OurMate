@@ -257,15 +257,19 @@ make tail      # хвост логов с follow (Ctrl+C — выйти)
 
 ---
 
-## 📋 Типы логов
+## 📋 Logs
 
-Префиксы в текстовых сообщениях логов помогают быстро понимать источник события:
+### Маркеры в строках
+
+Префиксы помогают быстро понимать источник события:
 
 - **PM** — Personal Message (личные сообщения)
 - **GR** — Group Reply (ответы в группе)
 - **FP** — First Ping (команды `/start`)
 
-Сам формат строки определяется `src/utils/logging.py::configure_logging` и одинаков для нашего кода и сторонних библиотек:
+### Формат и уровни
+
+Формат задаётся `src/utils/logging.py::configure_logging` и одинаков для нашего кода и сторонних библиотек:
 
 ```
 2026-05-14 12:34:56 [INFO    ] src.bot.handlers.commands: FP; От @user (Имя): /start
@@ -273,13 +277,17 @@ make tail      # хвост логов с follow (Ctrl+C — выйти)
 
 Уровень управляется переменной `LOG_LEVEL` (`INFO` по умолчанию). Для подробной диагностики стрим-логики удобно временно ставить `LOG_LEVEL=DEBUG`.
 
----
+### Куда пишутся
 
-## 🧾 Работа с логами (команды владельца)
-
-- Бот пишет логи в `data/logs/bot.log` (`RotatingFileHandler`, до 10 МБ × 5 файлов). Эта папка — bind-volume, логи переживают рестарты контейнера.
+- В файл `data/logs/bot.log` (`RotatingFileHandler`, до 10 МБ × 5 файлов). Это bind-volume, логи переживают рестарты контейнера.
 - Параллельно весь вывод идёт в stdout — `make tail` / `make logs` показывают ровно то же самое через docker-driver.
-- Команда `logs` шлёт владельцу краткие строки с маркерами PM/GR/FP, `full logs` — последние 200 строк лога целиком. Обе режут до 4000 символов Telegram-лимита.
+
+### Команды владельца
+
+- `logs` — краткие строки с маркерами PM/GR/FP.
+- `full logs` — последние 200 строк лога целиком.
+
+Обе обрезаются до 4000 символов Telegram-лимита.
 
 ---
 
@@ -333,9 +341,12 @@ newgrp docker        # или перелогиниться
 git clone https://github.com/Naz1anmak/OurMate.git bot && cd bot
 make env                 # создаст .env из .env.example
 $EDITOR .env             # заполнить значения (BOT_TOKEN, OWNER_CHAT_ID, CHAT_ID, LLM_API_KEY, промпты)
+mkdir -p data/logs && sudo chown -R 1000:1000 data   # ⚠️ см. ниже
 make build && make up
 make tail                # убедиться, что появилась строка «Бот запущен и готов к работе»
 ```
+
+> **Права на `data/`.** Внутри контейнера бот работает под пользователем `app` (UID 1000), а `./data` монтируется как bind-volume с хоста. Если папка принадлежит `root`, бот не сможет создать `data/logs/bot.log` (`[Errno 13] Permission denied: 'data/logs'` в `make tail`) и не сможет обновлять `data/birthdays.json`. Один раз выполнить `sudo chown -R 1000:1000 data` решает проблему навсегда. Тот же фикс актуален, если ты впервые обновляешься со старой схемы (логи через systemd/journald) — папка `data/logs/` появилась только в текущей версии.
 
 Контейнер автоматически перезапускается при сбое (`restart: unless-stopped` в `docker-compose.yml`). Логи сервиса смотрите через `make tail` или `make logs`; они же дублируются в `data/logs/bot.log` (10 МБ × 5 файлов ротации), что переживает рестарт контейнера.
 
@@ -363,5 +374,7 @@ make tail
 ```
 
 Затем напиши боту `/start` в ЛС — в логе должен появиться `FP; От … /start`, а в твоей личке владельца — уведомление о новом активации.
+
+Если в `make tail` всплыло `[WARNING ] root: Не удалось открыть data/logs/bot.log для логов: [Errno 13] Permission denied: 'data/logs'` — папка `data/` принадлежит не UID 1000. Выполните `sudo chown -R 1000:1000 data` и `make restart`.
 
 ---
