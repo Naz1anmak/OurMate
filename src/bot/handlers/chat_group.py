@@ -30,7 +30,7 @@ from src.bot.handlers.llm_flow import (
 )
 from src.bot.handlers.placeholder_variants import pick_placeholder_variant
 
-FALLBACK_EDIT_TIMEOUT_SEC = 12.0
+FALLBACK_EDIT_TIMEOUT_SEC = 6.0
 _PROCESSED_GROUP_MESSAGES: dict[tuple[int, int], float] = {}
 _PROCESSED_GROUP_TTL_SECONDS = 300.0
 _LAST_GROUP_DEDUP_CLEANUP_TS = 0.0

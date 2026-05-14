@@ -39,7 +39,7 @@ class LLMService:
                 API_URL,
                 headers=API_HEADERS,
                 json={"model": MODEL, "messages": messages},
-                timeout=45,
+                timeout=30,
             )
         except RequestException as exc:
             raise LLMServiceError(f"HTTP error while calling LLM: {exc}") from exc
@@ -72,8 +72,8 @@ class LLMService:
             "stream_options": {"include_usage": True},
         }
 
-        # Таймауты стрима: до 90с на весь ответ и до 12с между чанками
-        timeout = aiohttp.ClientTimeout(total=90, sock_read=12)
+        # Таймауты стрима: до 60с на весь ответ и до 8с между чанками
+        timeout = aiohttp.ClientTimeout(total=60, sock_read=8)
         ssl_context = ssl.create_default_context(cafile=certifi.where())
         try:
             async with aiohttp.ClientSession(timeout=timeout, connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:

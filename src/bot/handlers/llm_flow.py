@@ -112,7 +112,7 @@ async def try_streaming_response(
     min_edit_chars_pm: int = 50,
     max_edits_group: int = 15,
     max_first_token_wait: float = 15.0,
-    stream_edit_timeout_sec: float = 12.0,
+    stream_edit_timeout_sec: float = 6.0,
 ) -> tuple[bool, Message | None]:
     """Пытается отправить стрим-ответ (ЛС и группы), редактируя одно сообщение.
 

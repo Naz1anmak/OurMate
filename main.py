@@ -19,44 +19,24 @@ from src.bot.scheduler.pinned_schedule_scheduler import start_pinned_schedule_sc
 logger = logging.getLogger(__name__)
 
 
-async def _delete_webhook_with_retry(bot, max_retries: int = 5) -> None:
-    for attempt in range(1, max_retries + 1):
-        try:
-            await bot(DeleteWebhook(drop_pending_updates=True))
-            logger.info("DeleteWebhook успешно выполнен")
-            return
-        except Exception as exc:
-            logger.warning("Ошибка DeleteWebhook (попытка %s/%s): %s", attempt, max_retries, exc)
-            if attempt == max_retries:
-                logger.error("DeleteWebhook не удалось после всех попыток, продолжаем запуск.")
-                return
-            await asyncio.sleep(5 * attempt)
-
-
 async def main() -> None:
     logger.info("Запуск бота...")
     bot, dp = build_bot_and_dispatcher()
 
     try:
-        await _delete_webhook_with_retry(bot)
+        try:
+            await bot(DeleteWebhook(drop_pending_updates=True))
+            logger.info("DeleteWebhook успешно выполнен")
+        except Exception as exc:
+            logger.warning("DeleteWebhook не выполнен, продолжаем запуск: %s", exc)
 
         start_birthday_scheduler(bot)
         start_schedule_scheduler(bot)
         start_pinned_schedule_scheduler(bot)
         logger.info("Планировщики запущены")
 
-        # Бесконечный polling с backoff: 10с * attempt, максимум 20 минут
-        attempt = 1
-        while True:
-            try:
-                logger.info("Бот запущен и готов к работе")
-                await dp.start_polling(bot)
-                break  # polling завершился штатно
-            except Exception as exc:
-                delay = min(10 * attempt, 1200)
-                logger.warning("Ошибка polling (попытка %s): %s; повтор через %sс", attempt, exc, delay)
-                await asyncio.sleep(delay)
-                attempt += 1
+        logger.info("Бот запущен и готов к работе")
+        await dp.start_polling(bot)
     finally:
         await bot.session.close()
 
