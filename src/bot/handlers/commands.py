@@ -2,18 +2,15 @@
 Обработчики команд бота.
 Содержит функции для обработки команд типа /start, /help и т.д.
 """
+import logging
+
 from aiogram import types
 from aiogram.exceptions import TelegramNetworkError, TelegramBadRequest
 from aiogram.filters import Command
 
 from src.bot.services.birthday_service import birthday_service
-from src.utils.log_utils import log_with_ts as _log
 
-EMOJI_ID_ROBOT = "5372981976804366741"
-EMOJI_ID_CHAT = "5443038326535759644"
-EMOJI_ID_INFO = "5220197908342648622"
-EMOJI_ID_LINK = "5375129357373165375"
-EMOJI_ID_START = "5406809207947142040"
+logger = logging.getLogger(__name__)
 
 async def cmd_start(message: types.Message):
     """
@@ -27,9 +24,9 @@ async def cmd_start(message: types.Message):
     user_login = f"@{message.from_user.username}" if message.from_user.username else ""
     user_name = message.from_user.full_name or str(message.from_user.id)
     if user_login:
-        _log(f"FP; От {user_login} ({user_name}): /start")
+        logger.info(f"FP; От {user_login} ({user_name}): /start")
     else:
-        _log(f"FP; От {user_name}: /start")
+        logger.info(f"FP; От {user_name}: /start")
     
     # Отмечаем пользователя активировавшим бота, если он есть в списке
     from src.config.settings import OWNER_CHAT_ID
@@ -44,21 +41,21 @@ async def cmd_start(message: types.Message):
             await message.bot.send_message(
                 OWNER_CHAT_ID,
                 (
-                    f"<tg-emoji emoji-id=\"{EMOJI_ID_START}\">📲</tg-emoji> Новый /start\n"
+                    f"📲 Новый /start\n"
                     f"От: {message.from_user.full_name} {user_login}\n"
                     f"user_id: {message.from_user.id}"
                 ),
                 parse_mode="HTML",
             )
         except TelegramNetworkError as exc:
-            _log(f"PM; Бот: не удалось уведомить владельца о /start: {exc}")
+            logger.warning(f"PM; Бот: не удалось уведомить владельца о /start: {exc}")
         except Exception as exc:
-            _log(f"PM; Бот: неожиданная ошибка при уведомлении владельца о /start: {exc}")
+            logger.warning(f"PM; Бот: неожиданная ошибка при уведомлении владельца о /start: {exc}")
 
     # Проверяем, является ли пользователь владельцем
     if message.from_user.id == OWNER_CHAT_ID:
         welcome_text = (
-            f"<tg-emoji emoji-id=\"{EMOJI_ID_ROBOT}\">🤖</tg-emoji> <b>Привет, владелец!</b>\n\n"
+            f"🤖 <b>Привет, владелец!</b>\n\n"
             "Я бот с подключенной нейросетью. Помимо обычного чата, у вас есть доступ к специальным командам:\n\n"
             "<b>Команды управления:</b>\n"
             "• <code>logs</code> — Логи бота\n"
@@ -81,9 +78,9 @@ async def cmd_start(message: types.Message):
         )
     else:
         welcome_text = (
-            f"<tg-emoji emoji-id=\"{EMOJI_ID_ROBOT}\">🤖</tg-emoji> <b>Привет!</b>\n\n"
+            f"🤖 <b>Привет!</b>\n\n"
             "Я бот с подключенной нейросетью. Чтобы задать мне вопрос — просто напиши его тут, а в группе упомяни меня через @ или ответь на моё сообщение.\n\n"
-            f"<tg-emoji emoji-id=\"{EMOJI_ID_CHAT}\">💬</tg-emoji> Я запоминаю контекст наших диалогов, поэтому могу поддерживать осмысленную беседу.\n\n"
+            f"💬 Я запоминаю контекст наших диалогов, поэтому могу поддерживать осмысленную беседу.\n\n"
             "<b>Команды по дням рождения:</b>\n"
             "• <code>др</code> — Ближайший день рождения\n"
             "• <code>др &lt;id&gt;</code> или <code>др @username</code> — Дата дня рождения пользователя по id или username\n\n"
@@ -94,7 +91,7 @@ async def cmd_start(message: types.Message):
             "• <code>отписаться</code> — Отключить поздравления\n\n"
             "<b>Справка:</b>\n"
             "• <code>help</code> или <code>команды</code>\n\n"
-            f"<i><tg-emoji emoji-id=\"{EMOJI_ID_INFO}\">❕</tg-emoji> В беседе нужно упомянуть бота или ответить на его сообщение.</i>\n\n"
+            f"<i>❕ В беседе нужно упомянуть бота или ответить на его сообщение.</i>\n\n"
             "<b>Команды управления (для владельца):</b>\n"
             "• <code>logs</code> — Логи бота\n"
             "• <code>full logs</code> — Полные логи\n"
@@ -104,32 +101,21 @@ async def cmd_start(message: types.Message):
             "• <code>проверка ссылок</code> — Диагностика ссылок/активации\n\n"
             "<b>Хотите больше функций?</b>\n"
             "Вы можете клонировать этого бота для своей беседы и настроить под себя:\n\n"
-            f"<tg-emoji emoji-id=\"{EMOJI_ID_LINK}\">🔗</tg-emoji> <a href=\"https://github.com/Naz1anmak/OurMate\">GitHub репозиторий</a>"
+            f"🔗 <a href=\"https://github.com/Naz1anmak/OurMate\">GitHub репозиторий</a>"
         )
-
-    welcome_text_plain = (
-        welcome_text
-        .replace(f"<tg-emoji emoji-id=\"{EMOJI_ID_ROBOT}\">🤖</tg-emoji>", "🤖")
-        .replace(f"<tg-emoji emoji-id=\"{EMOJI_ID_CHAT}\">💬</tg-emoji>", "💬")
-        .replace(f"<tg-emoji emoji-id=\"{EMOJI_ID_INFO}\">❕</tg-emoji>", "❕")
-        .replace(f"<tg-emoji emoji-id=\"{EMOJI_ID_LINK}\">🔗</tg-emoji>", "🔗")
-    )
 
     try:
         await message.answer(welcome_text, parse_mode="HTML")
     except TelegramBadRequest as exc:
-        try:
-            await message.answer(welcome_text_plain, parse_mode="HTML")
-        except Exception:
-            _log(
-                f"PM; Бот: ошибка отправки приветствия для {user_login or message.from_user.id}: {exc}"
-            )
+        logger.warning(
+            f"PM; Бот: ошибка отправки приветствия для {user_login or message.from_user.id}: {exc}"
+        )
     except TelegramNetworkError as exc:
-        _log(
+        logger.warning(
             f"PM; Бот: ошибка отправки приветствия для {user_login or message.from_user.id}: {exc}"
         )
     except Exception as exc:
-        _log(
+        logger.warning(
             f"PM; Бот: неожиданная ошибка при отправке приветствия для {user_login or message.from_user.id}: {exc}"
         )
 

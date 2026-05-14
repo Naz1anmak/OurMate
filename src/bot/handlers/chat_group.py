@@ -1,17 +1,20 @@
 """Обработчик для групповых сообщений."""
 import asyncio
+import logging
 import time
+
 from aiogram.enums import ChatAction
 from aiogram.exceptions import TelegramRetryAfter, TelegramBadRequest, TelegramNetworkError
 from aiogram.types import Message
 
-from src.config.settings import OWNER_CHAT_ID
+from src.bot.handlers.errors import notify_owner_error
 from src.bot.services.llm_service import LLMService, LLMServiceError
 from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
 from src.utils.text_utils import get_first_name_by_user_id
-from src.utils.log_utils import log_with_ts as _log
 from src.utils.render_utils import render_html_with_code
+
+logger = logging.getLogger(__name__)
 from src.bot.handlers.chat_context import (
     should_process_message,
     extract_user_login,
@@ -24,13 +27,9 @@ from src.bot.handlers.llm_flow import (
     format_final_answer,
     _trim_html,
     ERROR_NOTICE_PLAIN,
-    ERROR_NOTICE_TEXT,
-    ERROR_NOTICE_ENTITIES,
 )
 from src.bot.handlers.placeholder_variants import pick_placeholder_variant
-from src.utils.emoji_utils import make_custom_emoji_payload
 
-ERROR_CUSTOM_EMOJI_ID = "5447644880824181073"
 FALLBACK_EDIT_TIMEOUT_SEC = 12.0
 _PROCESSED_GROUP_MESSAGES: dict[tuple[int, int], float] = {}
 _PROCESSED_GROUP_TTL_SECONDS = 300.0
@@ -56,16 +55,14 @@ async def _notify_owner_delivery_issue(
     final_answer: str,
     err: Exception,
 ) -> None:
-    notice = (
-        "⚠️ Telegram delivery issue (group fallback)\n"
-        f"От: {user_login_safe} (chat_id={message.chat.id}, type={message.chat.type})\n"
-        f"Ответ (фрагмент): {final_answer[:500]}\n"
-        f"Ошибка: {err}"
+    await notify_owner_error(
+        message.bot,
+        err,
+        tg_id=message.from_user.id if message.from_user else None,
+        username=message.from_user.username if message.from_user else None,
+        context="Telegram delivery (group)",
+        extra=f"chat_id={message.chat.id}; ответ: {final_answer[:300]}",
     )
-    try:
-        await message.bot.send_message(OWNER_CHAT_ID, notice)
-    except Exception:
-        pass
 
 async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
     chat_id = message.chat.id
@@ -81,7 +78,7 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
     _cleanup_processed_group_messages(now_ts)
     prev_ts = _PROCESSED_GROUP_MESSAGES.get(message_key)
     if prev_ts is not None and (now_ts - prev_ts) <= _PROCESSED_GROUP_TTL_SECONDS:
-        _log(f"GR; Duplicate message skipped: chat_id={chat_id}, message_id={message.message_id}")
+        logger.warning(f"GR; Duplicate message skipped: chat_id={chat_id}, message_id={message.message_id}")
         return
     _PROCESSED_GROUP_MESSAGES[message_key] = now_ts
 
@@ -104,9 +101,9 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
         )
     reply_context_note = f" + reply-context from {reply_context_from}" if reply_context_from else (" + reply-context" if reply_context_used else "")
     if user_login:
-        _log(f"GR; От {user_login} ({user_name}){reply_context_note}: {text_for_llm}")
+        logger.info(f"GR; От {user_login} ({user_name}){reply_context_note}: {text_for_llm}")
     else:
-        _log(f"GR; От {user_name}{reply_context_note}: {text_for_llm}")
+        logger.info(f"GR; От {user_name}{reply_context_note}: {text_for_llm}")
 
     first_name = get_first_name_by_user_id(message.from_user.id, birthday_service.users)
     existing_context = context_service.get_context(chat_id)
@@ -127,17 +124,10 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
 
     temp_msg = placeholder_msg
     if temp_msg is None and len(text_for_llm.strip()) >= 8 and (placeholder_msg is not None or text_for_llm.strip()):
-        _log("GR; Stream placeholder missing, creating new for fallback")
+        logger.warning("GR; Stream placeholder missing, creating new for fallback")
         try:
             placeholder = pick_placeholder_variant()
-            placeholder_text, placeholder_entities = placeholder.reply_payload()
-            temp_msg = await message.reply(placeholder_text, entities=placeholder_entities)
-        except TelegramBadRequest as exc:
-            _log(f"GR; Fallback placeholder custom emoji failed, plain retry: {exc}")
-            try:
-                temp_msg = await message.reply(placeholder_text)
-            except Exception:
-                temp_msg = None
+            temp_msg = await message.reply(placeholder.text, parse_mode="HTML")
         except Exception:
             temp_msg = None
 
@@ -187,10 +177,10 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
                 ),
                 timeout=FALLBACK_EDIT_TIMEOUT_SEC,
             )
-            _log(f"GR; Бот (LLM) для {user_login_safe}: {final_answer}")
+            logger.info(f"GR; Бот (LLM) для {user_login_safe}: {final_answer}")
             return
         except TelegramRetryAfter as exc:
-            _log(f"GR; Fallback final edit throttled: {exc}")
+            logger.warning(f"GR; Fallback final edit throttled: {exc}")
             try:
                 await asyncio.sleep(exc.retry_after)
                 await message.bot.edit_message_text(
@@ -199,35 +189,30 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
                     text=safe_answer,
                     parse_mode="HTML",
                 )
-                _log(f"GR; Бот (LLM) для {user_login_safe}: {final_answer}")
+                logger.info(f"GR; Бот (LLM) для {user_login_safe}: {final_answer}")
                 return
             except Exception as retry_exc:
-                _log(f"GR; Fallback final edit failed after retry (status unknown): {retry_exc}")
+                logger.warning(f"GR; Fallback final edit failed after retry (status unknown): {retry_exc}")
                 await _notify_owner_delivery_issue(message, user_login_safe, final_answer, retry_exc)
                 return
         except asyncio.TimeoutError as exc:
-            _log(f"GR; Fallback final edit timeout ({FALLBACK_EDIT_TIMEOUT_SEC:.0f}s, status unknown)")
+            logger.warning(f"GR; Fallback final edit timeout ({FALLBACK_EDIT_TIMEOUT_SEC:.0f}s, status unknown)")
             await _notify_owner_delivery_issue(message, user_login_safe, final_answer, exc)
             return
         except TelegramNetworkError as exc:
-            _log(f"GR; Fallback final edit network failed (status unknown): {exc}")
+            logger.warning(f"GR; Fallback final edit network failed (status unknown): {exc}")
             await _notify_owner_delivery_issue(message, user_login_safe, final_answer, exc)
             return
         except TelegramBadRequest as exc:
             if "message is too long" in str(exc).lower():
                 try:
-                    await message.reply(ERROR_NOTICE_TEXT, entities=ERROR_NOTICE_ENTITIES)
-                except TelegramBadRequest:
-                    try:
-                        await message.reply(ERROR_NOTICE_PLAIN, parse_mode=None)
-                    except Exception:
-                        pass
+                    await message.reply(ERROR_NOTICE_PLAIN, parse_mode="HTML")
                 except Exception:
                     pass
                 return
             raise
         except Exception:
-            _log("GR; Fallback final edit failed; keeping placeholder and sending separate final message")
+            logger.warning("GR; Fallback final edit failed; keeping placeholder and sending separate final message")
 
     await _send_response_gr(message, safe_answer, user_login, temp_msg)
 
@@ -240,55 +225,39 @@ async def _send_response_gr(
     user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
     try:
         await message.reply(final_answer, parse_mode="HTML")
-        _log(f"GR; Бот (LLM) для {user_login_safe}: {final_answer}")
+        logger.info(f"GR; Бот (LLM) для {user_login_safe}: {final_answer}")
     except TelegramBadRequest as exc:
         if "message is too long" in str(exc).lower():
             try:
-                await message.reply(ERROR_NOTICE_TEXT, entities=ERROR_NOTICE_ENTITIES)
-            except TelegramBadRequest:
-                try:
-                    await message.reply(ERROR_NOTICE_PLAIN, parse_mode=None)
-                except Exception:
-                    pass
+                await message.reply(ERROR_NOTICE_PLAIN, parse_mode="HTML")
             except Exception:
                 pass
             return
         raise
     except TelegramRetryAfter as exc:
-        _log(f"GR; Final send throttled: {exc}")
+        logger.warning(f"GR; Final send throttled: {exc}")
         try:
             await asyncio.sleep(exc.retry_after)
             await message.reply(final_answer, parse_mode="HTML")
-            _log(f"GR; Бот (LLM) для {user_login_safe}: {final_answer}")
+            logger.info(f"GR; Бот (LLM) для {user_login_safe}: {final_answer}")
         except Exception:
             pass
     except TelegramNetworkError as exc:
-        _log(f"GR; Final send network failed, placeholder stays as notice: {exc}")
+        logger.warning(f"GR; Final send network failed, placeholder stays as notice: {exc}")
         await _notify_owner_delivery_issue(message, user_login_safe, final_answer, exc)
         if temp_msg:
             try:
                 await message.bot.edit_message_text(
                     chat_id=temp_msg.chat.id,
                     message_id=temp_msg.message_id,
-                    text=ERROR_NOTICE_TEXT,
-                    entities=ERROR_NOTICE_ENTITIES,
-                    parse_mode=None,
+                    text=ERROR_NOTICE_PLAIN,
+                    parse_mode="HTML",
                 )
-            except TelegramBadRequest:
-                try:
-                    await message.bot.edit_message_text(
-                        chat_id=temp_msg.chat.id,
-                        message_id=temp_msg.message_id,
-                        text=ERROR_NOTICE_PLAIN,
-                        parse_mode=None,
-                    )
-                except Exception:
-                    pass
             except Exception:
                 pass
     except Exception as exc:
         # Не поднимаем исключение выше, чтобы не засорять aiogram.event огромным traceback при сетевых сбоях.
-        _log(f"GR; Final send unexpected failure (suppressed): {exc}")
+        logger.warning(f"GR; Final send unexpected failure (suppressed): {exc}")
         await _notify_owner_delivery_issue(message, user_login_safe, final_answer, exc)
 
 async def _handle_llm_error_gr(
@@ -300,11 +269,8 @@ async def _handle_llm_error_gr(
     temp_msg: Message | None = None,
 ):
     user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
-    _log(f"GR; Бот: LLM недоступен для {user_login_safe}: {llm_error}")
-    fallback_text, fallback_entities = make_custom_emoji_payload(
-        "⚠️ Я временно недоступен. Попробуй ещё раз через пару минут.",
-        ERROR_CUSTOM_EMOJI_ID,
-    )
+    logger.warning(f"GR; Бот: LLM недоступен для {user_login_safe}: {llm_error}")
+    fallback_text = "⚠️ Я временно недоступен. Попробуй ещё раз через пару минут."
     fallback_sent = False
 
     if temp_msg:
@@ -313,19 +279,19 @@ async def _handle_llm_error_gr(
                 chat_id=temp_msg.chat.id,
                 message_id=temp_msg.message_id,
                 text=fallback_text,
-                entities=fallback_entities,
+                parse_mode="HTML",
             )
             fallback_sent = True
             temp_msg = None
         except TelegramRetryAfter as exc:
-            _log(f"GR; Fallback error edit throttled: {exc}")
+            logger.warning(f"GR; Fallback error edit throttled: {exc}")
             try:
                 await asyncio.sleep(exc.retry_after)
                 await message.bot.edit_message_text(
                     chat_id=temp_msg.chat.id,
                     message_id=temp_msg.message_id,
                     text=fallback_text,
-                    entities=fallback_entities,
+                    parse_mode="HTML",
                 )
                 fallback_sent = True
                 temp_msg = None
@@ -339,18 +305,15 @@ async def _handle_llm_error_gr(
 
     if not fallback_sent:
         try:
-            await message.reply(fallback_text, entities=fallback_entities)
+            await message.reply(fallback_text, parse_mode="HTML")
         except Exception:
             pass
 
-    owner_notice = (
-        f"⚠️ LLM недоступен\n"
-        f"От: {user_login_safe} (chat_id={chat_id}, type={message.chat.type})\n"
-        f"Текст: {text_for_llm[:500]}\n"
-        f"Ошибка: {llm_error}"
+    await notify_owner_error(
+        message.bot,
+        Exception(llm_error),
+        tg_id=message.from_user.id if message.from_user else None,
+        username=message.from_user.username if message.from_user else None,
+        context="LLM недоступен (GR)",
+        extra=f"chat_id={chat_id}; запрос: {text_for_llm[:300]}",
     )
-    owner_entities = [fallback_entities[0]]
-    try:
-        await message.bot.send_message(OWNER_CHAT_ID, owner_notice, entities=owner_entities)
-    except Exception:
-        pass

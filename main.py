@@ -1,83 +1,51 @@
-"""
-Главный файл приложения OurMate Bot.
-Точка входа для запуска Telegram бота.
-"""
+"""Точка входа OurMate Bot."""
 import asyncio
 import logging
+import os
 
-# Настраиваем логирование до импортов, чтобы ранние сообщения (парсинг расписания) не терялись
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+# Конфигурируем логирование до прочих импортов, чтобы ранние сообщения (парсинг расписания)
+# тоже шли в единый формат.
+from src.utils.logging import configure_logging
 
-# Шумные события aiogram подавляем всегда
-logging.getLogger("aiogram.event").setLevel(logging.WARNING)
+configure_logging(os.getenv("LOG_LEVEL", "INFO"))
 
-# Приглушаем только сообщения aiogram.dispatcher про "Sleep for ..."
-class _AiogramSleepFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
-        msg = record.getMessage()
-        return "Sleep for" not in msg
-
-logging.getLogger("aiogram.dispatcher").addFilter(_AiogramSleepFilter())
-
-from aiogram import Bot, Dispatcher
-from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.methods import DeleteWebhook
 
-from src.config.settings import TOKEN, TELEGRAM_PROXY_URL, TELEGRAM_PROXY_ENABLED
-from src.bot.handlers import register_handlers
+from src.bot.setup import build_bot_and_dispatcher
 from src.bot.scheduler.birthday_scheduler import start_birthday_scheduler
 from src.bot.scheduler.schedule_scheduler import start_schedule_scheduler
 from src.bot.scheduler.pinned_schedule_scheduler import start_pinned_schedule_scheduler
 
 logger = logging.getLogger(__name__)
 
-async def main():
-    """
-    Главная функция приложения.
-    Инициализирует и запускает бота.
-    """
+
+async def _delete_webhook_with_retry(bot, max_retries: int = 5) -> None:
+    for attempt in range(1, max_retries + 1):
+        try:
+            await bot(DeleteWebhook(drop_pending_updates=True))
+            logger.info("DeleteWebhook успешно выполнен")
+            return
+        except Exception as exc:
+            logger.warning("Ошибка DeleteWebhook (попытка %s/%s): %s", attempt, max_retries, exc)
+            if attempt == max_retries:
+                logger.error("DeleteWebhook не удалось после всех попыток, продолжаем запуск.")
+                return
+            await asyncio.sleep(5 * attempt)
+
+
+async def main() -> None:
     logger.info("Запуск бота...")
-    
-    # Создаем экземпляры бота и диспетчера
-    if TELEGRAM_PROXY_ENABLED and TELEGRAM_PROXY_URL:
-        logger.info(f"Using proxy: {TELEGRAM_PROXY_URL}")
-        proxy_url = TELEGRAM_PROXY_URL.strip()
-        if not proxy_url.startswith("socks5://"):
-            proxy_url = f"socks5://{proxy_url}"
-        session = AiohttpSession(proxy=proxy_url)
-        bot = Bot(TOKEN, session=session)
-    else:
-        bot = Bot(TOKEN)
-    dp = Dispatcher()
+    bot, dp = build_bot_and_dispatcher()
 
     try:
-        # Регистрируем обработчики сообщений
-        register_handlers(dp)
-        logger.info("Обработчики зарегистрированы")
-
-        # Retry для DeleteWebhook
-        max_retries = 5
-        for attempt in range(1, max_retries + 1):
-            try:
-                await bot(DeleteWebhook(drop_pending_updates=True))
-                logger.info("DeleteWebhook успешно выполнен")
-                break
-            except Exception as exc:
-                logger.warning(f"Ошибка DeleteWebhook (попытка {attempt}/{max_retries}): {exc}")
-                if attempt == max_retries:
-                    logger.error("DeleteWebhook не удалось после всех попыток, продолжаем запуск.")
-                else:
-                    await asyncio.sleep(5 * attempt)
+        await _delete_webhook_with_retry(bot)
 
         start_birthday_scheduler(bot)
         start_schedule_scheduler(bot)
         start_pinned_schedule_scheduler(bot)
         logger.info("Планировщики запущены")
 
-        # Бесконечный polling с backoff: задержка растет на 10 секунд каждую попытку, максимум 20 минут
+        # Бесконечный polling с backoff: 10с * attempt, максимум 20 минут
         attempt = 1
         while True:
             try:
@@ -85,15 +53,13 @@ async def main():
                 await dp.start_polling(bot)
                 break  # polling завершился штатно
             except Exception as exc:
-                logger.warning(f"Ошибка polling (попытка {attempt}): {exc}")
-                delay = min(10 * attempt, 1200)  # максимум 20 минут
-                logger.info(f"Следующая попытка polling через {delay} секунд")
+                delay = min(10 * attempt, 1200)
+                logger.warning("Ошибка polling (попытка %s): %s; повтор через %sс", attempt, exc, delay)
                 await asyncio.sleep(delay)
                 attempt += 1
     finally:
-        # Корректно закрываем HTTP-сессию, даже при Ctrl+C
         await bot.session.close()
 
+
 if __name__ == "__main__":
-    # Запускаем приложение
     asyncio.run(main())

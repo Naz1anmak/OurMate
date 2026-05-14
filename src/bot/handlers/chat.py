@@ -2,6 +2,8 @@
 Обработчики чата.
 Содержит функции для обработки обычных сообщений и упоминаний бота.
 """
+import logging
+
 from aiogram.types import Message
 
 from src.config.settings import OWNER_CHAT_ID
@@ -15,15 +17,13 @@ from src.bot.handlers.chat_commands import (
 )
 from src.bot.handlers.chat_pm import handle_private_chat
 from src.bot.handlers.chat_group import handle_group_chat
-from src.utils.log_utils import log_with_ts as _log
-from src.utils.emoji_utils import make_custom_emoji_payload
-
-EMOJI_ID_CROSS = "5465665476971471368"
 from src.utils.telegram_cache import (
     get_cached_bot_identity,
     get_cached_bot_info,
     get_cached_bot_username,
 )
+
+logger = logging.getLogger(__name__)
 
 async def on_mention_or_reply(message: Message):
     """
@@ -50,7 +50,7 @@ async def on_mention_or_reply(message: Message):
     except Exception as exc:
         cached_info = get_cached_bot_info()
         if cached_info is None:
-            _log(f"[SYSTEM] bot.get_me() недоступен: {exc}")
+            logger.warning("bot.get_me() недоступен: %s", exc)
             return
         bot_info = cached_info
         cached_username = get_cached_bot_username()
@@ -89,18 +89,12 @@ async def on_mention_or_reply(message: Message):
             blocked_cmd = is_public_command(ctx["normalized_text"])
             if blocked_cmd:
                 user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-                _log(f"GR; От {user_login_log} ({message.from_user.full_name}): команда '{ctx['normalized_text']}' в чужой группе — отклонено")
-                deny_text, deny_entities = make_custom_emoji_payload(
-                    "❌ <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>",
-                    EMOJI_ID_CROSS,
-                )
+                logger.info("GR; От %s (%s): команда '%s' в чужой группе — отклонено", user_login_log, message.from_user.full_name, ctx["normalized_text"])
+                deny_text = "❌ <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>"
                 try:
-                    await message.answer(deny_text, parse_mode="HTML", entities=deny_entities)
+                    await message.answer(deny_text, parse_mode="HTML")
                 except Exception:
-                    try:
-                        await message.answer(deny_text, parse_mode="HTML")
-                    except Exception:
-                        pass
+                    pass
                 return
 
     if message.chat.type == "private":

@@ -19,8 +19,6 @@ from src.config.settings import (
     PROMPT_TEMPLATE_BIRTHDAY_FORMER,
 )
 
-EMOJI_ID_PARTY = "5436040291507247633"
-
 class BirthdayService:
     """
     Сервис для работы с днями рождения пользователей.
@@ -183,7 +181,7 @@ class BirthdayService:
         mentions = build_mention_list(users_to_mention)
 
         notification = (
-            f"<tg-emoji emoji-id=\"{EMOJI_ID_PARTY}\">🎉</tg-emoji> "
+            f"🎉 "
             f"Следующий день рождения:\n{mentions} — {formatted_date}"
         )
         return notification

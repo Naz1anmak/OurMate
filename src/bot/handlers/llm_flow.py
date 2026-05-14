@@ -1,5 +1,6 @@
 """Потоковая и финальная отправка ответов LLM."""
 import asyncio
+import logging
 import time
 import html as _html
 import re
@@ -11,27 +12,14 @@ from aiogram.methods import SendMessageDraft
 
 from src.bot.services.llm_service import LLMService, LLMServiceError
 from src.bot.services.context_service import context_service
-import os
 
-from src.config.settings import ENV, OWNER_CHAT_ID
-from src.utils.log_utils import log_with_ts as _log
+from src.bot.handlers.errors import notify_owner_error
 from src.utils.render_utils import render_html_with_code
 from src.bot.handlers.placeholder_variants import pick_placeholder_variant
-from src.utils.emoji_utils import make_custom_emoji_payload
 
-ENV_VALUE = (os.getenv("ENV") or "").strip().lower()
-# Если переменная окружения не задана, используем значение из settings (по умолчанию dev)
-IS_DEV = ENV_VALUE in ("dev", "development") or str(ENV).strip().lower() in ("dev", "development")
+logger = logging.getLogger(__name__)
 
 ERROR_NOTICE_PLAIN = "⚠️ Не удалось получить ответ. Попробуй ещё раз через пару секунд."
-ERROR_NOTICE_TEXT, ERROR_NOTICE_ENTITIES = make_custom_emoji_payload(
-    ERROR_NOTICE_PLAIN,
-    "5197170531379459422",
-)
-
-def _log_dev(message: str) -> None:
-    if IS_DEV:
-        _log(message)
 
 def _ends_on_boundary(text: str) -> bool:
     """Проверяем, что буфер заканчивается на границе слова/предложения, чтобы не рвать слова."""
@@ -151,31 +139,23 @@ async def try_streaming_response(
 
     if use_placeholder:
         placeholder_variant = pick_placeholder_variant()
-        placeholder_text, placeholder_entities = placeholder_variant.reply_payload()
         try:
-            placeholder_msg = await message.reply(placeholder_text, entities=placeholder_entities)
+            placeholder_msg = await message.reply(placeholder_variant.text, parse_mode="HTML")
             sent_any = True
-            _log_dev(f"{tag}; Placeholder sent with custom emoji")
+            logger.debug(f"{tag}; Placeholder sent")
         except Exception as exc:
-            _log_dev(f"{tag}; Placeholder send failed, retry plain: {exc}")
-            try:
-                placeholder_msg = await message.reply(placeholder_text)
-                sent_any = True
-                _log_dev(f"{tag}; Placeholder sent without entities")
-            except Exception as exc2:
-                _log_dev(f"{tag}; Placeholder plain send failed: {exc2}")
-                placeholder_msg = None
+            logger.debug(f"{tag}; Placeholder send failed: {exc}")
+            placeholder_msg = None
     elif use_draft_stream:
         # Генерируем уникальный draft_id на поток, чтобы не переиспользовать старые драфты
         draft_id = int(time.monotonic_ns() % 900_000_000) + (message.chat.id % 1000) + 1
 
-    async def send_pm_no_reply(text: str, entities: list | None = None, parse_mode: str | None = "HTML") -> Message:
+    async def send_pm_no_reply(text: str, parse_mode: str | None = "HTML") -> Message:
         sent = await message.bot.send_message(
             chat_id=message.chat.id,
             text=text,
             parse_mode=parse_mode,
             allow_sending_without_reply=True,
-            entities=entities,
         )
         return sent
 
@@ -192,23 +172,12 @@ async def try_streaming_response(
     async def send_notice_custom_or_plain() -> bool:
         try:
             if is_group_chat:
-                await message.reply(ERROR_NOTICE_TEXT, entities=ERROR_NOTICE_ENTITIES)
+                await message.reply(ERROR_NOTICE_PLAIN, parse_mode="HTML")
             else:
-                await send_pm_no_reply(ERROR_NOTICE_TEXT, ERROR_NOTICE_ENTITIES, parse_mode=None)
+                await send_pm_no_reply(ERROR_NOTICE_PLAIN, parse_mode="HTML")
             return True
-        except TelegramBadRequest as exc:
-            _log_dev(f"{tag}; Notice custom emoji failed, fallback plain: {exc}")
-            try:
-                if is_group_chat:
-                    await message.reply(ERROR_NOTICE_PLAIN, parse_mode=None)
-                else:
-                    await send_pm_no_reply(ERROR_NOTICE_PLAIN, parse_mode=None)
-                return True
-            except Exception as exc2:
-                _log_dev(f"{tag}; Plain notice send failed: {exc2}")
-                return False
         except Exception as exc:
-            _log_dev(f"{tag}; Notice send unexpected failure: {exc}")
+            logger.debug(f"{tag}; Notice send failed: {exc}")
             return False
 
     async def edit_placeholder_to_notice() -> bool:
@@ -218,44 +187,24 @@ async def try_streaming_response(
             await message.bot.edit_message_text(
                 chat_id=placeholder_msg.chat.id,
                 message_id=placeholder_msg.message_id,
-                text=ERROR_NOTICE_TEXT,
-                entities=ERROR_NOTICE_ENTITIES,
-                parse_mode=None,
+                text=ERROR_NOTICE_PLAIN,
+                parse_mode="HTML",
             )
             return True
-        except TelegramBadRequest as exc:
-            _log_dev(f"{tag}; Notice edit custom emoji failed, fallback plain: {exc}")
-            try:
-                await message.bot.edit_message_text(
-                    chat_id=placeholder_msg.chat.id,
-                    message_id=placeholder_msg.message_id,
-                    text=ERROR_NOTICE_PLAIN,
-                    parse_mode=None,
-                )
-                return True
-            except Exception as exc2:
-                _log_dev(f"{tag}; Notice edit plain send failed: {exc2}")
-                return False
         except Exception as exc:
-            _log_dev(f"{tag}; Notice edit unexpected failure: {exc}")
+            logger.debug(f"{tag}; Notice edit failed: {exc}")
             return False
-
-    async def notify_owner_notice(title: str, details: str, fail_context: str) -> None:
-        """Унифицированная отправка алертов владельцу."""
-        notice = f"<b>{_html.escape(title)}</b>\n{details}"
-        try:
-            await message.bot.send_message(OWNER_CHAT_ID, notice, parse_mode="HTML")
-        except Exception as owner_exc:
-            _log_dev(f"{tag}; {fail_context}: {owner_exc}")
 
     async def notify_owner_delivery_issue(final_answer: str, err: Exception) -> None:
         """Шлет владельцу алерт о проблеме доставки ответа в Telegram."""
-        details = (
-            f"<b>От:</b> {_html.escape(user_login_safe)} (chat_id={message.chat.id}, type={message.chat.type})\n"
-            f"<b>Ответ (фрагмент):</b> {_html.escape(final_answer[:500])}\n"
-            f"<b>Ошибка:</b> {_html.escape(str(err))}"
+        await notify_owner_error(
+            message.bot,
+            err,
+            tg_id=message.from_user.id if message.from_user else None,
+            username=message.from_user.username if message.from_user else None,
+            context=f"Telegram delivery ({tag} stream)",
+            extra=f"chat_id={message.chat.id}; ответ: {final_answer[:300]}",
         )
-        await notify_owner_notice("⚠️ Telegram delivery issue", details, "Owner delivery-issue notice failed")
 
     buffer_prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
     buffer = buffer_prefix
@@ -287,7 +236,7 @@ async def try_streaming_response(
 
             # Если совсем нет первых токенов дольше порога — отказываемся от стрима
             if first_token_at is None and (time.monotonic() - start_time) >= max_first_token_wait:
-                _log(f"{tag}; Stream abort: no tokens for {max_first_token_wait:.1f}s, fallback")
+                logger.info(f"{tag}; Stream abort: no tokens for {max_first_token_wait:.1f}s, fallback")
                 return False, placeholder_msg
             buffer += token
             if first_token_at is None:
@@ -377,19 +326,18 @@ async def try_streaming_response(
                     sent_any = True
                     edit_count += 1
                     first_flush_done = True
-                    if IS_DEV:
-                        _log_dev(
-                            f"{tag}; len_delta={len_delta} buf_len={len(buffer)} t_since={time_since_flush:.2f} reason={reason}"
-                        )
+                    logger.debug(
+                        f"{tag}; len_delta={len_delta} buf_len={len(buffer)} t_since={time_since_flush:.2f} reason={reason}"
+                    )
                 except TelegramRetryAfter as exc:
-                    _log_dev(f"{tag}; Draft stream edit throttled: {exc}")
+                    logger.debug(f"{tag}; Draft stream edit throttled: {exc}")
                     edit_block_until = time.monotonic() + exc.retry_after
                 except asyncio.TimeoutError:
                     stream_edit_broken = True
-                    _log(f"{tag}; Stream edit timeout ({stream_edit_timeout_sec:.0f}s), continue without edits")
+                    logger.warning(f"{tag}; Stream edit timeout ({stream_edit_timeout_sec:.0f}s), continue without edits")
                 except Exception as exc:
                     stream_edit_broken = True
-                    _log(f"{tag}; Stream edit failed, continue without edits: {exc}")
+                    logger.warning(f"{tag}; Stream edit failed, continue without edits: {exc}")
                 else:
                     last_sent_len = len(flush_buffer)
                     last_flush = now
@@ -420,13 +368,13 @@ async def try_streaming_response(
                     parse_mode="HTML",
                 )
                 sent_any = True
-                _log(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
+                logger.info(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
                 finished_label = "placeholder" if use_placeholder else "edited message"
-                _log_dev(f"{tag}; Stream finished via {finished_label}: edits={edit_count}, chars={len(buffer)}")
+                logger.debug(f"{tag}; Stream finished via {finished_label}: edits={edit_count}, chars={len(buffer)}")
                 return True, placeholder_msg
             except TelegramBadRequest as exc:
                 tag = "GR" if is_group_chat else "PM"
-                _log_dev(f"{tag}; Draft stream final edit bad HTML, retry plain: {exc}")
+                logger.debug(f"{tag}; Draft stream final edit bad HTML, retry plain: {exc}")
                 safe_plain = _trim_html(_html.escape(final_answer))
                 try:
                     await message.bot.edit_message_text(
@@ -436,14 +384,14 @@ async def try_streaming_response(
                         parse_mode="HTML",
                     )
                     sent_any = True
-                    _log(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
+                    logger.info(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
                     return True, placeholder_msg
                 except Exception as exc2:
-                    _log_dev(f"{tag}; Draft stream plain retry failed: {exc2}")
+                    logger.debug(f"{tag}; Draft stream plain retry failed: {exc2}")
                     # fall through to generic handling below
             except TelegramRetryAfter as exc:
                 tag = "GR" if is_group_chat else "PM"
-                _log_dev(f"{tag}; Draft stream final edit throttled: {exc}")
+                logger.debug(f"{tag}; Draft stream final edit throttled: {exc}")
                 try:
                     await asyncio.sleep(exc.retry_after)
                 except Exception:
@@ -455,13 +403,13 @@ async def try_streaming_response(
                     else:
                         await message.reply(safe_answer, parse_mode="HTML")
                         sent_any = True
-                    _log(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
+                    logger.info(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
                 except Exception:
                     pass
                 return True, placeholder_msg
             except Exception as exc:
                 tag = "GR" if is_group_chat else "PM"
-                _log_dev(f"{tag}; Draft stream final edit failed, sending notice: {exc}")
+                logger.debug(f"{tag}; Draft stream final edit failed, sending notice: {exc}")
                 notice_sent = await send_notice_custom_or_plain()
                 sent_any = sent_any or notice_sent
                 return True, placeholder_msg
@@ -480,11 +428,11 @@ async def try_streaming_response(
                     timeout=stream_edit_timeout_sec,
                 )
                 sent_any = True
-                _log(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
-                _log_dev(f"{tag}; Stream recovered via final placeholder edit")
+                logger.info(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
+                logger.debug(f"{tag}; Stream recovered via final placeholder edit")
                 return True, placeholder_msg
             except Exception as exc:
-                _log_dev(f"{tag}; Stream recovery final edit failed, sending separate message: {exc}")
+                logger.debug(f"{tag}; Stream recovery final edit failed, sending separate message: {exc}")
 
         try:
             if message.chat.type == "private":
@@ -494,12 +442,12 @@ async def try_streaming_response(
                 await message.reply(safe_answer, parse_mode="HTML")
                 sent_any = True
             await cleanup_placeholder_after_separate_send()
-            _log(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
-            _log_dev(f"{tag}; Stream finished direct send: edits={edit_count}, draft={use_draft_stream}, chars={len(buffer)}")
+            logger.info(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
+            logger.debug(f"{tag}; Stream finished direct send: edits={edit_count}, draft={use_draft_stream}, chars={len(buffer)}")
             return True, placeholder_msg
         except TelegramBadRequest as exc:
             tag = "GR" if is_group_chat else "PM"
-            _log_dev(f"{tag}; Draft stream final send bad HTML, retry plain: {exc}")
+            logger.debug(f"{tag}; Draft stream final send bad HTML, retry plain: {exc}")
             safe_plain = _trim_html(_html.escape(final_answer))
             try:
                 if message.chat.type == "private":
@@ -509,16 +457,16 @@ async def try_streaming_response(
                     await message.reply(safe_plain, parse_mode="HTML")
                     sent_any = True
                 await cleanup_placeholder_after_separate_send()
-                _log(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
+                logger.info(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
                 return True, placeholder_msg
             except Exception as exc2:
-                _log(f"{tag}; Бот ({response_log_kind}, delivery status unknown) для {user_login_safe}: {final_answer}")
-                _log(f"{tag}; Stream plain send failed (status unknown): {exc2}")
+                logger.info(f"{tag}; Бот ({response_log_kind}, delivery status unknown) для {user_login_safe}: {final_answer}")
+                logger.warning(f"{tag}; Stream plain send failed (status unknown): {exc2}")
                 await notify_owner_delivery_issue(final_answer, exc2)
                 return True, placeholder_msg
         except TelegramRetryAfter as exc:
             tag = "GR" if is_group_chat else "PM"
-            _log_dev(f"{tag}; Draft stream send throttled: {exc}")
+            logger.debug(f"{tag}; Draft stream send throttled: {exc}")
             try:
                 await asyncio.sleep(exc.retry_after)
                 if message.chat.type == "private":
@@ -528,22 +476,22 @@ async def try_streaming_response(
                     await message.reply(safe_answer, parse_mode="HTML")
                     sent_any = True
                 await cleanup_placeholder_after_separate_send()
-                _log(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
+                logger.info(f"{tag}; Бот ({response_log_kind}) для {user_login_safe}: {final_answer}")
                 return True, placeholder_msg
             except Exception as exc:
-                _log(f"{tag}; Бот ({response_log_kind}, delivery status unknown) для {user_login_safe}: {final_answer}")
-                _log(f"{tag}; Stream send failed after retry (status unknown): {exc}")
+                logger.info(f"{tag}; Бот ({response_log_kind}, delivery status unknown) для {user_login_safe}: {final_answer}")
+                logger.warning(f"{tag}; Stream send failed after retry (status unknown): {exc}")
                 await notify_owner_delivery_issue(final_answer, exc)
                 return True, placeholder_msg
         except Exception as exc:
             tag = "GR" if is_group_chat else "PM"
-            _log(f"{tag}; Бот ({response_log_kind}, delivery status unknown) для {user_login_safe}: {final_answer}")
-            _log(f"{tag}; Stream final send failed (status unknown): {exc}")
+            logger.info(f"{tag}; Бот ({response_log_kind}, delivery status unknown) для {user_login_safe}: {final_answer}")
+            logger.warning(f"{tag}; Stream final send failed (status unknown): {exc}")
             await notify_owner_delivery_issue(final_answer, exc)
             return True, placeholder_msg
     except LLMServiceError as exc:
         tag = "GR" if is_group_chat else "PM"
-        _log_dev(f"{tag}; Stream error, sending notice only: {exc}")
+        logger.debug(f"{tag}; Stream error, sending notice only: {exc}")
 
         notice_sent = False
         if placeholder_msg:
@@ -554,12 +502,14 @@ async def try_streaming_response(
         if not notice_sent:
             return False, placeholder_msg
 
-        details = (
-            f"<b>От:</b> {_html.escape(user_login_safe)} (chat_id={message.chat.id}, type={message.chat.type})\n"
-            f"<b>Текст:</b> {_html.escape(text_for_llm[:500])}\n"
-            f"<b>Ошибка:</b> {_html.escape(str(exc))}"
+        await notify_owner_error(
+            message.bot,
+            exc,
+            tg_id=message.from_user.id if message.from_user else None,
+            username=message.from_user.username if message.from_user else None,
+            context=f"LLM stream ({tag})",
+            extra=f"chat_id={message.chat.id}; запрос: {text_for_llm[:300]}",
         )
-        await notify_owner_notice("⚠️ LLM stream ошибка", details, "Owner notice failed")
 
         return True, placeholder_msg
     except Exception as exc:
@@ -567,7 +517,7 @@ async def try_streaming_response(
         # Если уже что-то отправили в поток, не дублируем ответ во fallback
         if sent_any:
             return True, placeholder_msg
-        _log(f"{tag}; Stream unexpected error, fallback: {exc}")
+        logger.warning(f"{tag}; Stream unexpected error, fallback: {exc}")
         return False, placeholder_msg
     finally:
         try:

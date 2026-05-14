@@ -2,6 +2,7 @@
 Планировщик обновления закреплённого сообщения с расписанием.
 """
 import asyncio
+import logging
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional
@@ -20,7 +21,8 @@ from src.config.settings import (
     PINNED_SCHEDULE_MESSAGE_FILE,
 )
 from src.bot.services.schedule_service import schedule_service, ScheduleEvent
-from src.utils.log_utils import log_with_ts as _log
+
+logger = logging.getLogger(__name__)
 
 
 class PinnedScheduleScheduler:
@@ -30,7 +32,7 @@ class PinnedScheduleScheduler:
 
     def start(self):
         if not PINNED_SCHEDULE_ENABLED:
-            _log("[SYSTEM] Закреп расписания: отключено в конфиге")
+            logger.info("Закреп расписания: отключено в конфиге")
             return
 
         self.scheduler.add_job(
@@ -43,7 +45,7 @@ class PinnedScheduleScheduler:
         )
         self.scheduler.start()
         asyncio.create_task(self._update_pinned_message())
-        _log("[SYSTEM] Закреп расписания: задача запланирована, сразу обновляем")
+        logger.info("Закреп расписания: задача запланирована, сразу обновляем")
 
     async def _update_pinned_message(self):
         today = datetime.now(TIMEZONE).date()
@@ -56,9 +58,9 @@ class PinnedScheduleScheduler:
             if pinned_id is not None:
                 try:
                     await self.bot.delete_message(CHAT_ID, pinned_id)
-                    _log("[SYSTEM] Закреп расписания удалён (нет будущих пар)")
+                    logger.info("Закреп расписания удалён (нет будущих пар)")
                 except Exception as exc:
-                    _log(f"[SYSTEM] Не удалось удалить закреп расписания: {exc}")
+                    logger.warning("Не удалось удалить закреп расписания: %s", exc)
                 _clear_pinned_id(PINNED_SCHEDULE_MESSAGE_FILE)
             return
 
@@ -74,12 +76,12 @@ class PinnedScheduleScheduler:
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
-            _log("[SYSTEM] Закреп расписания обновлён")
+            logger.info("Закреп расписания обновлён")
         except TelegramForbiddenError:
-            _log("[SYSTEM] Нет прав на редактирование закрепа; пробуем отправить заново")
+            logger.warning("Нет прав на редактирование закрепа; пробуем отправить заново")
             await self._send_and_pin(text)
         except Exception as exc:
-            _log(f"[SYSTEM] Не удалось отредактировать закреп расписания: {exc}; отправляем заново")
+            logger.warning("Не удалось отредактировать закреп расписания: %s; отправляем заново", exc)
             await self._send_and_pin(text)
 
     async def _send_and_pin(self, text: str):
@@ -93,11 +95,11 @@ class PinnedScheduleScheduler:
             try:
                 await self.bot.pin_chat_message(CHAT_ID, msg.message_id)
             except Exception as exc:
-                _log(f"[SYSTEM] Не удалось закрепить сообщение с расписанием: {exc}")
+                logger.warning("Не удалось закрепить сообщение с расписанием: %s", exc)
             _save_pinned_id(PINNED_SCHEDULE_MESSAGE_FILE, msg.message_id)
-            _log("[SYSTEM] Закреп расписания отправлен и закреплён")
+            logger.info("Закреп расписания отправлен и закреплён")
         except Exception as exc:
-            _log(f"[SYSTEM] Не удалось отправить закреп с расписанием: {exc}")
+            logger.warning("Не удалось отправить закреп с расписанием: %s", exc)
 
     def stop(self):
         self.scheduler.shutdown()
