@@ -40,9 +40,6 @@ async def handle_help_command(message: Message, normalized_text: str) -> bool:
             "\n<b>Админские команды:</b>\n"
             "• <code>logs</code> — логи бота\n"
             "• <code>full logs</code> — полные логи\n"
-            "• <code>status</code> — статус службы\n"
-            "• <code>system</code> — информация о системе\n"
-            "• <code>stop bot</code> — остановить бота\n"
             "• <code>проверка ссылок</code> — диагностика ссылок/активации"
         )
         await message.answer(base_help + admin_block, parse_mode="HTML")
