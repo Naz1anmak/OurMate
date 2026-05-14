@@ -1,16 +1,40 @@
-.PHONY: up down restart build logs
+.PHONY: help up down restart build logs tail sh stop ps env
 
-up:
+SERVICE ?= bot
+
+help: ## Показать список целей
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+env: ## Создать .env из .env.example, если его нет
+	@if [ -f .env ]; then \
+		echo ".env уже существует — не трогаем"; \
+	else \
+		cp .env.example .env && echo "Создан .env — заполни значения"; \
+	fi
+
+up: ## Запустить контейнеры в фоне
 	docker compose up -d
 
-down:
+down: ## Остановить и удалить контейнеры
 	docker compose down
 
-restart:
+stop: ## Остановить контейнеры (без удаления)
+	docker compose stop
+
+restart: ## Пересобрать и перезапустить
 	docker compose up -d --build --force-recreate
 
-build:
+build: ## Только пересобрать образ
 	docker compose build
 
-logs:
+logs: ## Прицепиться ко всем логам
 	docker compose logs -f
+
+tail: ## Последние 200 строк лога $(SERVICE) с follow
+	docker compose logs -f --tail=200 $(SERVICE)
+
+ps: ## Список контейнеров compose
+	docker compose ps
+
+sh: ## Зайти внутрь контейнера $(SERVICE)
+	docker compose exec $(SERVICE) sh
