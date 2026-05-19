@@ -1,6 +1,8 @@
 """
 Планировщик для ежедневного уведомления о парах.
 """
+from datetime import datetime
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from aiogram import Bot
@@ -23,10 +25,11 @@ class ScheduleScheduler:
         self.scheduler.start()
 
     async def _daily_classes(self):
-        events = schedule_service.get_todays_classes(TIMEZONE)
+        today = datetime.now(TIMEZONE).date()
+        events = schedule_service.get_classes_for_date(today)
         if events:
-            text = schedule_service.format_classes(events, "📚 Пары на сегодня:", "", wrap_quote=True)
-            await self.bot.send_message(CHAT_ID, text)
+            text = schedule_service.format_day_block(today, "Пары на сегодня", icon_common="📚")
+            await self.bot.send_message(CHAT_ID, text, parse_mode="HTML")
 
     def stop(self):
         self.scheduler.shutdown()

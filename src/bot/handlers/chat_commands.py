@@ -202,18 +202,14 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         events = schedule_service.get_classes_for_date(effective_date)
         today = datetime.now(TIMEZONE).date()
         day_label = "завтра" if effective_date == date.fromordinal(today.toordinal() + 1) else "сегодня"
-        title = (
-            f"📚 Пары на завтра:"
-            if day_label == "завтра"
-            else f"📚 Пары на сегодня:"
-        )
+        base_title = "Пары на завтра" if day_label == "завтра" else "Пары на сегодня"
         empty_text = schedule_service.get_no_pairs_message(day_label)
         if events:
-            text = schedule_service.format_classes(events, title, empty_text, wrap_quote=True)
+            text = schedule_service.format_day_block(effective_date, base_title, icon_common="📚")
         else:
             next_date, next_events = schedule_service.get_next_classes_after(effective_date)
             if next_date and next_events:
-                next_block = schedule_service.format_next_classes_block(next_date, next_events, base_date=effective_date)
+                next_block = schedule_service.format_next_classes_block(next_date, base_date=effective_date)
                 text = f"{empty_text}\n\n{next_block}"
             else:
                 text = empty_text
@@ -224,20 +220,15 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
         tag = "GR" if ctx["is_group_chat"] else "PM"
         logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'пары завтра'")
-        events = schedule_service.get_tomorrows_classes(TIMEZONE)
+        tomorrow = date.fromordinal(datetime.now(TIMEZONE).date().toordinal() + 1)
+        events = schedule_service.get_classes_for_date(tomorrow)
         empty_text = schedule_service.get_no_pairs_message("завтра")
         if events:
-            text = schedule_service.format_classes(
-                events,
-                f"📚 Пары на завтра:",
-                empty_text,
-                wrap_quote=True,
-            )
+            text = schedule_service.format_day_block(tomorrow, "Пары на завтра", icon_common="📚")
         else:
-            base_date = date.fromordinal(datetime.now(TIMEZONE).date().toordinal() + 1)
-            next_date, next_events = schedule_service.get_next_classes_after(base_date)
+            next_date, next_events = schedule_service.get_next_classes_after(tomorrow)
             if next_date and next_events:
-                next_block = schedule_service.format_next_classes_block(next_date, next_events, base_date=base_date)
+                next_block = schedule_service.format_next_classes_block(next_date, base_date=tomorrow)
                 text = f"{empty_text}\n\n{next_block}"
             else:
                 text = empty_text
