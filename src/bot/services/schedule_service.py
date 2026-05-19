@@ -195,7 +195,7 @@ class ScheduleService:
         return dt.astimezone(self.timezone)
 
     def _save_cache(self) -> None:
-        """Сохраняет кеш событий в JSON (для отладки и возможного быстрого доступа)."""
+        """Сохраняет события в JSON-кеш (для отладки и быстрого холодного старта)."""
         try:
             SCHEDULE_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
             serializable = [
@@ -204,13 +204,17 @@ class ScheduleService:
                     "location": e.location,
                     "start": e.start.isoformat(),
                     "end": e.end.isoformat(),
+                    "groups": sorted(e.groups),
                 }
                 for e in self.events
             ]
-            SCHEDULE_CACHE_FILE.write_text(json.dumps(serializable, ensure_ascii=False, indent=2), encoding="utf-8")
-            logger.info("Кеш обновлен: %s событий -> %s", len(self.events), SCHEDULE_CACHE_FILE)
+            SCHEDULE_CACHE_FILE.write_text(
+                json.dumps(serializable, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            logger.info("Кеш обновлён: %s событий → %s", len(self.events), SCHEDULE_CACHE_FILE)
         except Exception:
-            # Кеш не критичен
+            # Кеш некритичен
             pass
 
     def _events_for_date(self, target_date: date) -> List[ScheduleEvent]:
