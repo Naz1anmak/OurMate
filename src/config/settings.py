@@ -85,7 +85,15 @@ PROMPT_TEMPLATE_BIRTHDAY_FORMER = _get_env(
 )
 
 # ===== НАСТРОЙКИ РАСПИСАНИЯ =====
-# Паттерн для файлов расписания (ics)
+# Каталог с расписанием. Если внутри есть подпапки с calendar*.ics — multi-group режим.
+# Если подпапок нет — single-group fallback по SCHEDULE_FILES_PATTERN (обратная совместимость).
+SCHEDULE_GROUPS_DIR = Path(_get_env("SCHEDULE_GROUPS_DIR", Path.cwd() / "data", log_default=True))
+
+# Префикс отображаемого имени группы. Итоговое имя = prefix + код подпапки.
+# Пример: prefix="з5130903/", папка "40001" → отображается как "з5130903/40001".
+SCHEDULE_GROUP_NAME_PREFIX = _get_env("SCHEDULE_GROUP_NAME_PREFIX", "", log_default=True)
+
+# Single-group fallback: glob по умолчанию, если SCHEDULE_GROUPS_DIR не содержит подпапок.
 SCHEDULE_FILES_PATTERN = _get_env("SCHEDULE_FILES_PATTERN", "data/calendar*.ics", log_default=True)
 
 # Кэш для расписания (после парсинга ics)
@@ -97,13 +105,15 @@ SCHEDULE_CACHE_FILE = Path(
 SCHEDULE_SEND_HOUR = int(_get_env("SCHEDULE_SEND_HOUR", 8, log_default=True))
 SCHEDULE_SEND_MINUTE = int(_get_env("SCHEDULE_SEND_MINUTE", 0, log_default=True))
 
-# Включение/выключение рассылки расписания (ежедневно в SCHEDULE_SEND_HOUR:SCHEDULE_SEND_MINUTE)
+# Включение/выключение рассылки расписания
 SCHEDULE_BROADCAST_ENABLED = _get_env("SCHEDULE_BROADCAST_ENABLED", "true", log_default=True).lower() == "true"
 
 # Обновление закреплённого сообщения с расписанием
 PINNED_SCHEDULE_ENABLED = _get_env("PINNED_SCHEDULE_ENABLED", "false", log_default=True).lower() == "true"
 PINNED_SCHEDULE_UPDATE_HOUR = int(_get_env("PINNED_SCHEDULE_UPDATE_HOUR", 0, log_default=True))
 PINNED_SCHEDULE_UPDATE_MINUTE = int(_get_env("PINNED_SCHEDULE_UPDATE_MINUTE", 0, log_default=True))
+# Лимит N ближайших учебных дней (дат с парами) в закреплённом сообщении.
+PINNED_SCHEDULE_DAYS_AHEAD = int(_get_env("PINNED_SCHEDULE_DAYS_AHEAD", 7, log_default=True))
 PINNED_SCHEDULE_MESSAGE_FILE = Path(
     _get_env(
         "PINNED_SCHEDULE_MESSAGE_FILE",
