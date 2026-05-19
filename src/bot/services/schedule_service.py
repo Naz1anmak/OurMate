@@ -320,7 +320,11 @@ class ScheduleService:
             events = next(iter(by_group.values())) if by_group else []
             if not events and empty_text:
                 return empty_text
-            return self._render_single_block(f"{icon_common} {base_title}", events)
+            return self._render_single_block(
+                f"{icon_common} {base_title}",
+                events,
+                empty_fallback=empty_text or "Пар нет",
+            )
 
         # Different day → per-group blocks
         blocks: list[str] = []
