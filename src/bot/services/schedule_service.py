@@ -267,6 +267,92 @@ class ScheduleService:
         next_events = [e for e in self.events if e.start.date() == next_date]
         return next_date, next_events
 
+    def _events_by_group_for_date(self, target_date: date) -> Dict[str, List[ScheduleEvent]]:
+        """Для каждой известной группы — её события на эту дату.
+
+        Для single-group возвращает {"": [...]}.
+        """
+        day_events = self._events_for_date(target_date)
+        result: Dict[str, List[ScheduleEvent]] = {code: [] for code in self.known_groups}
+        for ev in day_events:
+            for code in ev.groups:
+                if code in result:
+                    result[code].append(ev)
+        for code in result:
+            result[code].sort(key=lambda e: e.start)
+        return result
+
+    def _day_is_common(self, by_group: Dict[str, List[ScheduleEvent]]) -> bool:
+        """True, если у всех групп множества (start, end, summary, location) совпадают."""
+        if len(by_group) <= 1:
+            return True
+        iterator = iter(by_group.values())
+        first_keys = {ev.key() for ev in next(iterator)}
+        for events in iterator:
+            if {ev.key() for ev in events} != first_keys:
+                return False
+        return True
+
+    def format_day_block(
+        self,
+        target_date: date,
+        base_title: str,
+        *,
+        icon_common: str = "📌",
+        empty_text: str = "",
+    ) -> str:
+        """Рендерит блок дня для multi-group / single-group.
+
+        - День общий → один блок: f"<b>{icon_common} {base_title}:</b>" + blockquote с парами.
+        - День различается → по одному блоку на группу:
+          f"<b>❗️ {base_title} для {display_name}:</b>" + blockquote.
+        - Если у группы пар нет — внутри blockquote строка "Пар нет".
+        - Если у всей единственной группы пар нет и empty_text задан — возвращает empty_text.
+        """
+        by_group = self._events_by_group_for_date(target_date)
+        all_empty = all(not evs for evs in by_group.values())
+
+        # Single-group: если пусто и есть empty_text — отдаём его (back-compat поведения).
+        if self.known_groups == frozenset({""}) and all_empty:
+            return empty_text
+
+        if self._day_is_common(by_group):
+            events = next(iter(by_group.values())) if by_group else []
+            if not events and empty_text:
+                return empty_text
+            return self._render_single_block(f"{icon_common} {base_title}", events)
+
+        # Different day → per-group blocks
+        blocks: list[str] = []
+        for code in sorted(by_group.keys()):
+            events = by_group[code]
+            display = self.group_display_name(code)
+            title = f"❗️ {base_title} для {display}"
+            blocks.append(self._render_single_block(title, events, empty_fallback="Пар нет"))
+        return "\n\n".join(blocks)
+
+    @staticmethod
+    def _render_single_block(
+        title: str,
+        events: List[ScheduleEvent],
+        *,
+        empty_fallback: str = "",
+    ) -> str:
+        """Один заголовок + blockquote со списком пар (или empty_fallback внутри blockquote)."""
+        header = f"<b>{title}:</b>"
+        if not events:
+            inner = empty_fallback or ""
+            if not inner:
+                return header
+            return f"{header}\n<blockquote>{inner}</blockquote>"
+        lines: list[str] = []
+        for e in events:
+            time_range = f"{e.start:%H:%M}-{e.end:%H:%M}"
+            lines.append(f"• {time_range}")
+            lines.append(f"— <b>{e.summary}</b>")
+        inner = "\n".join(lines)
+        return f"{header}\n<blockquote>{inner}</blockquote>"
+
     def format_classes(
         self,
         events: List[ScheduleEvent],
@@ -290,14 +376,19 @@ class ScheduleService:
         lines = [title, "", *event_lines]
         return "\n".join(lines)
 
-    def format_next_classes_block(self, day: date, events: List[ScheduleEvent], base_date: date | None = None) -> str:
-        """Формирует блок о ближайших будущих парах."""
+    def format_next_classes_block(
+        self,
+        day: date,
+        events: List[ScheduleEvent],   # сохраняем для обратной совместимости сигнатуры
+        base_date: date | None = None,
+    ) -> str:
+        """Блок «следующие пары» — общий или per-group по логике format_day_block."""
         if base_date and day == date.fromordinal(base_date.toordinal() + 1):
-            title = "<b>📌 Пары завтра:</b>"
+            base_title = "Пары завтра"
         else:
             day_phrase = self.weekday_with_preposition(day)
-            title = f"<b>📌 Следующие пары {day_phrase} ({day.strftime('%d.%m')}):</b>"
-        return self.format_classes(events, title, "", wrap_quote=True)
+            base_title = f"Следующие пары {day_phrase} ({day.strftime('%d.%m')})"
+        return self.format_day_block(day, base_title, icon_common="📌")
 
     def get_no_pairs_message(self, day_label: str) -> str:
         """Возвращает случайное сообщение об отсутствии пар на указанную дату."""
