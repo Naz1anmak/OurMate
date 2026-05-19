@@ -209,7 +209,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         else:
             next_date, next_events = schedule_service.get_next_classes_after(effective_date)
             if next_date and next_events:
-                next_block = schedule_service.format_next_classes_block(next_date, next_events, base_date=effective_date)
+                next_block = schedule_service.format_next_classes_block(next_date, base_date=effective_date)
                 text = f"{empty_text}\n\n{next_block}"
             else:
                 text = empty_text
@@ -228,7 +228,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         else:
             next_date, next_events = schedule_service.get_next_classes_after(tomorrow)
             if next_date and next_events:
-                next_block = schedule_service.format_next_classes_block(next_date, next_events, base_date=tomorrow)
+                next_block = schedule_service.format_next_classes_block(next_date, base_date=tomorrow)
                 text = f"{empty_text}\n\n{next_block}"
             else:
                 text = empty_text

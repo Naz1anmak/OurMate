@@ -380,12 +380,7 @@ class ScheduleService:
         lines = [title, "", *event_lines]
         return "\n".join(lines)
 
-    def format_next_classes_block(
-        self,
-        day: date,
-        events: List[ScheduleEvent],   # сохраняем для обратной совместимости сигнатуры
-        base_date: date | None = None,
-    ) -> str:
+    def format_next_classes_block(self, day: date, base_date: date | None = None) -> str:
         """Блок «следующие пары» — общий или per-group по логике format_day_block."""
         if base_date and day == date.fromordinal(base_date.toordinal() + 1):
             base_title = "Пары завтра"

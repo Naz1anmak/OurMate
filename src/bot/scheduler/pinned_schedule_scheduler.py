@@ -117,7 +117,7 @@ def _build_pinned_text(today: date) -> Optional[str]:
     lines: list[str] = []
     used_next_date: Optional[date] = None
     day_label = "завтра" if effective_date == date.fromordinal(today.toordinal() + 1) else "сегодня"
-    base_title_today = "Пары на завтра" if day_label == "завтра" else "Пары сегодня"
+    base_title_today = "Пары на завтра" if day_label == "завтра" else "Пары на сегодня"
 
     # Блок «Сегодня/Завтра»
     if today_events:
@@ -126,7 +126,7 @@ def _build_pinned_text(today: date) -> Optional[str]:
         base_empty = schedule_service.get_no_pairs_message(day_label)
         next_date, next_events = schedule_service.get_next_classes_after(effective_date)
         if next_date and next_events:
-            next_block = schedule_service.format_next_classes_block(next_date, next_events, base_date=effective_date)
+            next_block = schedule_service.format_next_classes_block(next_date, base_date=effective_date)
             used_next_date = next_date
             lines.append(f"{base_empty}\n\n{next_block}")
         else:
