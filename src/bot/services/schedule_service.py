@@ -5,15 +5,21 @@
 import json
 import logging
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, date, time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from icalendar import Calendar
 
-from src.config.settings import SCHEDULE_FILES_PATTERN, SCHEDULE_CACHE_FILE, TIMEZONE
+from src.config.settings import (
+    SCHEDULE_FILES_PATTERN,
+    SCHEDULE_GROUPS_DIR,
+    SCHEDULE_GROUP_NAME_PREFIX,
+    SCHEDULE_CACHE_FILE,
+    TIMEZONE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,34 +44,115 @@ class ScheduleEvent:
     location: str
     start: datetime
     end: datetime
+    groups: frozenset[str] = field(default_factory=lambda: frozenset({""}))
+
+    def key(self) -> tuple:
+        """Ключ идентичности для мёрджа дубликатов."""
+        return (self.start, self.end, self.summary, self.location)
 
 class ScheduleService:
     def __init__(self, timezone: ZoneInfo = TIMEZONE):
         self.timezone = timezone
+        self.known_groups: frozenset[str] = frozenset({""})
         self.events: List[ScheduleEvent] = self._load_events()
         self._save_cache()
 
+    def group_display_name(self, code: str) -> str:
+        """Возвращает отображаемое имя группы по коду."""
+        if not code:
+            return ""
+        return f"{SCHEDULE_GROUP_NAME_PREFIX}{code}"
+
     def _load_events(self) -> List[ScheduleEvent]:
+        """Загружает события из multi-group подпапок или single-group fallback."""
+        base = Path(SCHEDULE_GROUPS_DIR)
+        group_codes = self._detect_group_codes(base)
+
+        raw_events: List[ScheduleEvent] = []
+        if group_codes:
+            self.known_groups = frozenset(group_codes)
+            self._warn_about_loose_files(base)
+            for code in group_codes:
+                raw_events.extend(self._load_group_events(base / code, code))
+            logger.info(
+                "Расписание: multi-group режим, группы: %s",
+                ", ".join(sorted(group_codes)),
+            )
+        else:
+            self.known_groups = frozenset({""})
+            raw_events.extend(self._load_single_group_events())
+            logger.info("Расписание: single-group режим (fallback)")
+
+        merged = self._merge_duplicates(raw_events)
+        merged.sort(key=lambda e: e.start)
+        logger.info("Расписание загружено: %s событий", len(merged))
+        return merged
+
+    @staticmethod
+    def _detect_group_codes(base: Path) -> List[str]:
+        """Возвращает имена подпапок base, содержащих файлы calendar*.ics."""
+        if not base.is_dir():
+            return []
+        codes: List[str] = []
+        for entry in sorted(base.iterdir()):
+            if not entry.is_dir():
+                continue
+            if any(entry.glob("calendar*.ics")):
+                codes.append(entry.name)
+        return codes
+
+    @staticmethod
+    def _warn_about_loose_files(base: Path) -> None:
+        """Логирует warning, если рядом с подпапками лежат свободные calendar*.ics."""
+        loose = list(base.glob("calendar*.ics"))
+        if loose:
+            logger.warning(
+                "Multi-group режим активен, но в %s найдены свободные файлы %s — "
+                "они игнорируются. Переложите их в подпапку группы.",
+                base, [p.name for p in loose],
+            )
+
+    def _load_group_events(self, group_dir: Path, code: str) -> List[ScheduleEvent]:
+        """Парсит все calendar*.ics в подпапке группы, тегируя события её кодом."""
+        events: List[ScheduleEvent] = []
+        for ics_path in sorted(group_dir.glob("calendar*.ics")):
+            try:
+                parsed = self._parse_ics(ics_path)
+                for ev in parsed:
+                    ev.groups = frozenset({code})
+                events.extend(parsed)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Не удалось разобрать %s: %s", ics_path, exc)
+        return events
+
+    def _load_single_group_events(self) -> List[ScheduleEvent]:
+        """Single-group fallback: парсит по SCHEDULE_FILES_PATTERN, без тегов группы."""
         events: List[ScheduleEvent] = []
         pattern_path = Path(SCHEDULE_FILES_PATTERN)
         base_dir = pattern_path.parent if pattern_path.parent != Path('.') else Path.cwd()
         glob_pattern = pattern_path.name
-
-        matched_files = sorted(base_dir.glob(glob_pattern))
-        if not matched_files:
+        matched = sorted(base_dir.glob(glob_pattern))
+        if not matched:
             logger.warning("Файлы расписания не найдены по шаблону '%s'", SCHEDULE_FILES_PATTERN)
-
-        for ics_path in matched_files:
+        for ics_path in matched:
             try:
                 events.extend(self._parse_ics(ics_path))
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Не удалось разобрать файл расписания %s: %s", ics_path, exc)
-                continue
-
-        # Сортируем по времени начала
-        events.sort(key=lambda e: e.start)
-        logger.info("Расписание загружено: %s событий из %s файлов", len(events), len(matched_files))
+                logger.warning("Не удалось разобрать %s: %s", ics_path, exc)
         return events
+
+    @staticmethod
+    def _merge_duplicates(events: List[ScheduleEvent]) -> List[ScheduleEvent]:
+        """Идентичные (start, end, summary, location) сливаются в одно с union(groups)."""
+        buckets: Dict[tuple, ScheduleEvent] = {}
+        for ev in events:
+            k = ev.key()
+            existing = buckets.get(k)
+            if existing is None:
+                buckets[k] = ev
+            else:
+                existing.groups = existing.groups | ev.groups
+        return list(buckets.values())
 
     def _parse_ics(self, ics_path: Path) -> List[ScheduleEvent]:
         parsed_events: List[ScheduleEvent] = []
@@ -186,7 +273,7 @@ class ScheduleService:
         if not events:
             return empty_text
 
-        event_lines: list[str] = []
+        event_lines: List[str] = []
         for e in events:
             time_range = f"{e.start:%H:%M}-{e.end:%H:%M}"
             event_lines.append(f"• {time_range}")
