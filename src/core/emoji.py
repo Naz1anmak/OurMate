@@ -39,8 +39,6 @@ class E:
     WARNING = Emoji("⚠️", premium_id="5447644880824181073")
 
     # ── 🛠 Системные / админские ───────────────────────────────
-    COMPUTER = Emoji("🖥️", premium_id="5431376038628171216")
-    STATUS = Emoji("📊", premium_id="5231200819986047254")
     CLIPBOARD = Emoji("📋", premium_id="5258389041006518073")
     BOOKS = Emoji("📚", premium_id="5373098009640836781")
     PARTY = Emoji("🎉", premium_id="5436040291507247633")
@@ -69,10 +67,9 @@ class E:
     NO_CLASS_CALENDAR = Emoji("🗓️", premium_id="5413879192267805083")
     NO_CLASS_GAME = Emoji("🎮", premium_id="5319247469165433798")
 
-    # ── ⚠️ Дополнительные warning-варианты (один unicode, разные ID) ───
-    # Middleware подставит только первый встреченный premium_id для каждого
-    # unicode-символа; эти константы доступны вручную через E.WARNING_LLM*.
-    WARNING_LLM_STREAM = Emoji("⚠️", premium_id="5197170531379459422")
+    # ── 📌 Расписание (заголовки) ──────────────────────────────
+    PIN = Emoji("📌", premium_id="5465482434055260820")
+    ALERT = Emoji("❗️", premium_id="5224495199215963724")
 
 
 ALL_EMOJI: tuple[Emoji, ...] = tuple(
