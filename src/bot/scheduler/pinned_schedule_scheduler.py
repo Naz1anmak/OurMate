@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -80,6 +80,12 @@ class PinnedScheduleScheduler:
             logger.info("Закреп расписания обновлён")
         except TelegramForbiddenError:
             logger.warning("Нет прав на редактирование закрепа; пробуем отправить заново")
+            await self._send_and_pin(text)
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc):
+                logger.info("Закреп расписания: текст не изменился, пропускаем")
+                return
+            logger.warning("Не удалось отредактировать закреп расписания: %s; отправляем заново", exc)
             await self._send_and_pin(text)
         except Exception as exc:
             logger.warning("Не удалось отредактировать закреп расписания: %s; отправляем заново", exc)
