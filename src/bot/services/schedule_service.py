@@ -223,10 +223,6 @@ class ScheduleService:
     def get_classes_for_date(self, target_date: date) -> List[ScheduleEvent]:
         return self._events_for_date(target_date)
 
-    def get_todays_classes(self, timezone: ZoneInfo) -> List[ScheduleEvent]:
-        today = datetime.now(timezone).date()
-        return self._events_for_date(today)
-
     def get_effective_date(self, timezone: ZoneInfo) -> date:
         """Возвращает 'актуальную' дату: после последней пары переключаемся на завтра."""
         now = datetime.now(timezone)
@@ -238,11 +234,6 @@ class ScheduleService:
         if now >= last_end:
             return date.fromordinal(today.toordinal() + 1)
         return today
-
-    def get_tomorrows_classes(self, timezone: ZoneInfo) -> List[ScheduleEvent]:
-        today = datetime.now(timezone).date()
-        tomorrow = date.fromordinal(today.toordinal() + 1)
-        return self._events_for_date(tomorrow)
 
     def get_next_classes_after(self, base_date: date) -> Tuple[Optional[date], List[ScheduleEvent]]:
         """
@@ -356,29 +347,6 @@ class ScheduleService:
             lines.append(f"— <b>{e.summary}</b>")
         inner = "\n".join(lines)
         return f"{header}\n<blockquote>{inner}</blockquote>"
-
-    def format_classes(
-        self,
-        events: List[ScheduleEvent],
-        title: str,
-        empty_text: str,
-        wrap_quote: bool = False,
-    ) -> str:
-        if not events:
-            return empty_text
-
-        event_lines: List[str] = []
-        for e in events:
-            time_range = f"{e.start:%H:%M}-{e.end:%H:%M}"
-            event_lines.append(f"• {time_range}")
-            event_lines.append(f"— <b>{e.summary}</b>")
-
-        if wrap_quote:
-            list_block = "\n".join(event_lines)
-            return "\n".join([title, f"<blockquote>{list_block}</blockquote>"])
-
-        lines = [title, "", *event_lines]
-        return "\n".join(lines)
 
     def format_next_classes_block(self, day: date, base_date: date | None = None) -> str:
         """Блок «следующие пары» — общий или per-group по логике format_day_block."""
