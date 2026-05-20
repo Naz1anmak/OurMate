@@ -9,6 +9,7 @@ from aiogram.exceptions import TelegramNetworkError, TelegramBadRequest
 from aiogram.filters import Command
 
 from src.bot.services.birthday_service import birthday_service
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ async def cmd_start(message: types.Message):
             await message.bot.send_message(
                 OWNER_CHAT_ID,
                 (
-                    f"📲 Новый /start\n"
+                    f"{E.START} Новый /start\n"
                     f"От: {message.from_user.full_name} {user_login}\n"
                     f"user_id: {message.from_user.id}"
                 ),
@@ -55,7 +56,7 @@ async def cmd_start(message: types.Message):
     # Проверяем, является ли пользователь владельцем
     if message.from_user.id == OWNER_CHAT_ID:
         welcome_text = (
-            f"🤖 <b>Привет, владелец!</b>\n\n"
+            f"{E.ROBOT} <b>Привет, владелец!</b>\n\n"
             "Я бот с подключенной нейросетью. Помимо обычного чата, у вас есть доступ к специальным командам:\n\n"
             "<b>Команды управления:</b>\n"
             "• <code>logs</code> — Логи бота\n"
@@ -75,9 +76,9 @@ async def cmd_start(message: types.Message):
         )
     else:
         welcome_text = (
-            f"🤖 <b>Привет!</b>\n\n"
+            f"{E.ROBOT} <b>Привет!</b>\n\n"
             "Я бот с подключенной нейросетью. Чтобы задать мне вопрос — просто напиши его тут, а в группе упомяни меня через @ или ответь на моё сообщение.\n\n"
-            f"💬 Я запоминаю контекст наших диалогов, поэтому могу поддерживать осмысленную беседу.\n\n"
+            f"{E.CHAT} Я запоминаю контекст наших диалогов, поэтому могу поддерживать осмысленную беседу.\n\n"
             "<b>Команды по дням рождения:</b>\n"
             "• <code>др</code> — Ближайший день рождения\n"
             "• <code>др &lt;id&gt;</code> или <code>др @username</code> — Дата дня рождения пользователя по id или username\n\n"
@@ -88,14 +89,14 @@ async def cmd_start(message: types.Message):
             "• <code>отписаться</code> — Отключить поздравления\n\n"
             "<b>Справка:</b>\n"
             "• <code>help</code> или <code>команды</code>\n\n"
-            f"<i>❕ В беседе нужно упомянуть бота или ответить на его сообщение.</i>\n\n"
+            f"<i>{E.INFO} В беседе нужно упомянуть бота или ответить на его сообщение.</i>\n\n"
             "<b>Команды управления (для владельца):</b>\n"
             "• <code>logs</code> — Логи бота\n"
             "• <code>full logs</code> — Полные логи\n"
             "• <code>проверка ссылок</code> — Диагностика ссылок/активации\n\n"
             "<b>Хотите больше функций?</b>\n"
             "Вы можете клонировать этого бота для своей беседы и настроить под себя:\n\n"
-            f"🔗 <a href=\"https://github.com/Naz1anmak/OurMate\">GitHub репозиторий</a>"
+            f"{E.LINK} <a href=\"https://github.com/Naz1anmak/OurMate\">GitHub репозиторий</a>"
         )
 
     try:

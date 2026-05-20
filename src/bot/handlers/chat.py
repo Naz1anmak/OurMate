@@ -16,6 +16,7 @@ from src.bot.handlers.chat_commands import (
     handle_public_commands,
 )
 from src.bot.handlers.chat_pm import handle_private_chat
+from src.core.emoji import E
 from src.bot.handlers.chat_group import handle_group_chat
 from src.utils.telegram_cache import (
     get_cached_bot_identity,
@@ -90,7 +91,7 @@ async def on_mention_or_reply(message: Message):
             if blocked_cmd:
                 user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
                 logger.info("GR; От %s (%s): команда '%s' в чужой группе — отклонено", user_login_log, message.from_user.full_name, ctx["normalized_text"])
-                deny_text = "❌ <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>"
+                deny_text = f"{E.CROSS} <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>"
                 try:
                     await message.answer(deny_text, parse_mode="HTML")
                 except Exception:

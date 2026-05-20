@@ -28,6 +28,7 @@ from src.bot.handlers.llm_flow import (
     _trim_html,
     ERROR_NOTICE_PLAIN,
 )
+from src.core.emoji import E
 from src.bot.handlers.placeholder_variants import pick_placeholder_variant
 
 FALLBACK_EDIT_TIMEOUT_SEC = 6.0
@@ -270,7 +271,7 @@ async def _handle_llm_error_gr(
 ):
     user_login_safe = user_login or message.from_user.full_name or str(message.from_user.id)
     logger.warning(f"GR; Бот: LLM недоступен для {user_login_safe}: {llm_error}")
-    fallback_text = "⚠️ Я временно недоступен. Попробуй ещё раз через пару минут."
+    fallback_text = f"{E.WARNING} Я временно недоступен. Попробуй ещё раз через пару минут."
     fallback_sent = False
 
     if temp_msg:

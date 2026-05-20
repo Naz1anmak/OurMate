@@ -16,10 +16,11 @@ from src.bot.services.context_service import context_service
 from src.bot.handlers.errors import notify_owner_error
 from src.utils.render_utils import render_html_with_code
 from src.bot.handlers.placeholder_variants import pick_placeholder_variant
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
-ERROR_NOTICE_PLAIN = "⚠️ Не удалось получить ответ. Попробуй ещё раз через пару секунд."
+ERROR_NOTICE_PLAIN = f"{E.WARNING} Не удалось получить ответ. Попробуй ещё раз через пару секунд."
 
 def _ends_on_boundary(text: str) -> bool:
     """Проверяем, что буфер заканчивается на границе слова/предложения, чтобы не рвать слова."""

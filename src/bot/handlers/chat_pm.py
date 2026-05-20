@@ -19,10 +19,11 @@ from src.bot.handlers.chat_context import (
 )
 from src.bot.handlers.errors import notify_owner_error
 from src.bot.handlers.llm_flow import try_streaming_response, format_final_answer
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
-ERROR_NOTICE_PLAIN_PM = "⚠️ LLM временно недоступен. Попробуй ещё раз через пару минут."
+ERROR_NOTICE_PLAIN_PM = f"{E.WARNING} LLM временно недоступен. Попробуй ещё раз через пару минут."
 
 async def handle_private_chat(message: Message, bot_username: str, bot_id: int):
     chat_id = message.chat.id
