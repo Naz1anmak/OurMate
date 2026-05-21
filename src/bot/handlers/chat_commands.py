@@ -206,7 +206,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         base_title = "Пары на завтра" if day_label == "завтра" else "Пары на сегодня"
         empty_text = schedule_service.get_no_pairs_message(day_label)
         if events:
-            text = schedule_service.format_day_block(effective_date, base_title, icon_common=str(E.TEACHER))
+            text = schedule_service.format_day_block(effective_date, base_title, icon_common=str(E.NO_CLASS_BOOKS))
         else:
             next_date, next_events = schedule_service.get_next_classes_after(effective_date)
             if next_date and next_events:
@@ -225,7 +225,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         events = schedule_service.get_classes_for_date(tomorrow)
         empty_text = schedule_service.get_no_pairs_message("завтра")
         if events:
-            text = schedule_service.format_day_block(tomorrow, "Пары на завтра", icon_common=str(E.TEACHER))
+            text = schedule_service.format_day_block(tomorrow, "Пары на завтра", icon_common=str(E.NO_CLASS_BOOKS))
         else:
             next_date, next_events = schedule_service.get_next_classes_after(tomorrow)
             if next_date and next_events:

@@ -29,7 +29,7 @@ class ScheduleScheduler:
         today = datetime.now(TIMEZONE).date()
         events = schedule_service.get_classes_for_date(today)
         if events:
-            text = schedule_service.format_day_block(today, "Пары на сегодня", icon_common=str(E.TEACHER))
+            text = schedule_service.format_day_block(today, "Пары на сегодня", icon_common=str(E.NO_CLASS_BOOKS))
             await self.bot.send_message(CHAT_ID, text, parse_mode="HTML")
 
     def stop(self):

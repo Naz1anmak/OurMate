@@ -128,7 +128,7 @@ def _build_pinned_text(today: date) -> Optional[str]:
 
     # Блок «Сегодня/Завтра»
     if today_events:
-        lines.append(schedule_service.format_day_block(effective_date, base_title_today, icon_common=str(E.TEACHER)))
+        lines.append(schedule_service.format_day_block(effective_date, base_title_today, icon_common=str(E.NO_CLASS_BOOKS)))
     else:
         base_empty = schedule_service.get_no_pairs_message(day_label)
         next_date, next_events = schedule_service.get_next_classes_after(effective_date)
