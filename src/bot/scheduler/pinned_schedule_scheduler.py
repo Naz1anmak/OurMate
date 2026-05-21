@@ -22,6 +22,7 @@ from src.config.settings import (
     PINNED_SCHEDULE_DAYS_AHEAD,
 )
 from src.bot.services.schedule_service import schedule_service, ScheduleEvent
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ def _build_pinned_text(today: date) -> Optional[str]:
 
     # Блок «Сегодня/Завтра»
     if today_events:
-        lines.append(schedule_service.format_day_block(effective_date, base_title_today, icon_common="📚"))
+        lines.append(schedule_service.format_day_block(effective_date, base_title_today, icon_common=str(E.TEACHER)))
     else:
         base_empty = schedule_service.get_no_pairs_message(day_label)
         next_date, next_events = schedule_service.get_next_classes_after(effective_date)
@@ -167,7 +168,7 @@ def _format_day_block(day: date) -> str:
     """Заголовок «Во вторник (DD.MM)» + блок(и) пар через сервис."""
     day_title = schedule_service.weekday_with_preposition(day).capitalize()
     base_title = f"{day_title} ({day.strftime('%d.%m')})"
-    return schedule_service.format_day_block(day, base_title, icon_common="📌")
+    return schedule_service.format_day_block(day, base_title)
 
 def _load_pinned_id(path: Path) -> Optional[int]:
     try:
