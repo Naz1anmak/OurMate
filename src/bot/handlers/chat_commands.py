@@ -10,6 +10,7 @@ from src.bot.services.schedule_service import schedule_service
 from src.utils.date_utils import format_birthday_date
 from src.bot.handlers.owner_commands import handle_owner_command, OWNER_COMMANDS
 from src.bot.handlers.chat_context import is_public_command
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,8 @@ async def handle_help_command(message: Message, normalized_text: str) -> bool:
         "• <code>пары завтра</code> — пары на завтра\n"
         "• <code>отписаться</code> — отключить поздравления (в ЛС с ботом)\n"
         "• <code>help</code> или <code>команды</code> — справка по командам\n\n"
-        f"<i>❕ В беседе команды работают при упоминании бота или ответе на его сообщение.</i>\n"
-        f"<i>💡 В ЛС команды доступны владельцу и пользователям из списка группы.</i>\n"
+        f"<i>{E.INFO} В беседе команды работают при упоминании бота или ответе на его сообщение.</i>\n"
+        f"<i>{E.IDEA} В ЛС команды доступны владельцу и пользователям из списка группы.</i>\n"
     )
 
     if message.from_user.id == OWNER_CHAT_ID:
@@ -56,11 +57,11 @@ async def handle_unsubscribe_command(message: Message, normalized_text: str) -> 
     tag_unsub = "GR" if in_group else "PM"
     if in_group:
         logger.info("%s; От %s (%s): запрос 'отписаться' в группе — отклонено", tag_unsub, user_login_log, message.from_user.full_name)
-        deny_text = f"❌ Эта команда доступна только в личных сообщениях с ботом."
+        deny_text = f"{E.CROSS} Эта команда доступна только в личных сообщениях с ботом."
         try:
             await message.answer(deny_text, parse_mode="HTML")
         except TelegramBadRequest:
-            await message.answer("❌ Эта команда доступна только в личных сообщениях с ботом.", parse_mode="HTML")
+            await message.answer(f"{E.CROSS} Эта команда доступна только в личных сообщениях с ботом.", parse_mode="HTML")
         return True
     else:
         logger.info(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): запрос 'отписаться'")
@@ -72,24 +73,24 @@ async def handle_unsubscribe_command(message: Message, normalized_text: str) -> 
             logger.info(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): успешная отписка от поздравлений")
             birthday_service.save_users()
             success_text = (
-                f"✅ Вы отписались от поздравлений.\n\n"
+                f"{E.CHECK} Вы отписались от поздравлений.\n\n"
                 "Чтобы снова получать поздравления, напишите боту любое сообщение."
             )
             await message.answer(success_text, parse_mode="HTML")
         else:
             logger.info(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): повторная отписка от поздравлений")
             info_text = (
-                f"ℹ️ Вы и так не подписаны на поздравления.\n\n"
+                f"{E.INFO_ALT} Вы и так не подписаны на поздравления.\n\n"
                 "Чтобы получать поздравления, напишите боту любое сообщение."
             )
             await message.answer(info_text, parse_mode="HTML")
     else:
         logger.info(f"{tag_unsub}; Бот: пользователь {user_login_log or message.from_user.id} не найден в списке пользователей")
-        not_found_text = f"❌ Вы не найдены в списке пользователей."
+        not_found_text = f"{E.CROSS} Вы не найдены в списке пользователей."
         try:
             await message.answer(not_found_text, parse_mode="HTML")
         except TelegramBadRequest:
-            await message.answer("❌ Вы не найдены в списке пользователей.", parse_mode="HTML")
+            await message.answer(f"{E.CROSS} Вы не найдены в списке пользователей.", parse_mode="HTML")
     return True
 
 async def handle_owner_commands(message: Message, normalized_text: str) -> bool:
@@ -102,11 +103,11 @@ async def handle_owner_commands(message: Message, normalized_text: str) -> bool:
             logger.info(f"GR; От {user_login} ({message.from_user.full_name}): попытка команды '{message.text}' — отказано")
         else:
             logger.info(f"PM; От {user_login} ({message.from_user.full_name}): попытка команды '{message.text}' — отказано")
-        deny_text = f"❌ <b>В доступе отказано</b>\n\nЭта команда доступна только владельцу бота."
+        deny_text = f"{E.CROSS} <b>В доступе отказано</b>\n\nЭта команда доступна только владельцу бота."
         try:
             await message.answer(deny_text, parse_mode="HTML")
         except TelegramBadRequest:
-            await message.answer("❌ <b>В доступе отказано</b>\n\nЭта команда доступна только владельцу бота.", parse_mode="HTML")
+            await message.answer(f"{E.CROSS} <b>В доступе отказано</b>\n\nЭта команда доступна только владельцу бота.", parse_mode="HTML")
         return True
 
     if await handle_owner_command(message):
@@ -123,11 +124,11 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         logger.info(
             f"PM; От {user_login_log} ({message.from_user.full_name}): попытка команды '{normalized_text}' — отклонено (нет в списке)"
         )
-        deny_text = f"❌ <b>Эта команда доступна только избранным пользователям.</b>"
+        deny_text = f"{E.CROSS} <b>Эта команда доступна только избранным пользователям.</b>"
         try:
             await message.answer(deny_text, parse_mode="HTML")
         except TelegramBadRequest:
-            await message.answer("❌ <b>Эта команда доступна только избранным пользователям.</b>", parse_mode="HTML")
+            await message.answer(f"{E.CROSS} <b>Эта команда доступна только избранным пользователям.</b>", parse_mode="HTML")
         return True
 
     if normalized_text == "др" and ctx["should_process_birthday_command"]:
@@ -205,7 +206,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         base_title = "Пары на завтра" if day_label == "завтра" else "Пары на сегодня"
         empty_text = schedule_service.get_no_pairs_message(day_label)
         if events:
-            text = schedule_service.format_day_block(effective_date, base_title, icon_common="📚")
+            text = schedule_service.format_day_block(effective_date, base_title, icon_common=str(E.NO_CLASS_BOOKS))
         else:
             next_date, next_events = schedule_service.get_next_classes_after(effective_date)
             if next_date and next_events:
@@ -224,7 +225,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         events = schedule_service.get_classes_for_date(tomorrow)
         empty_text = schedule_service.get_no_pairs_message("завтра")
         if events:
-            text = schedule_service.format_day_block(tomorrow, "Пары на завтра", icon_common="📚")
+            text = schedule_service.format_day_block(tomorrow, "Пары на завтра", icon_common=str(E.NO_CLASS_BOOKS))
         else:
             next_date, next_events = schedule_service.get_next_classes_after(tomorrow)
             if next_date and next_events:

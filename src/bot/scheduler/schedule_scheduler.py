@@ -9,6 +9,7 @@ from aiogram import Bot
 
 from src.config.settings import TIMEZONE, CHAT_ID, SCHEDULE_SEND_HOUR, SCHEDULE_SEND_MINUTE, SCHEDULE_BROADCAST_ENABLED
 from src.bot.services.schedule_service import schedule_service
+from src.core.emoji import E
 
 class ScheduleScheduler:
     def __init__(self, bot: Bot):
@@ -28,7 +29,7 @@ class ScheduleScheduler:
         today = datetime.now(TIMEZONE).date()
         events = schedule_service.get_classes_for_date(today)
         if events:
-            text = schedule_service.format_day_block(today, "Пары на сегодня", icon_common="📚")
+            text = schedule_service.format_day_block(today, "Пары на сегодня", icon_common=str(E.NO_CLASS_BOOKS))
             await self.bot.send_message(CHAT_ID, text, parse_mode="HTML")
 
     def stop(self):

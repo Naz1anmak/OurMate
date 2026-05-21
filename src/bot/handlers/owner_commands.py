@@ -6,6 +6,7 @@ from aiogram.types import Message
 from src.config.settings import OWNER_CHAT_ID
 from src.bot.services.system_service import system_service
 from src.bot.services.birthday_service import birthday_service
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def _render_links_check() -> str:
         if user.user_id is None:
             prefix = "⭕️"
         else:
-            prefix = "✅" if user.status == "active" else "🚫"
+            prefix = str(E.CHECK) if user.status == "active" else str(E.BAN)
 
         has_cake = user.user_id is not None and user.interacted_with_bot
         if has_cake:

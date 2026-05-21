@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import random
 from typing import List
 
+from src.core.emoji import E
+
 
 @dataclass(frozen=True)
 class PlaceholderVariant:
@@ -16,16 +18,16 @@ class PlaceholderVariant:
 
 
 _PLACEHOLDER_VARIANTS: List[PlaceholderVariant] = [
-    PlaceholderVariant("🧠 Мне понадобится немного времени, думаю над ответом..."),
-    PlaceholderVariant("⌛ Одну секунду, формулирую мысль..."),
-    PlaceholderVariant("💭 Обдумываю, чтобы ответить по делу..."),
-    PlaceholderVariant("✏️ Проверяю факты, сейчас вернусь..."),
-    PlaceholderVariant("🔎 Сверяю детали, почти готово..."),
-    PlaceholderVariant("⚙️ Прокручиваю логику в голове..."),
-    PlaceholderVariant("🧩 Осталась последняя деталь..."),
-    PlaceholderVariant("💭 Привожу мысли в порядок..."),
-    PlaceholderVariant("📚 Освежаю материалы, секунду..."),
-    PlaceholderVariant("🤔 Хочу ответить точно, чуть-чуть подожди..."),
+    PlaceholderVariant(f"{E.THINK_BRAIN} Мне понадобится немного времени, думаю над ответом..."),
+    PlaceholderVariant(f"{E.THINK_HOURGLASS} Одну секунду, формулирую мысль..."),
+    PlaceholderVariant(f"{E.THINK_BUBBLE} Обдумываю, чтобы ответить по делу..."),
+    PlaceholderVariant(f"{E.THINK_PENCIL} Проверяю факты, сейчас вернусь..."),
+    PlaceholderVariant(f"{E.THINK_SEARCH} Сверяю детали, почти готово..."),
+    PlaceholderVariant(f"{E.THINK_GEAR} Прокручиваю логику в голове..."),
+    PlaceholderVariant(f"{E.THINK_PUZZLE} Осталась последняя деталь..."),
+    PlaceholderVariant(f"{E.THINK_SHUSH} Привожу мысли в порядок..."),
+    PlaceholderVariant(f"{E.TEACHER} Освежаю материалы, секунду..."),
+    PlaceholderVariant(f"{E.THINK_QUESTION} Хочу ответить точно, чуть-чуть подожди..."),
 ]
 
 

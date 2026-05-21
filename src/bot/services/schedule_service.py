@@ -20,22 +20,23 @@ from src.config.settings import (
     SCHEDULE_CACHE_FILE,
     TIMEZONE,
 )
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
 NO_PAIRS_TEMPLATES = [
-    "📚 Пар {day} нет, отдыхайте родные!",
-    "✨ Пар {day} нет, удачного вам дня!",
-    "💤 Пар {day} нет, ловите передышку!",
-    "💚 Пар {day} нет, но я всегда рядом!",
-    "🥳 Пар {day} нет, самое время выспаться!",
-    "🕒 Пар {day} нет, используйте время с пользой!",
-    "☀️ Пар {day} нет, наслаждайтесь свободным днем!",
-    "📞 Пар {day} нет, но я всегда на связи, родные!",
-    "📖 Пар {day} нет, но можно повторить материал!",
-    "🗓️ Пар {day} нет, планируйте свой день как хотите!",
-    "🎮 Пар {day} нет, самое время заняться своими делами!",
-    "📚 Пар {day} нет, но я бы на вашем месте все равно поучился!",
+    f"{E.NO_CLASS_BOOKS} Пар {{day}} нет, отдыхайте родные!",
+    f"{E.NO_CLASS_SPARKLES} Пар {{day}} нет, удачного вам дня!",
+    f"{E.NO_CLASS_SLEEP} Пар {{day}} нет, ловите передышку!",
+    f"{E.NO_CLASS_HEART} Пар {{day}} нет, но я всегда рядом!",
+    f"{E.NO_CLASS_PARTY} Пар {{day}} нет, самое время выспаться!",
+    f"{E.NO_CLASS_CLOCK} Пар {{day}} нет, используйте время с пользой!",
+    f"{E.NO_CLASS_SUN} Пар {{day}} нет, наслаждайтесь свободным днем!",
+    f"{E.NO_CLASS_PHONE} Пар {{day}} нет, но я всегда на связи, родные!",
+    f"{E.NO_CLASS_BOOK} Пар {{day}} нет, но можно повторить материал!",
+    f"{E.NO_CLASS_CALENDAR} Пар {{day}} нет, планируйте свой день как хотите!",
+    f"{E.NO_CLASS_GAME} Пар {{day}} нет, самое время заняться своими делами!",
+    f"{E.NO_CLASS_BOOKS} Пар {{day}} нет, но я бы на вашем месте все равно поучился!",
 ]
 
 @dataclass
@@ -223,10 +224,6 @@ class ScheduleService:
     def get_classes_for_date(self, target_date: date) -> List[ScheduleEvent]:
         return self._events_for_date(target_date)
 
-    def get_todays_classes(self, timezone: ZoneInfo) -> List[ScheduleEvent]:
-        today = datetime.now(timezone).date()
-        return self._events_for_date(today)
-
     def get_effective_date(self, timezone: ZoneInfo) -> date:
         """Возвращает 'актуальную' дату: после последней пары переключаемся на завтра."""
         now = datetime.now(timezone)
@@ -238,11 +235,6 @@ class ScheduleService:
         if now >= last_end:
             return date.fromordinal(today.toordinal() + 1)
         return today
-
-    def get_tomorrows_classes(self, timezone: ZoneInfo) -> List[ScheduleEvent]:
-        today = datetime.now(timezone).date()
-        tomorrow = date.fromordinal(today.toordinal() + 1)
-        return self._events_for_date(tomorrow)
 
     def get_next_classes_after(self, base_date: date) -> Tuple[Optional[date], List[ScheduleEvent]]:
         """
@@ -298,7 +290,7 @@ class ScheduleService:
         target_date: date,
         base_title: str,
         *,
-        icon_common: str = "📌",
+        icon_common: str = str(E.PIN),
         empty_text: str = "",
     ) -> str:
         """Рендерит блок дня для multi-group / single-group.
@@ -331,7 +323,7 @@ class ScheduleService:
         for code in sorted(by_group.keys()):
             events = by_group[code]
             display = self.group_display_name(code)
-            title = f"❗️ {base_title} для {display}"
+            title = f"{E.ALERT} {base_title} для {display}"
             blocks.append(self._render_single_block(title, events, empty_fallback="Пар нет"))
         return "\n\n".join(blocks)
 
@@ -357,29 +349,6 @@ class ScheduleService:
         inner = "\n".join(lines)
         return f"{header}\n<blockquote>{inner}</blockquote>"
 
-    def format_classes(
-        self,
-        events: List[ScheduleEvent],
-        title: str,
-        empty_text: str,
-        wrap_quote: bool = False,
-    ) -> str:
-        if not events:
-            return empty_text
-
-        event_lines: List[str] = []
-        for e in events:
-            time_range = f"{e.start:%H:%M}-{e.end:%H:%M}"
-            event_lines.append(f"• {time_range}")
-            event_lines.append(f"— <b>{e.summary}</b>")
-
-        if wrap_quote:
-            list_block = "\n".join(event_lines)
-            return "\n".join([title, f"<blockquote>{list_block}</blockquote>"])
-
-        lines = [title, "", *event_lines]
-        return "\n".join(lines)
-
     def format_next_classes_block(self, day: date, base_date: date | None = None) -> str:
         """Блок «следующие пары» — общий или per-group по логике format_day_block."""
         if base_date and day == date.fromordinal(base_date.toordinal() + 1):
@@ -387,7 +356,7 @@ class ScheduleService:
         else:
             day_phrase = self.weekday_with_preposition(day)
             base_title = f"Следующие пары {day_phrase} ({day.strftime('%d.%m')})"
-        return self.format_day_block(day, base_title, icon_common="📌")
+        return self.format_day_block(day, base_title)
 
     def get_no_pairs_message(self, day_label: str) -> str:
         """Возвращает случайное сообщение об отсутствии пар на указанную дату."""

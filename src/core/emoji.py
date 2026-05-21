@@ -37,17 +37,17 @@ class E:
     CHECK = Emoji("✅", premium_id="5192963112696822273")
     CROSS = Emoji("❌", premium_id="5465665476971471368")
     WARNING = Emoji("⚠️", premium_id="5447644880824181073")
+    BAN = Emoji("🚫")
 
     # ── 🛠 Системные / админские ───────────────────────────────
     CLIPBOARD = Emoji("📋", premium_id="5258389041006518073")
-    BOOKS = Emoji("📚", premium_id="5373098009640836781")
     PARTY = Emoji("🎉", premium_id="5436040291507247633")
 
     # ── 🧠 Placeholder варианты (LLM «думает…») ────────────────
     THINK_BRAIN = Emoji("🧠", premium_id="5237799019329105246")
     THINK_HOURGLASS = Emoji("⌛", premium_id="5451646226975955576")
     THINK_BUBBLE = Emoji("💭", premium_id="5465143921912846619")
-    THINK_BUBBLE_ALT = Emoji("💭", premium_id="5359628193336669414")
+    THINK_SHUSH = Emoji("🤫", premium_id="5359628193336669414")
     THINK_PENCIL = Emoji("✏️", premium_id="5334673106202010226")
     THINK_SEARCH = Emoji("🔎", premium_id="5188311512791393083")
     THINK_GEAR = Emoji("⚙️", premium_id="5341715473882955310")
@@ -70,6 +70,7 @@ class E:
     # ── 📌 Расписание (заголовки) ──────────────────────────────
     PIN = Emoji("📌", premium_id="5465482434055260820")
     ALERT = Emoji("❗️", premium_id="5224495199215963724")
+    TEACHER = Emoji("👨‍🏫", premium_id="5373098009640836781")
 
 
 ALL_EMOJI: tuple[Emoji, ...] = tuple(

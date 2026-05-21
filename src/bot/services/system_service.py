@@ -11,6 +11,7 @@ from collections import deque
 from pathlib import Path
 
 from src.utils.logging import LOG_FILE_PATH
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,8 @@ class SystemService:
         filtered = _filter_short_logs(lines)
         if not filtered:
             if not lines:
-                return "📋 <b>Логи бота:</b>\n\nФайл логов пуст или недоступен."
-            return "📋 <b>Логи бота:</b>\n\nНет строк с маркерами PM/GR/FP."
+                return f"{E.CLIPBOARD} <b>Логи бота:</b>\n\nФайл логов пуст или недоступен."
+            return f"{E.CLIPBOARD} <b>Логи бота:</b>\n\nНет строк с маркерами PM/GR/FP."
 
         body = _format_lines_with_highlight_and_limit(
             filtered,
@@ -104,14 +105,14 @@ class SystemService:
             highlights=(),
             emoji_map={"PM; ": "🔴", "GR; ": "🟡", "FP; ": "🟢"},
         )
-        return "📋 <b>Логи бота:</b>\n\n<code>" + body + "</code>"
+        return f"{E.CLIPBOARD} <b>Логи бота:</b>\n\n<code>" + body + "</code>"
 
     @staticmethod
     def get_full_logs() -> str:
         """Полные логи: последние 200 строк со всеми уровнями."""
         lines = _read_last_lines(LOG_FILE_PATH, 200)
         if not lines:
-            return "📋 <b>Полные логи бота:</b>\n\nФайл логов пуст или недоступен."
+            return f"{E.CLIPBOARD} <b>Полные логи бота:</b>\n\nФайл логов пуст или недоступен."
 
         body = _format_lines_with_highlight_and_limit(
             lines,
@@ -119,7 +120,7 @@ class SystemService:
             highlights=("PM; ", "GR; ", "FP; ", "src.bot."),
             emoji_map={"PM; ": "🔴", "GR; ": "🟡", "FP; ": "🟢"},
         )
-        return "📋 <b>Полные логи бота:</b>\n\n" + body
+        return f"{E.CLIPBOARD} <b>Полные логи бота:</b>\n\n" + body
 
 
 system_service = SystemService()
