@@ -68,7 +68,13 @@ class BirthdayScheduler:
             bot (Bot): Экземпляр бота для отправки сообщений
         """
         self.bot = bot
-        self.scheduler = AsyncIOScheduler(timezone=TIMEZONE)
+        self.scheduler = AsyncIOScheduler(
+            timezone=TIMEZONE,
+            job_defaults={
+                "misfire_grace_time": 300,
+                "coalesce": True,
+            },
+        )
         self.last_greeting_file = Path(LAST_BIRTHDAY_GREETING_FILE)
     
     def start(self):

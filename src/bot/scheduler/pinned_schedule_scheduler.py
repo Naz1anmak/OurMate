@@ -30,7 +30,13 @@ logger = logging.getLogger(__name__)
 class PinnedScheduleScheduler:
     def __init__(self, bot: Bot):
         self.bot = bot
-        self.scheduler = AsyncIOScheduler(timezone=TIMEZONE)
+        self.scheduler = AsyncIOScheduler(
+            timezone=TIMEZONE,
+            job_defaults={
+                "misfire_grace_time": 300,
+                "coalesce": True,
+            },
+        )
 
     def start(self):
         if not PINNED_SCHEDULE_ENABLED:
