@@ -20,22 +20,23 @@ from src.config.settings import (
     SCHEDULE_CACHE_FILE,
     TIMEZONE,
 )
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
 NO_PAIRS_TEMPLATES = [
-    "📚 Пар {day} нет, отдыхайте родные!",
-    "✨ Пар {day} нет, удачного вам дня!",
-    "💤 Пар {day} нет, ловите передышку!",
-    "💚 Пар {day} нет, но я всегда рядом!",
-    "🥳 Пар {day} нет, самое время выспаться!",
-    "🕒 Пар {day} нет, используйте время с пользой!",
-    "☀️ Пар {day} нет, наслаждайтесь свободным днем!",
-    "📞 Пар {day} нет, но я всегда на связи, родные!",
-    "📖 Пар {day} нет, но можно повторить материал!",
-    "🗓️ Пар {day} нет, планируйте свой день как хотите!",
-    "🎮 Пар {day} нет, самое время заняться своими делами!",
-    "📚 Пар {day} нет, но я бы на вашем месте все равно поучился!",
+    f"{E.NO_CLASS_BOOKS} Пар {{day}} нет, отдыхайте родные!",
+    f"{E.NO_CLASS_SPARKLES} Пар {{day}} нет, удачного вам дня!",
+    f"{E.NO_CLASS_SLEEP} Пар {{day}} нет, ловите передышку!",
+    f"{E.NO_CLASS_HEART} Пар {{day}} нет, но я всегда рядом!",
+    f"{E.NO_CLASS_PARTY} Пар {{day}} нет, самое время выспаться!",
+    f"{E.NO_CLASS_CLOCK} Пар {{day}} нет, используйте время с пользой!",
+    f"{E.NO_CLASS_SUN} Пар {{day}} нет, наслаждайтесь свободным днем!",
+    f"{E.NO_CLASS_PHONE} Пар {{day}} нет, но я всегда на связи, родные!",
+    f"{E.NO_CLASS_BOOK} Пар {{day}} нет, но можно повторить материал!",
+    f"{E.NO_CLASS_CALENDAR} Пар {{day}} нет, планируйте свой день как хотите!",
+    f"{E.NO_CLASS_GAME} Пар {{day}} нет, самое время заняться своими делами!",
+    f"{E.NO_CLASS_BOOKS} Пар {{day}} нет, но я бы на вашем месте все равно поучился!",
 ]
 
 @dataclass
@@ -289,7 +290,7 @@ class ScheduleService:
         target_date: date,
         base_title: str,
         *,
-        icon_common: str = "📌",
+        icon_common: str = str(E.PIN),
         empty_text: str = "",
     ) -> str:
         """Рендерит блок дня для multi-group / single-group.
@@ -322,7 +323,7 @@ class ScheduleService:
         for code in sorted(by_group.keys()):
             events = by_group[code]
             display = self.group_display_name(code)
-            title = f"❗️ {base_title} для {display}"
+            title = f"{E.ALERT} {base_title} для {display}"
             blocks.append(self._render_single_block(title, events, empty_fallback="Пар нет"))
         return "\n\n".join(blocks)
 
@@ -355,7 +356,7 @@ class ScheduleService:
         else:
             day_phrase = self.weekday_with_preposition(day)
             base_title = f"Следующие пары {day_phrase} ({day.strftime('%d.%m')})"
-        return self.format_day_block(day, base_title, icon_common="📌")
+        return self.format_day_block(day, base_title)
 
     def get_no_pairs_message(self, day_label: str) -> str:
         """Возвращает случайное сообщение об отсутствии пар на указанную дату."""

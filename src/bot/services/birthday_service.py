@@ -18,6 +18,7 @@ from src.config.settings import (
     PROMPT_TEMPLATE_BIRTHDAY_ACTIVE,
     PROMPT_TEMPLATE_BIRTHDAY_FORMER,
 )
+from src.core.emoji import E
 
 class BirthdayService:
     """
@@ -181,7 +182,7 @@ class BirthdayService:
         mentions = build_mention_list(users_to_mention)
 
         notification = (
-            f"🎉 "
+            f"{E.PARTY} "
             f"Следующий день рождения:\n{mentions} — {formatted_date}"
         )
         return notification
