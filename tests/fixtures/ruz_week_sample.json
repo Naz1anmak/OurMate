@@ -1,0 +1,25 @@
+{
+  "week": {"date_start": "2026.05.25", "date_end": "2026.05.31", "is_odd": true},
+  "days": [
+    {
+      "weekday": 1,
+      "date": "2026-05-26",
+      "lessons": [
+        {
+          "subject": "Subject A",
+          "time_start": "10:00",
+          "time_end": "11:40",
+          "auditories": [{"name": "101", "building": {"name": "B-1"}}],
+          "typeObj": {"id": 14, "name": "Лекции"}
+        },
+        {
+          "subject": "Subject B",
+          "time_start": "12:00",
+          "time_end": "13:40",
+          "auditories": [{"name": "202", "building": {"name": "B-2"}}],
+          "typeObj": {"id": 15, "name": "Практические занятия"}
+        }
+      ]
+    }
+  ]
+}
