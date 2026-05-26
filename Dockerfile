@@ -18,9 +18,14 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
+COPY requirements-dev.txt ./
+RUN pip install -r requirements-dev.txt
+
 # Потом код
 COPY main.py ./
 COPY src ./src
+COPY pyproject.toml ./
+COPY tests ./tests
 
 # Непривилегированный пользователь, владеет /app и /app/data
 RUN useradd --create-home --uid 1000 app \

@@ -1,4 +1,4 @@
-.PHONY: help up down restart build logs tail sh stop ps env
+.PHONY: help up down restart build logs tail sh stop ps env test test-cov
 
 SERVICE ?= bot
 
@@ -38,3 +38,9 @@ ps: ## Список контейнеров compose
 
 sh: ## Зайти внутрь контейнера $(SERVICE)
 	docker compose exec $(SERVICE) sh
+
+test: ## Прогон тестов в контейнере
+	docker compose run --rm $(SERVICE) pytest tests/ -v
+
+test-cov: ## Прогон тестов с покрытием
+	docker compose run --rm $(SERVICE) pytest tests/ --cov=src --cov-report=term-missing -v
