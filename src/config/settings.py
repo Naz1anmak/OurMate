@@ -117,3 +117,18 @@ PINNED_SCHEDULE_MESSAGE_FILE = Path(
         log_default=True,
     )
 )
+
+# ===== RUZ AUTOUPDATE =====
+SCHEDULE_AUTO_UPDATE_ENABLED = _get_env("SCHEDULE_AUTO_UPDATE_ENABLED", "true", log_default=True).lower() == "true"
+RUZ_BASE_URL = _get_env("RUZ_BASE_URL", "https://ruz.spbstu.ru", log_default=True)
+RUZ_FACULTY_ID = int(_get_env("RUZ_FACULTY_ID", 125, log_default=True))
+RUZ_WEEKS_AHEAD = int(_get_env("RUZ_WEEKS_AHEAD", 3, log_default=True))
+RUZ_HTTP_TIMEOUT = int(_get_env("RUZ_HTTP_TIMEOUT", 15, log_default=True))
+RUZ_LAZY_TTL_MIN = int(_get_env("RUZ_LAZY_TTL_MIN", 60, log_default=True))
+
+# Сборка маппинга {code: group_id} по env-переменным RUZ_GROUP_<CODE>=<ID>.
+RUZ_GROUP_IDS: dict[str, int] = {
+    name[len("RUZ_GROUP_"):]: int(val)
+    for name, val in os.environ.items()
+    if name.startswith("RUZ_GROUP_") and val.isdigit()
+}
