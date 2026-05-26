@@ -6,15 +6,12 @@ import json
 import logging
 import random
 from dataclasses import dataclass, field
-from datetime import datetime, date, time
+from datetime import datetime, date
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from icalendar import Calendar
-
 from src.config.settings import (
-    SCHEDULE_FILES_PATTERN,
     SCHEDULE_GROUPS_DIR,
     SCHEDULE_GROUP_NAME_PREFIX,
     SCHEDULE_CACHE_FILE,
@@ -46,6 +43,7 @@ class ScheduleEvent:
     start: datetime
     end: datetime
     groups: frozenset[str] = field(default_factory=lambda: frozenset({""}))
+    kind: str = ""
 
     def key(self) -> tuple:
         """Ключ идентичности для мёрджа дубликатов."""
@@ -65,24 +63,19 @@ class ScheduleService:
         return f"{SCHEDULE_GROUP_NAME_PREFIX}{code}"
 
     def _load_events(self) -> List[ScheduleEvent]:
-        """Загружает события из multi-group подпапок или single-group fallback."""
+        """Загружает события из multi-group подпапок."""
         base = Path(SCHEDULE_GROUPS_DIR)
         group_codes = self._detect_group_codes(base)
 
         raw_events: List[ScheduleEvent] = []
         if group_codes:
             self.known_groups = frozenset(group_codes)
-            self._warn_about_loose_files(base)
-            for code in group_codes:
-                raw_events.extend(self._load_group_events(base / code, code))
             logger.info(
                 "Расписание: multi-group режим, группы: %s",
                 ", ".join(sorted(group_codes)),
             )
         else:
             self.known_groups = frozenset({""})
-            raw_events.extend(self._load_single_group_events())
-            logger.info("Расписание: single-group режим (fallback)")
 
         merged = self._merge_duplicates(raw_events)
         merged.sort(key=lambda e: e.start)
@@ -103,46 +96,6 @@ class ScheduleService:
         return codes
 
     @staticmethod
-    def _warn_about_loose_files(base: Path) -> None:
-        """Логирует warning, если рядом с подпапками лежат свободные calendar*.ics."""
-        loose = list(base.glob("calendar*.ics"))
-        if loose:
-            logger.warning(
-                "Multi-group режим активен, но в %s найдены свободные файлы %s — "
-                "они игнорируются. Переложите их в подпапку группы.",
-                base, [p.name for p in loose],
-            )
-
-    def _load_group_events(self, group_dir: Path, code: str) -> List[ScheduleEvent]:
-        """Парсит все calendar*.ics в подпапке группы, тегируя события её кодом."""
-        events: List[ScheduleEvent] = []
-        for ics_path in sorted(group_dir.glob("calendar*.ics")):
-            try:
-                parsed = self._parse_ics(ics_path)
-                for ev in parsed:
-                    ev.groups = frozenset({code})
-                events.extend(parsed)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Не удалось разобрать %s: %s", ics_path, exc)
-        return events
-
-    def _load_single_group_events(self) -> List[ScheduleEvent]:
-        """Single-group fallback: парсит по SCHEDULE_FILES_PATTERN, без тегов группы."""
-        events: List[ScheduleEvent] = []
-        pattern_path = Path(SCHEDULE_FILES_PATTERN)
-        base_dir = pattern_path.parent if pattern_path.parent != Path('.') else Path.cwd()
-        glob_pattern = pattern_path.name
-        matched = sorted(base_dir.glob(glob_pattern))
-        if not matched:
-            logger.warning("Файлы расписания не найдены по шаблону '%s'", SCHEDULE_FILES_PATTERN)
-        for ics_path in matched:
-            try:
-                events.extend(self._parse_ics(ics_path))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Не удалось разобрать %s: %s", ics_path, exc)
-        return events
-
-    @staticmethod
     def _merge_duplicates(events: List[ScheduleEvent]) -> List[ScheduleEvent]:
         """Идентичные (start, end, summary, location) сливаются в одно с union(groups)."""
         buckets: Dict[tuple, ScheduleEvent] = {}
@@ -154,46 +107,6 @@ class ScheduleService:
             else:
                 existing.groups = existing.groups | ev.groups
         return list(buckets.values())
-
-    def _parse_ics(self, ics_path: Path) -> List[ScheduleEvent]:
-        parsed_events: List[ScheduleEvent] = []
-        data = ics_path.read_text(encoding="utf-8")
-        cal = Calendar.from_ical(data)
-
-        for component in cal.walk():
-            if component.name != "VEVENT":
-                continue
-
-            dtstart = component.get("dtstart")
-            dtend = component.get("dtend")
-            summary = str(component.get("summary", "")).strip()
-            location = str(component.get("location", "")).strip()
-
-            if not dtstart:
-                continue
-
-            start_dt = self._to_tz(dtstart.dt)
-            end_dt = self._to_tz(dtend.dt if dtend else dtstart.dt)
-
-            parsed_events.append(
-                ScheduleEvent(
-                    summary=summary,
-                    location=location,
-                    start=start_dt,
-                    end=end_dt,
-                )
-            )
-        return parsed_events
-
-    def _to_tz(self, dt) -> datetime:
-        """Приводит дату/время к self.timezone."""
-        if isinstance(dt, date) and not isinstance(dt, datetime):
-            # День без времени — считаем с 00:00
-            dt = datetime.combine(dt, time.min)
-        if dt.tzinfo is None:
-            # Если без tzinfo, считаем что это UTC
-            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-        return dt.astimezone(self.timezone)
 
     def _save_cache(self) -> None:
         """Сохраняет события в JSON-кеш (для отладки и быстрого холодного старта)."""

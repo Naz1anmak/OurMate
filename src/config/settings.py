@@ -93,9 +93,6 @@ SCHEDULE_GROUPS_DIR = Path(_get_env("SCHEDULE_GROUPS_DIR", Path.cwd() / "data", 
 # Пример: prefix="з5130903/", папка "40001" → отображается как "з5130903/40001".
 SCHEDULE_GROUP_NAME_PREFIX = _get_env("SCHEDULE_GROUP_NAME_PREFIX", "", log_default=True)
 
-# Single-group fallback: glob по умолчанию, если SCHEDULE_GROUPS_DIR не содержит подпапок.
-SCHEDULE_FILES_PATTERN = _get_env("SCHEDULE_FILES_PATTERN", "data/calendar*.ics", log_default=True)
-
 # Кэш для расписания (после парсинга ics)
 SCHEDULE_CACHE_FILE = Path(
     _get_env("SCHEDULE_CACHE_FILE", Path.cwd() / "data" / "cache" / "schedule_cache.json", log_default=True)
