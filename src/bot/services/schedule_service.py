@@ -80,7 +80,12 @@ class ScheduleService:
 
     @staticmethod
     def _read_schedule_json(path: Path, code: str) -> List[ScheduleEvent]:
-        """Читает schedule.json для одной группы. При отсутствии/ошибке — []."""
+        """Читает schedule.json для одной группы. При отсутствии/ошибке — [].
+
+        Локальная десериализация (не через ruz_parser.load_schedule), чтобы не зависеть
+        от ruz_parser: ruz_parser импортирует ScheduleEvent отсюда → циклический импорт
+        ломает загрузку модуля при первой инициализации.
+        """
         if not path.exists():
             return []
         try:
