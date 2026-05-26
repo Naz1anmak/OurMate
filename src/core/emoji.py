@@ -72,6 +72,10 @@ class E:
     ALERT = Emoji("❗️", premium_id="5224495199215963724")
     TEACHER = Emoji("👨‍🏫", premium_id="5373098009640836781")
 
+    # ── ➕/➖ Diff расписания ───────────────────────────────────
+    PLUS_GREEN = Emoji("➕", premium_id="5226945370684140473")
+    MINUS_RED = Emoji("➖", premium_id="5229113891081956317")
+
 
 ALL_EMOJI: tuple[Emoji, ...] = tuple(
     v for v in vars(E).values() if isinstance(v, Emoji)
