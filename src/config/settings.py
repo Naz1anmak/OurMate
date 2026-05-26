@@ -85,8 +85,7 @@ PROMPT_TEMPLATE_BIRTHDAY_FORMER = _get_env(
 )
 
 # ===== НАСТРОЙКИ РАСПИСАНИЯ =====
-# Каталог с расписанием. Если внутри есть подпапки с calendar*.ics — multi-group режим.
-# Если подпапок нет — single-group fallback по SCHEDULE_FILES_PATTERN (обратная совместимость).
+# Каталог с расписанием. Внутри — подпапки на каждую группу (multi-group режим).
 SCHEDULE_GROUPS_DIR = Path(_get_env("SCHEDULE_GROUPS_DIR", Path.cwd() / "data", log_default=True))
 
 # Префикс отображаемого имени группы. Итоговое имя = prefix + код подпапки.

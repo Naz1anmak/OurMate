@@ -67,16 +67,14 @@ class ScheduleService:
         base = Path(SCHEDULE_GROUPS_DIR)
         group_codes = self._detect_group_codes(base)
 
-        raw_events: List[ScheduleEvent] = []
+        self.known_groups = frozenset(group_codes) if group_codes else frozenset({""})
         if group_codes:
-            self.known_groups = frozenset(group_codes)
             logger.info(
                 "Расписание: multi-group режим, группы: %s",
                 ", ".join(sorted(group_codes)),
             )
-        else:
-            self.known_groups = frozenset({""})
 
+        raw_events: List[ScheduleEvent] = []
         merged = self._merge_duplicates(raw_events)
         merged.sort(key=lambda e: e.start)
         logger.info("Расписание загружено: %s событий", len(merged))
