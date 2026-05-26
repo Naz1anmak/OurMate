@@ -63,35 +63,56 @@ class ScheduleService:
         return f"{SCHEDULE_GROUP_NAME_PREFIX}{code}"
 
     def _load_events(self) -> List[ScheduleEvent]:
-        """Загружает события из multi-group подпапок."""
+        """Загружает события из data/<code>/schedule.json для каждой подпапки группы."""
         base = Path(SCHEDULE_GROUPS_DIR)
-        group_codes = self._detect_group_codes(base)
-
-        self.known_groups = frozenset(group_codes) if group_codes else frozenset({""})
-        if group_codes:
-            logger.info(
-                "Расписание: multi-group режим, группы: %s",
-                ", ".join(sorted(group_codes)),
-            )
+        codes = self._detect_group_codes(base)
+        self.known_groups = frozenset(codes) if codes else frozenset({""})
 
         raw_events: List[ScheduleEvent] = []
+        for code in codes:
+            events = self._read_schedule_json(base / code / "schedule.json", code)
+            raw_events.extend(events)
+
         merged = self._merge_duplicates(raw_events)
         merged.sort(key=lambda e: e.start)
-        logger.info("Расписание загружено: %s событий", len(merged))
+        logger.info("Расписание загружено: %s событий из %s групп", len(merged), len(codes))
         return merged
 
     @staticmethod
+    def _read_schedule_json(path: Path, code: str) -> List[ScheduleEvent]:
+        """Читает schedule.json для одной группы. При отсутствии/ошибке — []."""
+        if not path.exists():
+            return []
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            events: List[ScheduleEvent] = []
+            for item in raw.get("events", []):
+                events.append(ScheduleEvent(
+                    summary=item["summary"],
+                    location=item.get("location", ""),
+                    start=datetime.fromisoformat(item["start"]),
+                    end=datetime.fromisoformat(item["end"]),
+                    kind=item.get("kind", ""),
+                    groups=frozenset({code}),
+                ))
+            return events
+        except Exception:
+            logger.warning("schedule.json %s повреждён или нечитаем", path)
+            return []
+
+    @staticmethod
     def _detect_group_codes(base: Path) -> List[str]:
-        """Возвращает имена подпапок base, содержащих файлы calendar*.ics."""
         if not base.is_dir():
             return []
-        codes: List[str] = []
-        for entry in sorted(base.iterdir()):
-            if not entry.is_dir():
-                continue
-            if any(entry.glob("calendar*.ics")):
-                codes.append(entry.name)
-        return codes
+        return sorted(
+            entry.name for entry in base.iterdir()
+            if entry.is_dir() and not entry.name.startswith(".") and entry.name != "cache"
+        )
+
+    def reload(self) -> None:
+        """Пересоздаёт events из schedule.json без рестарта."""
+        self.events = self._load_events()
+        self._save_cache()
 
     @staticmethod
     def _merge_duplicates(events: List[ScheduleEvent]) -> List[ScheduleEvent]:
