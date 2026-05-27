@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 class PinnedScheduleScheduler:
     def __init__(self, bot: Bot):
         self.bot = bot
+        self.refresher = None  # инжектится в setup.py
         self.scheduler = AsyncIOScheduler(
             timezone=TIMEZONE,
             job_defaults={
@@ -44,7 +45,7 @@ class PinnedScheduleScheduler:
             return
 
         self.scheduler.add_job(
-            self._update_pinned_message,
+            self._cron_job,
             CronTrigger(
                 hour=PINNED_SCHEDULE_UPDATE_HOUR,
                 minute=PINNED_SCHEDULE_UPDATE_MINUTE,
@@ -52,8 +53,25 @@ class PinnedScheduleScheduler:
             ),
         )
         self.scheduler.start()
-        asyncio.create_task(self._update_pinned_message())
+        asyncio.create_task(self._cron_job())  # сразу первый прогон
         logger.info("Закреп расписания: задача запланирована, сразу обновляем")
+
+    async def _cron_job(self):
+        if self.refresher is not None:
+            try:
+                result = await self.refresher.force_refresh("cron:pinned")
+                if result.diff_message:
+                    await self.bot.send_message(
+                        CHAT_ID, result.diff_message,
+                        parse_mode="HTML", disable_web_page_preview=True,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("cron:pinned refresh упал: %s", exc)
+        await self._update_pinned_message()
+
+    async def update_now(self):
+        """Публичная обёртка: рендер закрепа БЕЗ refresh."""
+        await self._update_pinned_message()
 
     async def _update_pinned_message(self):
         today = datetime.now(TIMEZONE).date()
