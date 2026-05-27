@@ -6,12 +6,13 @@ from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
 
 def is_public_command(text: str) -> bool:
-    """Возвращает True для публичных команд др/пары."""
+    """Возвращает True для публичных команд др/пары/обнови расписание."""
     return (
         text == "др"
         or text.startswith("др ")
         or text == "пары"
         or text == "пары завтра"
+        or text == "обнови расписание"
     )
 
 def build_command_context(message: Message, bot_username: str, bot_id: int) -> dict:
