@@ -1,6 +1,7 @@
 """Обработчики команд для чата (общие для PM и групп)."""
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+from typing import TYPE_CHECKING
 from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest
 
@@ -11,6 +12,13 @@ from src.utils.date_utils import format_birthday_date
 from src.bot.handlers.owner_commands import handle_owner_command, OWNER_COMMANDS
 from src.bot.handlers.chat_context import is_public_command
 from src.core.emoji import E
+
+if TYPE_CHECKING:
+    from src.bot.services.schedule_refresher import ScheduleRefresher
+
+# инжектятся из setup.py в Task 17
+schedule_refresher: "ScheduleRefresher | None" = None
+pinned_scheduler = None  # PinnedScheduleScheduler | None
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +207,11 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
         tag = "GR" if ctx["is_group_chat"] else "PM"
         logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'пары'")
+        if schedule_refresher is not None:
+            try:
+                await schedule_refresher.ensure_fresh("cmd:пары")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("ensure_fresh из 'пары' упал: %s", exc)
         effective_date = schedule_service.get_effective_date(TIMEZONE)
         events = schedule_service.get_classes_for_date(effective_date)
         today = datetime.now(TIMEZONE).date()
@@ -221,6 +234,11 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
         tag = "GR" if ctx["is_group_chat"] else "PM"
         logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'пары завтра'")
+        if schedule_refresher is not None:
+            try:
+                await schedule_refresher.ensure_fresh("cmd:пары завтра")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("ensure_fresh из 'пары завтра' упал: %s", exc)
         tomorrow = date.fromordinal(datetime.now(TIMEZONE).date().toordinal() + 1)
         events = schedule_service.get_classes_for_date(tomorrow)
         empty_text = schedule_service.get_no_pairs_message("завтра")
@@ -234,6 +252,69 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
             else:
                 text = empty_text
         await message.answer(text, parse_mode="HTML")
+        return True
+
+    if normalized_text == "обнови расписание" and ctx["should_process_schedule_command"]:
+        user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
+        tag = "GR" if ctx["is_group_chat"] else "PM"
+        logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'обнови расписание'")
+
+        reply = await message.answer("⌛ <i>Обновляю расписание…</i>", parse_mode="HTML")
+        if schedule_refresher is None:
+            await message.bot.edit_message_text(
+                "⚠️ Автообновление расписания не настроено.",
+                chat_id=message.chat.id, message_id=reply.message_id, parse_mode="HTML",
+            )
+            return True
+
+        try:
+            result = await schedule_refresher.force_refresh("cmd:обнови расписание")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("force_refresh из команды упал: %s", exc)
+            result = None
+
+        if result is None or (not result.updated_groups and result.failed_groups):
+            # полный провал
+            from src.bot.services.ruz_parser import load_schedule
+            link_code = sorted(schedule_refresher.group_ids.keys())[0] if schedule_refresher.group_ids else None
+            link = "—"
+            stamp = "—"
+            if link_code:
+                today = datetime.now(TIMEZONE).date()
+                monday = today - timedelta(days=today.weekday())
+                link = schedule_refresher.client.public_url(schedule_refresher.group_ids[link_code], monday)
+                fetched, _events = load_schedule(link_code)
+                if fetched:
+                    stamp = fetched.strftime("%d.%m %H:%M")
+            text = (
+                f"⚠️ <a href=\"{link}\">Расписание</a> недоступно, "
+                f"остался прошлый снимок (от {stamp})."
+            )
+            await message.bot.edit_message_text(
+                text, chat_id=message.chat.id, message_id=reply.message_id,
+                parse_mode="HTML", disable_web_page_preview=True,
+            )
+            return True
+
+        text_parts: list[str] = []
+        if result.diff_message:
+            text_parts.append(result.diff_message)
+        else:
+            text_parts.append("✅ Готово, расписание не изменилось.")
+        if result.failed_groups:
+            text_parts.append(f"❗️ Не удалось обновить: {', '.join(result.failed_groups)}")
+
+        await message.bot.edit_message_text(
+            "\n\n".join(text_parts),
+            chat_id=message.chat.id, message_id=reply.message_id,
+            parse_mode="HTML", disable_web_page_preview=True,
+        )
+
+        if pinned_scheduler is not None:
+            try:
+                await pinned_scheduler.update_now()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("pinned.update_now после команды упал: %s", exc)
         return True
 
     return False
