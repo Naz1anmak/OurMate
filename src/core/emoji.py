@@ -34,7 +34,7 @@ class E:
     INFO = Emoji("❕", premium_id="5220197908342648622")
     INFO_ALT = Emoji("ℹ️", premium_id="5334544901428229844")
     IDEA = Emoji("💡", premium_id="5472146462362048818")
-    CHECK = Emoji("✅", premium_id="5192963112696822273")
+    CHECK = Emoji("✅", premium_id="5427009714745517609")
     CROSS = Emoji("❌", premium_id="5465665476971471368")
     WARNING = Emoji("⚠️", premium_id="5447644880824181073")
     BAN = Emoji("🚫")
@@ -72,9 +72,8 @@ class E:
     ALERT = Emoji("❗️", premium_id="5224495199215963724")
     TEACHER = Emoji("👨‍🏫", premium_id="5373098009640836781")
 
-    # ── ➕/➖ Diff расписания ───────────────────────────────────
-    PLUS_GREEN = Emoji("➕", premium_id="5226945370684140473")
-    MINUS_RED = Emoji("➖", premium_id="5229113891081956317")
+    # ── Diff расписания ────────────────────────────────────────
+    ALARM_CLOCK = Emoji("⏰", premium_id="5413704112220949842")
 
 
 ALL_EMOJI: tuple[Emoji, ...] = tuple(

@@ -1,16 +1,25 @@
 from src.core.emoji import E, ALL_EMOJI
 
 
-def test_plus_green_exists_with_premium_id():
-    assert E.PLUS_GREEN.unicode == "➕"
-    assert E.PLUS_GREEN.premium_id == "5226945370684140473"
+def test_check_has_unicode_and_premium_id():
+    assert E.CHECK.unicode == "✅"
+    assert E.CHECK.premium_id == "5427009714745517609"
 
 
-def test_minus_red_exists_with_premium_id():
-    assert E.MINUS_RED.unicode == "➖"
-    assert E.MINUS_RED.premium_id == "5229113891081956317"
+def test_cross_has_unicode_and_premium_id():
+    assert E.CROSS.unicode == "❌"
+    assert E.CROSS.premium_id == "5465665476971471368"
 
 
-def test_new_emojis_are_in_all_emoji():
-    assert E.PLUS_GREEN in ALL_EMOJI
-    assert E.MINUS_RED in ALL_EMOJI
+def test_alarm_clock_has_unicode_and_premium_id():
+    assert E.ALARM_CLOCK.unicode == "⏰"
+    assert E.ALARM_CLOCK.premium_id == "5413704112220949842"
+
+
+def test_alarm_clock_in_all_emoji_table():
+    assert E.ALARM_CLOCK in ALL_EMOJI
+
+
+def test_plus_green_and_minus_red_are_gone():
+    assert not hasattr(E, "PLUS_GREEN")
+    assert not hasattr(E, "MINUS_RED")
