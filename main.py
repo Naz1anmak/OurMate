@@ -15,6 +15,15 @@ from src.bot.setup import build_bot_and_dispatcher
 from src.bot.scheduler.birthday_scheduler import start_birthday_scheduler
 from src.bot.scheduler.schedule_scheduler import start_schedule_scheduler
 from src.bot.scheduler.pinned_schedule_scheduler import start_pinned_schedule_scheduler
+from src.bot.services.ruz_client import RuzClient
+from src.bot.services.schedule_refresher import ScheduleRefresher
+from src.bot.services.schedule_service import schedule_service
+from src.bot.handlers import chat_commands as chat_commands_module
+from src.config.settings import (
+    RUZ_BASE_URL, RUZ_FACULTY_ID, RUZ_HTTP_TIMEOUT,
+    RUZ_WEEKS_AHEAD, RUZ_LAZY_TTL_MIN, RUZ_GROUP_IDS,
+    SCHEDULE_AUTO_UPDATE_ENABLED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +40,30 @@ async def main() -> None:
             logger.warning("DeleteWebhook не выполнен, продолжаем запуск: %s", exc)
 
         start_birthday_scheduler(bot)
-        start_schedule_scheduler(bot)
-        start_pinned_schedule_scheduler(bot)
+        schedule_scheduler_instance = start_schedule_scheduler(bot)
+        pinned_scheduler_instance = start_pinned_schedule_scheduler(bot)
+
+        if SCHEDULE_AUTO_UPDATE_ENABLED:
+            ruz_client = RuzClient(
+                base_url=RUZ_BASE_URL,
+                faculty_id=RUZ_FACULTY_ID,
+                timeout=RUZ_HTTP_TIMEOUT,
+            )
+            refresher = ScheduleRefresher(
+                client=ruz_client,
+                schedule_service=schedule_service,
+                group_ids=RUZ_GROUP_IDS,
+                weeks_ahead=RUZ_WEEKS_AHEAD,
+                lazy_ttl_min=RUZ_LAZY_TTL_MIN,
+            )
+            schedule_scheduler_instance.refresher = refresher
+            pinned_scheduler_instance.refresher = refresher
+            chat_commands_module.schedule_refresher = refresher
+            chat_commands_module.pinned_scheduler = pinned_scheduler_instance
+            logger.info("RUZ auto-update включён, группы: %s", list(RUZ_GROUP_IDS))
+        else:
+            logger.info("RUZ auto-update выключен (SCHEDULE_AUTO_UPDATE_ENABLED=false)")
+
         logger.info("Планировщики запущены")
 
         logger.info("Бот запущен и готов к работе")
