@@ -288,9 +288,9 @@ class ScheduleService:
         for e in events:
             time_range = f"{e.start:%H:%M}-{e.end:%H:%M}"
             lines.append(f"— {time_range}")
-            lines.append(f"• <b>{e.summary}</b>")
             if e.kind:
-                lines.append(f"• <i>{e.kind}</i>")
+                lines.append(e.kind)
+            lines.append(f"• <b>{e.summary}</b>")
         inner = "\n".join(lines)
         return f"{header}\n<blockquote>{inner}</blockquote>"
 

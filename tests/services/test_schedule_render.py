@@ -16,12 +16,15 @@ def _ev(hh_start, hh_end, summary, kind=""):
     )
 
 
-def test_render_single_block_includes_kind_as_italic_line():
+def test_render_single_block_includes_kind_as_plain_line():
+    """Тип занятия — строкой без буллита и без италики."""
     events = [_ev(10, 11, "Базы данных", kind="Практика")]
     block = ScheduleService._render_single_block("📌 Пары на сегодня", events)
     assert "— 10:00-11:40" in block
     assert "• <b>Базы данных</b>" in block
-    assert "• <i>Практика</i>" in block
+    assert "\nПрактика\n" in block
+    assert "<i>" not in block
+    assert "• Практика" not in block
 
 
 def test_render_single_block_omits_kind_when_empty():
@@ -31,11 +34,11 @@ def test_render_single_block_omits_kind_when_empty():
     assert "<i>" not in block
 
 
-def test_render_single_block_order_time_then_summary_then_kind():
+def test_render_single_block_order_time_then_kind_then_summary():
+    """Новый порядок: время → тип → предмет (тип перед предметом)."""
     events = [_ev(10, 11, "Базы данных", kind="Лекция")]
     block = ScheduleService._render_single_block("📌 Пары на сегодня", events)
-    # Порядок строк: — время, • предмет, • тип
     idx_time = block.index("— 10:00-11:40")
+    idx_kind = block.index("Лекция")
     idx_summary = block.index("• <b>Базы данных</b>")
-    idx_kind = block.index("• <i>Лекция</i>")
-    assert idx_time < idx_summary < idx_kind
+    assert idx_time < idx_kind < idx_summary
