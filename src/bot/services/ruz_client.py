@@ -1,4 +1,4 @@
-"""HTTP-клиент к JSON-API RUZ СПбПУ."""
+"""HTTP-клиент к JSON-API RUZ."""
 import logging
 from datetime import date
 

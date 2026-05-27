@@ -10,10 +10,10 @@ def reload_settings(monkeypatch, **env):
     return importlib.reload(settings_mod)
 
 
-def test_ruz_base_url_default(monkeypatch):
+def test_ruz_base_url_default_empty(monkeypatch):
     monkeypatch.delenv("RUZ_BASE_URL", raising=False)
     s = reload_settings(monkeypatch)
-    assert s.RUZ_BASE_URL == "https://ruz.spbstu.ru"
+    assert s.RUZ_BASE_URL == ""
 
 
 def test_ruz_faculty_id_default(monkeypatch):
