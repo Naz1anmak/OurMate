@@ -46,8 +46,11 @@ class ScheduleRefresher:
         return self._locks[code]
 
     def _all_codes(self) -> list[str]:
-        """Подпапки data/, отвечающие группам. Whitelist по self.group_ids — папки вроде
-        data/logs/ или ручные `data/<x>/` без env не считаются."""
+        """Подпапки data/, отвечающие группам. Strict whitelist по self.group_ids: без
+        настроенных env-id обновлять некого, fallback на «все папки» был бы баг —
+        `_process` упадёт на `self.group_ids[code]`."""
+        if not self.group_ids:
+            return []
         base = Path(SCHEDULE_GROUPS_DIR)
         if not base.is_dir():
             return []
@@ -55,9 +58,7 @@ class ScheduleRefresher:
             e.name for e in base.iterdir()
             if e.is_dir() and not e.name.startswith(".") and e.name != "cache"
         )
-        if self.group_ids:
-            return [c for c in candidates if c in self.group_ids]
-        return candidates
+        return [c for c in candidates if c in self.group_ids]
 
     async def ensure_fresh(self, reason: str) -> RefreshResult:
         now = datetime.now(TIMEZONE)
