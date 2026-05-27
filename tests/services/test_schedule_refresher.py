@@ -47,7 +47,7 @@ async def test_force_refresh_calls_client_and_saves(isolated_data):
     refresher = ScheduleRefresher(
         client=client,
         schedule_service=schedule_service,
-        group_ids={"40001": 43328},
+        group_ids={"40001": 99000},
         weeks_ahead=3,
         lazy_ttl_min=60,
     )
@@ -69,7 +69,7 @@ async def test_ensure_fresh_skips_when_within_ttl(isolated_data):
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 43328}, weeks_ahead=3, lazy_ttl_min=60,
+        group_ids={"40001": 99000}, weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.ensure_fresh("test")
     assert result.skipped_groups == ["40001"]
@@ -87,7 +87,7 @@ async def test_ensure_fresh_refreshes_when_ttl_expired(isolated_data):
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 43328}, weeks_ahead=3, lazy_ttl_min=60,
+        group_ids={"40001": 99000}, weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.ensure_fresh("test")
     assert "40001" in result.updated_groups
@@ -105,7 +105,7 @@ async def test_all_weeks_fail_does_not_overwrite_old_snapshot(isolated_data):
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 43328}, weeks_ahead=3, lazy_ttl_min=60,
+        group_ids={"40001": 99000}, weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
     assert "40001" in result.failed_groups
@@ -124,7 +124,7 @@ async def test_partial_failure_still_writes_what_we_have(isolated_data):
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 43328}, weeks_ahead=3, lazy_ttl_min=60,
+        group_ids={"40001": 99000}, weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
     assert "40001" in result.updated_groups
@@ -142,7 +142,7 @@ async def test_skip_group_without_group_id(isolated_data):
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 43328},  # 40002 без id
+        group_ids={"40001": 99000},  # 40002 без id
         weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
