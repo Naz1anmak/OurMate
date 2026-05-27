@@ -128,6 +128,9 @@ class ScheduleRefresher:
         if diffable_new:
             today = datetime.now(TIMEZONE).date()
             summary = compute_diff(diffable_old, diffable_new, from_date=today)
-            result.diff_message = render(summary)
+            result.diff_message = render(
+                summary,
+                known_groups=self.schedule_service.known_groups,
+            )
 
         return result

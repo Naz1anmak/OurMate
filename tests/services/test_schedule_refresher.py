@@ -34,6 +34,7 @@ def isolated_data(tmp_path, monkeypatch):
 def _stub_service():
     svc = MagicMock()
     svc.reload = MagicMock(return_value=None)
+    svc.known_groups = frozenset({"40001"})
     return svc
 
 
