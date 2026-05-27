@@ -38,6 +38,7 @@ async def handle_help_command(message: Message, normalized_text: str) -> bool:
         "• <code>др &lt;id&gt;</code> или <code>др @username</code> — дата дня рождения по id или username\n"
         "• <code>пары</code> — пары на сегодня\n"
         "• <code>пары завтра</code> — пары на завтра\n"
+        "• <code>обнови расписание</code> — обновить расписание и закреп\n"
         "• <code>отписаться</code> — отключить поздравления (в ЛС с ботом)\n"
         "• <code>help</code> или <code>команды</code> — справка по командам\n\n"
         f"<i>{E.INFO} В беседе команды работают при упоминании бота или ответе на его сообщение.</i>\n"
