@@ -1,68 +1,215 @@
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 
-from src.bot.services.schedule_diff import DayDiff, DiffSummary, render
+from src.bot.services.schedule_diff import (
+    DayDiff,
+    DiffSummary,
+    render,
+    _is_time_only_change,
+    _format_groups,
+)
 from src.bot.services.schedule_service import ScheduleEvent
 
 TZ = ZoneInfo("Europe/Moscow")
 
 
-def _ev(hh, summary="A", kind="Лекция"):
+def _ev(hh, summary="A", kind="Лекция", location="", day=26):
     return ScheduleEvent(
-        summary=summary, location="",
-        start=datetime(2026, 5, 26, hh, 0, tzinfo=TZ),
-        end=datetime(2026, 5, 26, hh, 40, tzinfo=TZ),
+        summary=summary, location=location,
+        start=datetime(2026, 5, day, hh, 0, tzinfo=TZ),
+        end=datetime(2026, 5, day, hh, 40, tzinfo=TZ),
         kind=kind,
     )
 
 
+def _day(d=26, code="40001", added=None, removed=None, changed=None,
+         old_events=None, new_events=None):
+    """Утилита: собирает DayDiff с заполненными old_keys/new_keys."""
+    added = added or []
+    removed = removed or []
+    changed = changed or []
+    old_events = old_events or []
+    new_events = new_events or []
+    return DayDiff(
+        date=date(2026, 5, d),
+        group_code=code,
+        added=list(added),
+        removed=list(removed),
+        changed=list(changed),
+        old_keys=frozenset(e.key() for e in old_events),
+        new_keys=frozenset(e.key() for e in new_events),
+    )
+
+
+# --- базовые случаи ---
+
 def test_render_empty_summary_returns_none():
-    assert render(DiffSummary()) is None
+    assert render(DiffSummary(), known_groups=frozenset({"40001"})) is None
 
 
 def test_render_appearance_short_header_only():
-    text = render(DiffSummary(is_appearance=True))
+    text = render(DiffSummary(is_appearance=True), known_groups=frozenset({"40001"}))
     assert text == "🗓️ Появилось расписание!"
 
 
-def test_render_diff_has_emoji_plus_for_added():
-    day = DayDiff(date=date(2026, 5, 26), group_code="40001", added=[_ev(12, "Базы данных", "Практика")])
-    text = render(DiffSummary(days=[day]))
-    assert "🗓️ Расписание обновилось" in text
-    assert "➕" in text
-    assert "Базы данных" in text
-    assert "Практика" in text
-    assert "26.05" in text
+# --- формат строк ---
+
+def test_render_added_uses_check_and_new_format():
+    e = _ev(14, summary="Технология ООП", kind="Лекция")
+    day = _day(added=[e], old_events=[], new_events=[e])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "✅ 14:00–14:40 · Лекция" in text
+    assert "<b>Технология ООП</b>" in text
 
 
-def test_render_diff_has_emoji_minus_for_removed():
-    day = DayDiff(date=date(2026, 5, 26), group_code="40001", removed=[_ev(14, "Программирование", "Лекция")])
-    text = render(DiffSummary(days=[day]))
-    assert "➖" in text
-    assert "Программирование" in text
+def test_render_removed_uses_cross_and_new_format():
+    e = _ev(14, summary="Программирование", kind="Лекция")
+    day = _day(removed=[e], old_events=[e], new_events=[])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "❌ 14:00–14:40 · Лекция" in text
+    assert "<b>Программирование</b>" in text
 
 
-def test_render_diff_has_pencil_for_changed():
-    before = _ev(10, "Админ ИС", "Лекция")
-    after = _ev(12, "Админ ИС", "Лекция")
-    day = DayDiff(date=date(2026, 5, 26), group_code="40001", changed=[(before, after)])
-    text = render(DiffSummary(days=[day]))
+def test_render_added_without_kind_omits_dot_separator():
+    e = _ev(14, summary="Семинар", kind="")
+    day = _day(added=[e], old_events=[], new_events=[e])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "✅ 14:00–14:40\n<b>Семинар</b>" in text
+    assert "·" not in text.split("\n")[2]  # в строке времени нет точки-разделителя
+
+
+def test_render_time_only_change_uses_alarm_clock():
+    before = _ev(16, summary="ТООП", kind="Лекция")
+    after = _ev(14, summary="ТООП", kind="Лекция")
+    day = _day(changed=[(before, after)], old_events=[before], new_events=[after])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "⏰ 16:00–16:40 → 14:00–14:40 · Лекция" in text
+    assert "<b>ТООП</b>" in text
+
+
+def test_render_location_change_uses_pencil():
+    before = ScheduleEvent(
+        summary="A", location="ауд. 101", kind="Лекция",
+        start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 10, 40, tzinfo=TZ),
+    )
+    after = ScheduleEvent(
+        summary="A", location="ауд. 202", kind="Лекция",
+        start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 10, 40, tzinfo=TZ),
+    )
+    day = _day(changed=[(before, after)], old_events=[before], new_events=[after])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
     assert "✏️" in text
-    assert "10:00-10:40 → 12:00-12:40" in text
+    assert "⏰" not in text
 
 
-def test_render_per_group_label_only_when_groups_differ():
-    day_a = DayDiff(date=date(2026, 5, 26), group_code="40001", added=[_ev(10)])
-    day_b = DayDiff(date=date(2026, 5, 26), group_code="40002", added=[_ev(12)])
-    text = render(DiffSummary(days=[day_a, day_b]))
+def test_render_uses_en_dash_in_times():
+    e = _ev(14)
+    day = _day(added=[e], old_events=[], new_events=[e])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "14:00–14:40" in text  # en-dash
+    assert "14:00-14:40" not in text  # не hyphen
+
+
+def test_render_blank_line_between_pairs_in_same_day():
+    e1 = _ev(10, summary="Первая")
+    e2 = _ev(12, summary="Вторая")
+    day = _day(added=[e1, e2], old_events=[], new_events=[e1, e2])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    # между двумя ✅-блоками должна быть пустая строка
+    assert "<b>Первая</b>\n\n✅" in text
+
+
+def test_render_blank_line_between_days():
+    e1 = _ev(10, day=26)
+    e2 = _ev(10, day=27)
+    day1 = _day(d=26, added=[e1], old_events=[], new_events=[e1])
+    day2 = _day(d=27, added=[e2], old_events=[], new_events=[e2])
+    text = render(DiffSummary(days=[day1, day2]), known_groups=frozenset({"40001"}))
+    # между блоками дней — пустая строка
+    assert "</b>\n\n<b>В" in text or "<b>Во" in text  # заголовки начинаются с <b>
+
+
+# --- кластеризация и суффиксы ---
+
+def test_render_single_group_no_suffix():
+    e = _ev(10)
+    day = _day(code="40001", added=[e], old_events=[], new_events=[e])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "для 40001" not in text
+
+
+def test_render_full_cluster_no_suffix():
+    """Две группы, идентичный (old, new) на дату — один блок без 'для …'."""
+    before = _ev(16, summary="ТООП")
+    after = _ev(14, summary="ТООП")
+    day_a = _day(code="40001", changed=[(before, after)],
+                 old_events=[before], new_events=[after])
+    day_b = _day(code="40002", changed=[(before, after)],
+                 old_events=[before], new_events=[after])
+    text = render(DiffSummary(days=[day_a, day_b]),
+                  known_groups=frozenset({"40001", "40002"}))
+    assert "для 40001" not in text
+    assert "для 40002" not in text
+    # ровно один заголовок дня
+    assert text.count("Во вторник") == 1  # 2026-05-26 — вторник
+
+
+def test_render_partial_cluster_uses_suffix_for_two_of_three():
+    """Три группы, у двух одинаковый diff, у третьей — другой."""
+    before = _ev(16, summary="ТООП")
+    after = _ev(14, summary="ТООП")
+    other_before = _ev(10, summary="Другое")
+    other_after = _ev(12, summary="Другое")
+    day_a = _day(code="40001", changed=[(before, after)],
+                 old_events=[before], new_events=[after])
+    day_b = _day(code="40002", changed=[(before, after)],
+                 old_events=[before], new_events=[after])
+    day_c = _day(code="40003", changed=[(other_before, other_after)],
+                 old_events=[other_before], new_events=[other_after])
+    text = render(DiffSummary(days=[day_a, day_b, day_c]),
+                  known_groups=frozenset({"40001", "40002", "40003"}))
+    assert "для 40001 и 40002" in text
+    assert "для 40003" in text
+
+
+def test_render_each_group_own_diff_two_blocks_with_suffix():
+    """Две группы, разные дифы — два блока с 'для …'."""
+    e_a = _ev(10, summary="A")
+    e_b = _ev(12, summary="B")
+    day_a = _day(code="40001", added=[e_a], old_events=[], new_events=[e_a])
+    day_b = _day(code="40002", added=[e_b], old_events=[], new_events=[e_b])
+    text = render(DiffSummary(days=[day_a, day_b]),
+                  known_groups=frozenset({"40001", "40002"}))
     assert "для 40001" in text
     assert "для 40002" in text
 
 
-# --- helpers ---
+def test_render_was_same_became_different_two_blocks():
+    """Было одинаковым, стало разным → два блока."""
+    common = _ev(10, summary="Общая")
+    only_a = _ev(12, summary="Только A")
+    day_a = _day(
+        code="40001",
+        added=[only_a],
+        old_events=[common],
+        new_events=[common, only_a],
+    )
+    text = render(DiffSummary(days=[day_a]),
+                  known_groups=frozenset({"40001", "40002"}))
+    assert "для 40001" in text
+    assert "для 40002" not in text  # 40002 без изменений в этом diff не упоминается
 
-from src.bot.services.schedule_diff import _is_time_only_change, _format_groups
 
+def test_render_header_starts_with_calendar_emoji():
+    e = _ev(10)
+    day = _day(added=[e], old_events=[], new_events=[e])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert text.startswith("🗓️ Расписание обновилось\n\n")
+
+
+# --- helpers (см. Task 3) ---
 
 def test_is_time_only_change_true_when_only_start_end_differ():
     before = _ev(10, summary="A", kind="Лекция")
@@ -105,5 +252,4 @@ def test_format_groups_three():
 
 
 def test_format_groups_sorted():
-    # порядок входа произвольный — выход отсортирован
     assert _format_groups(["40002", "40001"]) == "40001 и 40002"

@@ -120,44 +120,71 @@ def _format_groups(codes: list[str]) -> str:
     return f"{', '.join(ordered[:-1])} и {ordered[-1]}"
 
 
-def render(summary: DiffSummary) -> str | None:
-    """Формирует HTML-сообщение из DiffSummary для отправки в Telegram."""
+def render(summary: DiffSummary, *, known_groups: frozenset[str]) -> str | None:
+    """Формирует HTML-сообщение из DiffSummary для отправки в Telegram.
+
+    Кластеризует DayDiff по (date, old_keys, new_keys): если у нескольких групп
+    в этот день полностью совпадает состояние до и после — рендерим один блок
+    на кластер. Суффикс 'для …' опускается, когда кластер покрывает все
+    known_groups (одна группа в системе → тоже без суффикса).
+    """
     if summary.is_empty():
         return None
     if summary.is_appearance:
         return "🗓️ Появилось расписание!"
 
-    # Группируем DayDiff по дате
-    by_date: dict[date, list[DayDiff]] = defaultdict(list)
+    # Кластеризуем DayDiff по (date, old_keys, new_keys)
+    clusters: dict[tuple[date, frozenset, frozenset], list[DayDiff]] = defaultdict(list)
     for d in summary.days:
-        by_date[d.date].append(d)
+        clusters[(d.date, d.old_keys, d.new_keys)].append(d)
 
-    show_group_label = len({d.group_code for d in summary.days}) > 1
+    # Сортируем кластеры по дате, потом по отсортированному списку кодов
+    sorted_keys = sorted(
+        clusters.keys(),
+        key=lambda k: (k[0], sorted(d.group_code for d in clusters[k])),
+    )
 
     lines: list[str] = ["🗓️ Расписание обновилось", ""]
-    for day in sorted(by_date.keys()):
-        diffs = by_date[day]
-        weekday = _WEEKDAYS[day.weekday()].capitalize()
-        for diff in diffs:
-            suffix = f" для {diff.group_code}" if show_group_label else ""
-            lines.append(f"<b>{weekday} ({day:%d.%m}){suffix}:</b>")
-            for e in diff.added:
-                lines.append(f"➕ — {e.start:%H:%M}-{e.end:%H:%M}")
-                lines.append(f"  • <b>{e.summary}</b>")
-                if e.kind:
-                    lines.append(f"  • <i>{e.kind}</i>")
-            for e in diff.removed:
-                lines.append(f"➖ — {e.start:%H:%M}-{e.end:%H:%M}")
-                lines.append(f"  • <b>{e.summary}</b>")
-                if e.kind:
-                    lines.append(f"  • <i>{e.kind}</i>")
-            for before, after in diff.changed:
-                lines.append(
-                    f"✏️ {before.start:%H:%M}-{before.end:%H:%M} → "
-                    f"{after.start:%H:%M}-{after.end:%H:%M}"
-                )
-                lines.append(f"  • <b>{after.summary}</b>")
-                if after.kind:
-                    lines.append(f"  • <i>{after.kind}</i>")
-            lines.append("")
+    for cluster_key in sorted_keys:
+        cluster_date = cluster_key[0]
+        diffs = clusters[cluster_key]
+        codes = sorted({d.group_code for d in diffs})
+        weekday = _WEEKDAYS[cluster_date.weekday()].capitalize()
+
+        # Суффикс «для …» только если кластер не покрывает все known_groups.
+        if known_groups and set(codes) == set(known_groups):
+            suffix = ""
+        else:
+            suffix = f" для {_format_groups(codes)}"
+
+        lines.append(f"<b>{weekday} ({cluster_date:%d.%m}){suffix}:</b>")
+
+        # Внутри кластера дифы идентичны → берём первый
+        rep = diffs[0]
+        pair_blocks: list[str] = []
+        for e in rep.added:
+            pair_blocks.append(_format_event_line("✅", e))
+        for e in rep.removed:
+            pair_blocks.append(_format_event_line("❌", e))
+        for before, after in rep.changed:
+            emoji = "⏰" if _is_time_only_change(before, after) else "✏️"
+            pair_blocks.append(_format_change_line(emoji, before, after))
+
+        lines.append("\n\n".join(pair_blocks))
+        lines.append("")  # пустая строка между блоками дней
+
     return "\n".join(lines).rstrip()
+
+
+def _format_event_line(emoji: str, e: ScheduleEvent) -> str:
+    """'✅ HH:MM–HH:MM · Тип\\n<b>Предмет</b>' (или без '· Тип', если kind пуст)."""
+    time_range = f"{e.start:%H:%M}–{e.end:%H:%M}"
+    head = f"{emoji} {time_range} · {e.kind}" if e.kind else f"{emoji} {time_range}"
+    return f"{head}\n<b>{e.summary}</b>"
+
+
+def _format_change_line(emoji: str, before: ScheduleEvent, after: ScheduleEvent) -> str:
+    """'⏰ HH:MM–HH:MM → HH:MM–HH:MM · Тип\\n<b>Предмет</b>'."""
+    times = f"{before.start:%H:%M}–{before.end:%H:%M} → {after.start:%H:%M}–{after.end:%H:%M}"
+    head = f"{emoji} {times} · {after.kind}" if after.kind else f"{emoji} {times}"
+    return f"{head}\n<b>{after.summary}</b>"
