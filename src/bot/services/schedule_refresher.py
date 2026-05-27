@@ -2,14 +2,13 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
-from pathlib import Path
+from datetime import datetime, timedelta
 
 from src.bot.services.ruz_client import RuzClient, RuzError
 from src.bot.services.ruz_parser import load_schedule, parse_lessons, save_schedule
 from src.bot.services.schedule_diff import compute_diff, render
 from src.bot.services.schedule_service import ScheduleEvent, ScheduleService
-from src.config.settings import SCHEDULE_GROUPS_DIR, TIMEZONE
+from src.config.settings import TIMEZONE
 
 logger = logging.getLogger(__name__)
 
@@ -46,19 +45,14 @@ class ScheduleRefresher:
         return self._locks[code]
 
     def _all_codes(self) -> list[str]:
-        """Подпапки data/, отвечающие группам. Strict whitelist по self.group_ids: без
-        настроенных env-id обновлять некого, fallback на «все папки» был бы баг —
-        `_process` упадёт на `self.group_ids[code]`."""
-        if not self.group_ids:
-            return []
-        base = Path(SCHEDULE_GROUPS_DIR)
-        if not base.is_dir():
-            return []
-        candidates = sorted(
-            e.name for e in base.iterdir()
-            if e.is_dir() and not e.name.startswith(".") and e.name != "cache"
-        )
-        return [c for c in candidates if c in self.group_ids]
+        """Список кодов групп для обновления = ключи self.group_ids (env-конфиг).
+
+        Источник правды — env, а не `data/`.iterdir(): на чистой установке подпапки
+        `data/<CODE>/` ещё не существуют, и iterdir вернул бы пустой список →
+        refresh никогда бы не позвал save_schedule → папка не создалась бы → dead-lock.
+        save_schedule сам делает mkdir(parents=True, exist_ok=True) при первом успехе.
+        """
+        return sorted(self.group_ids.keys())
 
     async def ensure_fresh(self, reason: str) -> RefreshResult:
         now = datetime.now(TIMEZONE)

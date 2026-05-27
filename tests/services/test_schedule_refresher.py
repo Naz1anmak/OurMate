@@ -24,9 +24,10 @@ FIXTURE_RAW = [
 
 @pytest.fixture
 def isolated_data(tmp_path, monkeypatch):
+    # SCHEDULE_GROUPS_DIR в refresher НЕ патчим — он там больше не импортируется
+    # (источник правды для списка групп = env-конфиг self.group_ids, не диск).
     monkeypatch.setattr("src.bot.services.ruz_parser.SCHEDULE_GROUPS_DIR", tmp_path)
     monkeypatch.setattr("src.bot.services.schedule_service.SCHEDULE_GROUPS_DIR", tmp_path)
-    monkeypatch.setattr("src.bot.services.schedule_refresher.SCHEDULE_GROUPS_DIR", tmp_path)
     return tmp_path
 
 
@@ -134,23 +135,61 @@ async def test_partial_failure_still_writes_what_we_have(isolated_data):
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-26 09:00:00", tz_offset=3)
-async def test_subfolders_outside_group_ids_are_ignored(isolated_data):
-    """Подпапки, которых нет в RUZ_GROUP_IDS (вроде data/logs/ или ручных папок),
-    не считаются группами и не попадают ни в updated, ни в skipped, ни в failed."""
+async def test_extra_folders_on_disk_are_ignored(isolated_data):
+    """Источник правды для списка групп — env (self.group_ids), а не iterdir.
+    Лишние подпапки на диске (logs, ручные, чужие группы) refresher не трогает."""
     (isolated_data / "40001").mkdir()
-    (isolated_data / "40002").mkdir()   # вне env
-    (isolated_data / "logs").mkdir()    # системная папка
+    (isolated_data / "99999").mkdir()   # чужая группа на диске, нет в env
+    (isolated_data / "logs").mkdir()    # системная папка (логи бота)
     client = AsyncMock()
     client.fetch_week = AsyncMock(return_value=FIXTURE_RAW)
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 99000},  # только 40001 в whitelist
+        group_ids={"40001": 99000},  # только 40001 в env
         weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
     assert result.updated_groups == ["40001"]
-    assert "40002" not in result.skipped_groups
-    assert "logs" not in result.skipped_groups
-    assert "40002" not in result.failed_groups
-    assert "logs" not in result.failed_groups
+    for stray in ("99999", "logs"):
+        assert stray not in result.updated_groups
+        assert stray not in result.skipped_groups
+        assert stray not in result.failed_groups
+
+
+@pytest.mark.asyncio
+@freeze_time("2026-05-26 09:00:00", tz_offset=3)
+async def test_creates_missing_group_folder_on_first_refresh(isolated_data):
+    """На чистой установке подпапки data/<CODE>/ ещё нет. Refresher должен пойти
+    в RUZ по коду из env и save_schedule создаст папку + schedule.json сам."""
+    assert not (isolated_data / "40001").exists()
+    client = AsyncMock()
+    client.fetch_week = AsyncMock(return_value=FIXTURE_RAW)
+    schedule_service = _stub_service()
+    refresher = ScheduleRefresher(
+        client=client, schedule_service=schedule_service,
+        group_ids={"40001": 99000},
+        weeks_ahead=3, lazy_ttl_min=60,
+    )
+    result = await refresher.force_refresh("test")
+    assert result.updated_groups == ["40001"]
+    assert (isolated_data / "40001" / "schedule.json").exists()
+    client.fetch_week.assert_called()
+
+
+@pytest.mark.asyncio
+@freeze_time("2026-05-26 09:00:00", tz_offset=3)
+async def test_empty_group_ids_returns_nothing(isolated_data):
+    """Без env-конфига refresher не должен пытаться никого обновлять."""
+    (isolated_data / "40001").mkdir()  # даже если папка есть — без env её нет в работе
+    client = AsyncMock()
+    schedule_service = _stub_service()
+    refresher = ScheduleRefresher(
+        client=client, schedule_service=schedule_service,
+        group_ids={},
+        weeks_ahead=3, lazy_ttl_min=60,
+    )
+    result = await refresher.force_refresh("test")
+    assert result.updated_groups == []
+    assert result.failed_groups == []
+    client.fetch_week.assert_not_called()
