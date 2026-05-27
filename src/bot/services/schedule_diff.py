@@ -16,6 +16,8 @@ class DayDiff:
     added: list[ScheduleEvent] = field(default_factory=list)
     removed: list[ScheduleEvent] = field(default_factory=list)
     changed: list[tuple[ScheduleEvent, ScheduleEvent]] = field(default_factory=list)
+    old_keys: frozenset = field(default_factory=frozenset)
+    new_keys: frozenset = field(default_factory=frozenset)
 
     def is_empty(self) -> bool:
         return not self.added and not self.removed and not self.changed
@@ -84,6 +86,15 @@ def compute_diff(
         for before, after in changed:
             d = after.start.date()
             by_date.setdefault(d, DayDiff(date=d, group_code=code)).changed.append((before, after))
+
+        # обогащаем old_keys/new_keys per дата — для кластеризации в render
+        for d, day_diff in by_date.items():
+            day_diff.old_keys = frozenset(
+                e.key() for e in old_future if e.start.date() == d
+            )
+            day_diff.new_keys = frozenset(
+                e.key() for e in new_future if e.start.date() == d
+            )
 
         days.extend(sorted(by_date.values(), key=lambda x: x.date))
 
