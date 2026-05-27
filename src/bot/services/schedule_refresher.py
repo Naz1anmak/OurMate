@@ -46,13 +46,18 @@ class ScheduleRefresher:
         return self._locks[code]
 
     def _all_codes(self) -> list[str]:
+        """Подпапки data/, отвечающие группам. Whitelist по self.group_ids — папки вроде
+        data/logs/ или ручные `data/<x>/` без env не считаются."""
         base = Path(SCHEDULE_GROUPS_DIR)
         if not base.is_dir():
             return []
-        return sorted(
+        candidates = sorted(
             e.name for e in base.iterdir()
             if e.is_dir() and not e.name.startswith(".") and e.name != "cache"
         )
+        if self.group_ids:
+            return [c for c in candidates if c in self.group_ids]
+        return candidates
 
     async def ensure_fresh(self, reason: str) -> RefreshResult:
         now = datetime.now(TIMEZONE)
@@ -80,10 +85,6 @@ class ScheduleRefresher:
         first_loads: set[str] = set()
 
         async def _process(code: str):
-            if code not in self.group_ids:
-                logger.warning("refresh: для группы %s нет RUZ_GROUP_<CODE>, skip", code)
-                result.skipped_groups.append(code)
-                return
             async with self._lock_for(code):
                 old_fetched, old_events = load_schedule(code)
                 if old_fetched is None:

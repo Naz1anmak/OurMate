@@ -16,6 +16,7 @@ from src.config.settings import (
     SCHEDULE_GROUP_NAME_PREFIX,
     SCHEDULE_CACHE_FILE,
     TIMEZONE,
+    RUZ_GROUP_IDS,
 )
 from src.core.emoji import E
 
@@ -107,12 +108,17 @@ class ScheduleService:
 
     @staticmethod
     def _detect_group_codes(base: Path) -> List[str]:
+        """Подпапки data/, отвечающие группам. При непустом RUZ_GROUP_IDS — только из whitelist
+        (чтобы сёстры-папки вроде data/logs/ не считались за группу)."""
         if not base.is_dir():
             return []
-        return sorted(
+        candidates = sorted(
             entry.name for entry in base.iterdir()
             if entry.is_dir() and not entry.name.startswith(".") and entry.name != "cache"
         )
+        if RUZ_GROUP_IDS:
+            return [c for c in candidates if c in RUZ_GROUP_IDS]
+        return candidates
 
     def reload(self) -> None:
         """Пересоздаёт events из schedule.json без рестарта."""

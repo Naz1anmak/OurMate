@@ -134,17 +134,23 @@ async def test_partial_failure_still_writes_what_we_have(isolated_data):
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-26 09:00:00", tz_offset=3)
-async def test_skip_group_without_group_id(isolated_data):
+async def test_subfolders_outside_group_ids_are_ignored(isolated_data):
+    """Подпапки, которых нет в RUZ_GROUP_IDS (вроде data/logs/ или ручных папок),
+    не считаются группами и не попадают ни в updated, ни в skipped, ни в failed."""
     (isolated_data / "40001").mkdir()
-    (isolated_data / "40002").mkdir()
+    (isolated_data / "40002").mkdir()   # вне env
+    (isolated_data / "logs").mkdir()    # системная папка
     client = AsyncMock()
     client.fetch_week = AsyncMock(return_value=FIXTURE_RAW)
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 99000},  # 40002 без id
+        group_ids={"40001": 99000},  # только 40001 в whitelist
         weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
-    assert "40001" in result.updated_groups
-    assert "40002" in result.skipped_groups
+    assert result.updated_groups == ["40001"]
+    assert "40002" not in result.skipped_groups
+    assert "logs" not in result.skipped_groups
+    assert "40002" not in result.failed_groups
+    assert "logs" not in result.failed_groups
