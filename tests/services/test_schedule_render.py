@@ -16,29 +16,32 @@ def _ev(hh_start, hh_end, summary, kind=""):
     )
 
 
-def test_render_single_block_includes_kind_as_plain_line():
-    """Тип занятия — строкой без буллита и без италики."""
-    events = [_ev(10, 11, "Базы данных", kind="Практика")]
+def test_render_single_block_time_kind_inline_subject_below():
+    """Время и тип на одной строке через ' · ', предмет жирным на следующей."""
+    events = [_ev(10, 11, "Вычислительная математика", kind="Лекция")]
     block = ScheduleService._render_single_block("📌 Пары на сегодня", events)
-    assert "— 10:00-11:40" in block
-    assert "• <b>Базы данных</b>" in block
-    assert "\nПрактика\n" in block
+    assert "10:00–11:40 · Лекция\n<b>Вычислительная математика</b>" in block
+    assert "— " not in block
+    assert "• " not in block
     assert "<i>" not in block
-    assert "• Практика" not in block
 
 
 def test_render_single_block_omits_kind_when_empty():
+    """Без типа — только время на первой строке."""
     events = [_ev(10, 11, "Программирование", kind="")]
     block = ScheduleService._render_single_block("📌 Пары на сегодня", events)
-    assert "• <b>Программирование</b>" in block
-    assert "<i>" not in block
+    assert "10:00–11:40\n<b>Программирование</b>" in block
+    assert " · " not in block
 
 
-def test_render_single_block_order_time_then_kind_then_summary():
-    """Новый порядок: время → тип → предмет (тип перед предметом)."""
-    events = [_ev(10, 11, "Базы данных", kind="Лекция")]
-    block = ScheduleService._render_single_block("📌 Пары на сегодня", events)
-    idx_time = block.index("— 10:00-11:40")
-    idx_kind = block.index("Лекция")
-    idx_summary = block.index("• <b>Базы данных</b>")
-    assert idx_time < idx_kind < idx_summary
+def test_render_single_block_blank_line_between_pairs():
+    """Между парами — пустая строка."""
+    events = [
+        _ev(10, 11, "Базы данных", kind="Лекция"),
+        _ev(12, 13, "Сети", kind="Практика"),
+    ]
+    block = ScheduleService._render_single_block("📌 Пары", events)
+    assert (
+        "10:00–11:40 · Лекция\n<b>Базы данных</b>\n\n12:00–13:40 · Практика\n<b>Сети</b>"
+        in block
+    )

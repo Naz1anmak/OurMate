@@ -284,14 +284,12 @@ class ScheduleService:
             if not inner:
                 return header
             return f"{header}\n<blockquote>{inner}</blockquote>"
-        lines: list[str] = []
+        blocks: list[str] = []
         for e in events:
-            time_range = f"{e.start:%H:%M}-{e.end:%H:%M}"
-            lines.append(f"— {time_range}")
-            if e.kind:
-                lines.append(e.kind)
-            lines.append(f"• <b>{e.summary}</b>")
-        inner = "\n".join(lines)
+            time_range = f"{e.start:%H:%M}–{e.end:%H:%M}"
+            head = f"{time_range} · {e.kind}" if e.kind else time_range
+            blocks.append(f"{head}\n<b>{e.summary}</b>")
+        inner = "\n\n".join(blocks)
         return f"{header}\n<blockquote>{inner}</blockquote>"
 
     def format_next_classes_block(self, day: date, base_date: date | None = None) -> str:
