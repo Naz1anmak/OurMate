@@ -60,9 +60,9 @@ async def main() -> None:
             pinned_scheduler_instance.refresher = refresher
             chat_commands_module.schedule_refresher = refresher
             chat_commands_module.pinned_scheduler = pinned_scheduler_instance
-            logger.info("RUZ auto-update включён, группы: %s", list(RUZ_GROUP_IDS))
+            logger.info("Автообновление расписания включено, группы: %s", list(RUZ_GROUP_IDS))
         else:
-            logger.info("RUZ auto-update выключен (SCHEDULE_AUTO_UPDATE_ENABLED=false)")
+            logger.info("Автообновление расписания выключено (SCHEDULE_AUTO_UPDATE_ENABLED=false)")
 
         logger.info("Планировщики запущены")
 

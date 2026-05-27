@@ -1,4 +1,4 @@
-"""Парсинг lessons из JSON RUZ в ScheduleEvent, нормализация типа занятия."""
+"""Парсинг lessons из JSON-расписания в ScheduleEvent, нормализация типа занятия."""
 import json
 import logging
 import os
@@ -27,7 +27,7 @@ def normalize_kind(raw: str | None) -> str:
 
 
 def parse_lessons(raw_lessons: list[dict]) -> list[ScheduleEvent]:
-    """Конвертирует список raw lessons RUZ → ScheduleEvent. Битые записи пропускает."""
+    """Конвертирует список raw lessons из JSON-расписания → ScheduleEvent. Битые пропускает."""
     events: list[ScheduleEvent] = []
     for lesson in raw_lessons:
         try:

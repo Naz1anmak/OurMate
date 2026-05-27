@@ -118,7 +118,7 @@ PINNED_SCHEDULE_MESSAGE_FILE = Path(
     )
 )
 
-# ===== RUZ AUTOUPDATE =====
+# ===== Автообновление расписания =====
 SCHEDULE_AUTO_UPDATE_ENABLED = _get_env("SCHEDULE_AUTO_UPDATE_ENABLED", "true", log_default=True).lower() == "true"
 RUZ_BASE_URL = _get_env("RUZ_BASE_URL", "", log_default=True)
 RUZ_FACULTY_ID = int(_get_env("RUZ_FACULTY_ID", 125, log_default=True))

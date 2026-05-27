@@ -1,4 +1,4 @@
-"""Координатор обновления расписания из RUZ: TTL, lock, diff."""
+"""Координатор обновления расписания через API: TTL, lock, diff."""
 import asyncio
 import logging
 from dataclasses import dataclass, field
