@@ -1,4 +1,5 @@
 """Сравнение старого и нового снапшотов расписания."""
+import html
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
@@ -178,14 +179,18 @@ def render(summary: DiffSummary, *, known_groups: frozenset[str]) -> str | None:
 
 
 def _format_event_line(emoji: str, e: ScheduleEvent) -> str:
-    """'✅ HH:MM–HH:MM · Тип\\n<b>Предмет</b>' (или без '· Тип', если kind пуст)."""
+    """'✅ HH:MM–HH:MM · Тип\\n<b>Предмет</b>' (или без '· Тип', если kind пуст).
+
+    Предмет эскейпится через html.escape — на случай если RUZ вернёт `<`/`>`/`&`,
+    которые сломали бы Telegram parse_mode=HTML.
+    """
     time_range = f"{e.start:%H:%M}–{e.end:%H:%M}"
     head = f"{emoji} {time_range} · {e.kind}" if e.kind else f"{emoji} {time_range}"
-    return f"{head}\n<b>{e.summary}</b>"
+    return f"{head}\n<b>{html.escape(e.summary)}</b>"
 
 
 def _format_change_line(emoji: str, before: ScheduleEvent, after: ScheduleEvent) -> str:
     """'⏰ HH:MM–HH:MM → HH:MM–HH:MM · Тип\\n<b>Предмет</b>'."""
     times = f"{before.start:%H:%M}–{before.end:%H:%M} → {after.start:%H:%M}–{after.end:%H:%M}"
     head = f"{emoji} {times} · {after.kind}" if after.kind else f"{emoji} {times}"
-    return f"{head}\n<b>{after.summary}</b>"
+    return f"{head}\n<b>{html.escape(after.summary)}</b>"

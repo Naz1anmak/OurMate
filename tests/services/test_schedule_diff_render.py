@@ -140,6 +140,15 @@ def test_render_wraps_day_content_in_blockquote():
     assert "<blockquote>✅ 14:00–14:40 · Лекция\n<b>Технология ООП</b></blockquote>" in text
 
 
+def test_render_escapes_html_in_summary():
+    """Спецсимволы в summary эскейпятся (Telegram parse_mode=HTML)."""
+    e = _ev(14, summary="A & B <C>", kind="Лекция")
+    day = _day(added=[e], old_events=[], new_events=[e])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "<b>A &amp; B &lt;C&gt;</b>" in text
+    assert "<b>A & B <C></b>" not in text
+
+
 # --- кластеризация и суффиксы ---
 
 def test_render_single_group_no_suffix():
