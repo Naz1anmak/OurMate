@@ -170,7 +170,8 @@ def render(summary: DiffSummary, *, known_groups: frozenset[str]) -> str | None:
             emoji = "⏰" if _is_time_only_change(before, after) else "✏️"
             pair_blocks.append(_format_change_line(emoji, before, after))
 
-        lines.append("\n\n".join(pair_blocks))
+        inner = "\n\n".join(pair_blocks)
+        lines.append(f"<blockquote>{inner}</blockquote>")
         lines.append("")  # пустая строка между блоками дней
 
     return "\n".join(lines).rstrip()

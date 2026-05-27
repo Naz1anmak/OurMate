@@ -75,7 +75,8 @@ def test_render_added_without_kind_omits_dot_separator():
     day = _day(added=[e], old_events=[], new_events=[e])
     text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
     assert "✅ 14:00–14:40\n<b>Семинар</b>" in text
-    assert "·" not in text.split("\n")[2]  # в строке времени нет точки-разделителя
+    time_line = next(ln for ln in text.splitlines() if "✅" in ln)
+    assert "·" not in time_line  # в строке времени нет точки-разделителя
 
 
 def test_render_time_only_change_uses_alarm_clock():
@@ -127,8 +128,16 @@ def test_render_blank_line_between_days():
     day1 = _day(d=26, added=[e1], old_events=[], new_events=[e1])
     day2 = _day(d=27, added=[e2], old_events=[], new_events=[e2])
     text = render(DiffSummary(days=[day1, day2]), known_groups=frozenset({"40001"}))
-    # между блоками дней — пустая строка
-    assert "</b>\n\n<b>В" in text or "<b>Во" in text  # заголовки начинаются с <b>
+    # между блоками дней — пустая строка после закрытия blockquote
+    assert "</blockquote>\n\n<b>" in text
+
+
+def test_render_wraps_day_content_in_blockquote():
+    """Содержимое блока дня обёрнуто в <blockquote>...</blockquote> (как в /пары и закрепе)."""
+    e = _ev(14, summary="Технология ООП", kind="Лекция")
+    day = _day(added=[e], old_events=[], new_events=[e])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "<blockquote>✅ 14:00–14:40 · Лекция\n<b>Технология ООП</b></blockquote>" in text
 
 
 # --- кластеризация и суффиксы ---
