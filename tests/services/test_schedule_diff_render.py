@@ -57,3 +57,53 @@ def test_render_per_group_label_only_when_groups_differ():
     text = render(DiffSummary(days=[day_a, day_b]))
     assert "для 40001" in text
     assert "для 40002" in text
+
+
+# --- helpers ---
+
+from src.bot.services.schedule_diff import _is_time_only_change, _format_groups
+
+
+def test_is_time_only_change_true_when_only_start_end_differ():
+    before = _ev(10, summary="A", kind="Лекция")
+    after = _ev(12, summary="A", kind="Лекция")
+    assert _is_time_only_change(before, after) is True
+
+
+def test_is_time_only_change_false_when_location_differs():
+    before = ScheduleEvent(
+        summary="A", location="ауд. 101",
+        start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 10, 40, tzinfo=TZ),
+        kind="Лекция",
+    )
+    after = ScheduleEvent(
+        summary="A", location="ауд. 202",
+        start=datetime(2026, 5, 26, 12, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 12, 40, tzinfo=TZ),
+        kind="Лекция",
+    )
+    assert _is_time_only_change(before, after) is False
+
+
+def test_is_time_only_change_false_when_kind_differs():
+    before = _ev(10, summary="A", kind="Лекция")
+    after = _ev(10, summary="A", kind="Практика")
+    assert _is_time_only_change(before, after) is False
+
+
+def test_format_groups_one():
+    assert _format_groups(["40001"]) == "40001"
+
+
+def test_format_groups_two():
+    assert _format_groups(["40001", "40002"]) == "40001 и 40002"
+
+
+def test_format_groups_three():
+    assert _format_groups(["40001", "40002", "40003"]) == "40001, 40002 и 40003"
+
+
+def test_format_groups_sorted():
+    # порядок входа произвольный — выход отсортирован
+    assert _format_groups(["40002", "40001"]) == "40001 и 40002"

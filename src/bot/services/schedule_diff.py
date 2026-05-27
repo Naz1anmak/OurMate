@@ -101,6 +101,25 @@ def compute_diff(
     return DiffSummary(is_appearance=False, days=days)
 
 
+def _is_time_only_change(before: ScheduleEvent, after: ScheduleEvent) -> bool:
+    """True, если у пары изменилось только время (start/end), а место и тип те же."""
+    return (
+        before.location == after.location
+        and before.kind == after.kind
+        and (before.start, before.end) != (after.start, after.end)
+    )
+
+
+def _format_groups(codes: list[str]) -> str:
+    """Форматирует список кодов групп: '40001' / '40001 и 40002' / '40001, 40002 и 40003'."""
+    ordered = sorted(codes)
+    if len(ordered) == 1:
+        return ordered[0]
+    if len(ordered) == 2:
+        return f"{ordered[0]} и {ordered[1]}"
+    return f"{', '.join(ordered[:-1])} и {ordered[-1]}"
+
+
 def render(summary: DiffSummary) -> str | None:
     """Формирует HTML-сообщение из DiffSummary для отправки в Telegram."""
     if summary.is_empty():
