@@ -1,8 +1,12 @@
 """Сравнение старого и нового снапшотов расписания."""
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
 from src.bot.services.schedule_service import ScheduleEvent
+
+
+_WEEKDAYS = ["в понедельник", "во вторник", "в среду", "в четверг", "в пятницу", "в субботу", "в воскресенье"]
 
 
 @dataclass
@@ -84,3 +88,46 @@ def compute_diff(
         days.extend(sorted(by_date.values(), key=lambda x: x.date))
 
     return DiffSummary(is_appearance=False, days=days)
+
+
+def render(summary: DiffSummary) -> str | None:
+    """Формирует HTML-сообщение из DiffSummary для отправки в Telegram."""
+    if summary.is_empty():
+        return None
+    if summary.is_appearance:
+        return "🗓️ Появилось расписание!"
+
+    # Группируем DayDiff по дате
+    by_date: dict[date, list[DayDiff]] = defaultdict(list)
+    for d in summary.days:
+        by_date[d.date].append(d)
+
+    show_group_label = len({d.group_code for d in summary.days}) > 1
+
+    lines: list[str] = ["🗓️ Расписание обновилось", ""]
+    for day in sorted(by_date.keys()):
+        diffs = by_date[day]
+        weekday = _WEEKDAYS[day.weekday()].capitalize()
+        for diff in diffs:
+            suffix = f" для {diff.group_code}" if show_group_label else ""
+            lines.append(f"<b>{weekday} ({day:%d.%m}){suffix}:</b>")
+            for e in diff.added:
+                lines.append(f"➕ — {e.start:%H:%M}-{e.end:%H:%M}")
+                lines.append(f"  • <b>{e.summary}</b>")
+                if e.kind:
+                    lines.append(f"  • <i>{e.kind}</i>")
+            for e in diff.removed:
+                lines.append(f"➖ — {e.start:%H:%M}-{e.end:%H:%M}")
+                lines.append(f"  • <b>{e.summary}</b>")
+                if e.kind:
+                    lines.append(f"  • <i>{e.kind}</i>")
+            for before, after in diff.changed:
+                lines.append(
+                    f"✏️ {before.start:%H:%M}-{before.end:%H:%M} → "
+                    f"{after.start:%H:%M}-{after.end:%H:%M}"
+                )
+                lines.append(f"  • <b>{after.summary}</b>")
+                if after.kind:
+                    lines.append(f"  • <i>{after.kind}</i>")
+            lines.append("")
+    return "\n".join(lines).rstrip()
