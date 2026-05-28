@@ -4,3 +4,4 @@ data/
 docs/
 CLAUDE.md
 venv/
+.DS_Store
