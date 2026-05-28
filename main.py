@@ -15,6 +15,7 @@ from src.bot.setup import build_bot_and_dispatcher
 from src.bot.scheduler.birthday_scheduler import start_birthday_scheduler
 from src.bot.scheduler.schedule_scheduler import start_schedule_scheduler
 from src.bot.scheduler.pinned_schedule_scheduler import start_pinned_schedule_scheduler
+from src.bot.scheduler.schedule_auto_refresh_scheduler import start_schedule_auto_refresh_scheduler
 from src.bot.services.ruz_client import RuzClient
 from src.bot.services.schedule_refresher import ScheduleRefresher
 from src.bot.services.schedule_service import schedule_service
@@ -42,6 +43,7 @@ async def main() -> None:
         start_birthday_scheduler(bot)
         schedule_scheduler_instance = start_schedule_scheduler(bot)
         pinned_scheduler_instance = start_pinned_schedule_scheduler(bot)
+        auto_refresh_instance = start_schedule_auto_refresh_scheduler(bot)
 
         if SCHEDULE_AUTO_UPDATE_ENABLED:
             ruz_client = RuzClient(
@@ -58,6 +60,8 @@ async def main() -> None:
             )
             schedule_scheduler_instance.refresher = refresher
             pinned_scheduler_instance.refresher = refresher
+            auto_refresh_instance.refresher = refresher
+            auto_refresh_instance.pinned_scheduler = pinned_scheduler_instance
             chat_commands_module.schedule_refresher = refresher
             chat_commands_module.pinned_scheduler = pinned_scheduler_instance
             logger.info("Автообновление расписания включено, группы: %s", list(RUZ_GROUP_IDS))

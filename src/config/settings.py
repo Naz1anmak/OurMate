@@ -120,6 +120,14 @@ PINNED_SCHEDULE_MESSAGE_FILE = Path(
 
 # ===== Автообновление расписания =====
 SCHEDULE_AUTO_UPDATE_ENABLED = _get_env("SCHEDULE_AUTO_UPDATE_ENABLED", "true", log_default=True).lower() == "true"
+
+# Дополнительные часы проверки обновлений расписания (через запятую, напр. "12,18").
+# Пустая строка — дополнительные проверки отключены.
+SCHEDULE_AUTO_REFRESH_HOURS: list[int] = [
+    int(h.strip())
+    for h in _get_env("SCHEDULE_AUTO_REFRESH_HOURS", "12,18", log_default=True).split(",")
+    if h.strip().isdigit()
+]
 RUZ_BASE_URL = _get_env("RUZ_BASE_URL", "", log_default=True)
 RUZ_FACULTY_ID = int(_get_env("RUZ_FACULTY_ID", 125, log_default=True))
 RUZ_WEEKS_AHEAD = int(_get_env("RUZ_WEEKS_AHEAD", 3, log_default=True))
