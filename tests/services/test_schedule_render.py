@@ -45,3 +45,11 @@ def test_render_single_block_blank_line_between_pairs():
         "10:00–11:40 · Лекция\n<b>Базы данных</b>\n\n12:00–13:40 · Практика\n<b>Сети</b>"
         in block
     )
+
+
+def test_render_single_block_escapes_html_in_summary():
+    """Спецсимволы в summary эскейпятся (Telegram parse_mode=HTML)."""
+    events = [_ev(10, 11, "A & B <C>", kind="Лекция")]
+    block = ScheduleService._render_single_block("📌 Пары", events)
+    assert "<b>A &amp; B &lt;C&gt;</b>" in block
+    assert "<b>A & B <C></b>" not in block

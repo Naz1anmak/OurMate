@@ -2,6 +2,7 @@
 Сервис работы с расписанием (ICS -> события).
 Парсит все файлы по паттерну, кеширует и предоставляет пары на сегодня/завтра.
 """
+import html
 import json
 import logging
 import random
@@ -288,7 +289,7 @@ class ScheduleService:
         for e in events:
             time_range = f"{e.start:%H:%M}–{e.end:%H:%M}"
             head = f"{time_range} · {e.kind}" if e.kind else time_range
-            blocks.append(f"{head}\n<b>{e.summary}</b>")
+            blocks.append(f"{head}\n<b>{html.escape(e.summary)}</b>")
         inner = "\n\n".join(blocks)
         return f"{header}\n<blockquote>{inner}</blockquote>"
 
