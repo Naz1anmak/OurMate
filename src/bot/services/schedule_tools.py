@@ -1,9 +1,10 @@
 """Тул-функции расписания для tool use + их JSON-схемы."""
+import functools
 import logging
 from datetime import date, datetime
 from typing import Optional, Tuple, Union
 
-from src.bot.services.llm_tools import ToolSpec
+from src.bot.services.llm_tools import ToolRegistry, ToolSpec
 from src.bot.services.schedule_service import ScheduleEvent, schedule_service
 from src.config.settings import RUZ_WEEKS_AHEAD, TIMEZONE
 
@@ -133,3 +134,60 @@ async def find_next_class(
     target_date = matches[0].start.date()
     same_day = [e for e in matches if e.start.date() == target_date]
     return {"found": True, "events": [_event_payload(e) for e in same_day]}
+
+
+GET_SCHEDULE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "get_schedule",
+        "description": (
+            "Вернуть пары за конкретную дату или диапазон дат. Используй для вопросов "
+            "«что в субботу», «пары завтра», «что на следующей неделе», а также для агрегатов "
+            "вроде «во сколько последняя пара» (возьми сегодняшнюю дату и рассуди по events). "
+            "Даты передавай в ISO YYYY-MM-DD, относительные («суббота», «завтра») сам переведи "
+            "в даты от сегодняшней."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "date_from": {"type": "string", "description": "Начало диапазона, ISO YYYY-MM-DD."},
+                "date_to": {"type": "string", "description": "Конец диапазона включительно, ISO YYYY-MM-DD. Для одного дня = date_from."},
+            },
+            "required": ["date_from", "date_to"],
+        },
+    },
+}
+
+FIND_NEXT_CLASS_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "find_next_class",
+        "description": (
+            "Найти ближайшую будущую пару по названию предмета. Используй для вопросов "
+            "«когда следующая физика», «когда у нас матан». subject — название предмета или его часть."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "subject": {"type": "string", "description": "Название предмета или его часть."},
+            },
+            "required": ["subject"],
+        },
+    },
+}
+
+
+def build_schedule_registry(*, refresher) -> ToolRegistry:
+    """Собирает реестр с тулами расписания, привязанными к глобальному schedule_service и refresher."""
+    reg = ToolRegistry()
+    reg.register("get_schedule", ToolSpec(
+        schema=GET_SCHEDULE_SCHEMA,
+        func=functools.partial(get_schedule, refresher=refresher),
+        gate="schedule_allowed",
+    ))
+    reg.register("find_next_class", ToolSpec(
+        schema=FIND_NEXT_CLASS_SCHEMA,
+        func=functools.partial(find_next_class, refresher=refresher),
+        gate="schedule_allowed",
+    ))
+    return reg

@@ -121,3 +121,14 @@ async def test_find_next_class_not_found():
                                 now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
     assert res["found"] is False
     assert res["events"] == []
+
+from src.bot.services.schedule_tools import build_schedule_registry
+
+def test_build_registry_has_both_tools_and_gate():
+    reg = build_schedule_registry(refresher=None)
+    names = {s["function"]["name"] for s in reg.schemas()}
+    assert names == {"get_schedule", "find_next_class"}
+    assert reg.get("get_schedule").gate == "schedule_allowed"
+    # схема get_schedule требует обе даты
+    params = reg.get("get_schedule").schema["function"]["parameters"]
+    assert set(params["required"]) == {"date_from", "date_to"}
