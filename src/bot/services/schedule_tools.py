@@ -102,3 +102,34 @@ async def get_schedule(
     if deferred:
         out["_deferred"] = deferred
     return out
+
+
+async def find_next_class(
+    subject: str,
+    *,
+    tool_context: dict,
+    service: "ScheduleService" = schedule_service,
+    refresher=None,
+    now: Optional[datetime] = None,
+) -> dict:
+    """Ближайшее будущее событие, чьё summary содержит subject (подстрока, регистронезависимо)."""
+    if tool_context.get("allow_refresh") and refresher is not None:
+        try:
+            await refresher.ensure_fresh("tool:find_next_class")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ensure_fresh из find_next_class упал: %s", exc)
+
+    now = now or datetime.now(service.timezone)
+    from_date = now.date()
+    needle = " ".join(subject.lower().split())
+
+    matches = [
+        e for e in sorted(service.events, key=lambda e: e.start)
+        if e.start.date() >= from_date and needle in " ".join(e.summary.lower().split())
+    ]
+    if not matches:
+        return {"found": False, "events": []}
+
+    target_date = matches[0].start.date()
+    same_day = [e for e in matches if e.start.date() == target_date]
+    return {"found": True, "events": [_event_payload(e) for e in same_day]}

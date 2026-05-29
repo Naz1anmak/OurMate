@@ -91,3 +91,33 @@ async def test_get_schedule_refresh_diff_deferred():
     res = await get_schedule("2026-06-01", "2026-06-01",
                              tool_context={"allow_refresh": True}, service=svc, refresher=FakeRefresher())
     assert res["_deferred"] == ["расписание изменилось"]
+
+from src.bot.services.schedule_tools import find_next_class
+
+@pytest.mark.asyncio
+async def test_find_next_class_substring_case_insensitive():
+    svc = _svc([_ev(2026, 6, 1, 10, "Высшая математика"),
+                _ev(2026, 6, 2, 12, "Физика")])
+    res = await find_next_class("матем",
+                                tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                                now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
+    assert res["found"] is True
+    assert res["events"][0]["summary"] == "Высшая математика"
+
+@pytest.mark.asyncio
+async def test_find_next_class_nearest_of_several():
+    svc = _svc([_ev(2026, 6, 5, 10, "Физика"),
+                _ev(2026, 6, 2, 10, "Физика")])
+    res = await find_next_class("физика",
+                                tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                                now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
+    assert res["events"][0]["date"] == "2026-06-02"
+
+@pytest.mark.asyncio
+async def test_find_next_class_not_found():
+    svc = _svc([_ev(2026, 6, 1, 10, "Физика")])
+    res = await find_next_class("химия",
+                                tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                                now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
+    assert res["found"] is False
+    assert res["events"] == []
