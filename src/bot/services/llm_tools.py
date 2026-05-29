@@ -40,3 +40,76 @@ class ToolRegistry:
 
     def schemas(self) -> list[dict]:
         return [spec.schema for spec in self._tools.values()]
+
+
+DEFAULT_DENIAL = "Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы."
+
+
+def _parse_args(raw: str) -> Optional[dict]:
+    try:
+        parsed = json.loads(raw or "{}")
+        return parsed if isinstance(parsed, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+async def run_tool_loop(
+    messages: list,
+    tool_context: dict,
+    *,
+    registry: ToolRegistry,
+    llm_call: Callable[..., Awaitable[LLMReply]],
+    max_tool_rounds: int = 1,
+) -> ToolLoopResult:
+    """Гоняет tool use: вызов LLM → исполнение тулов → повторный вызов. Не знает про Telegram."""
+    deferred: list[str] = []
+    work = list(messages)
+    rounds = 0
+
+    while True:
+        tools = registry.schemas() or None
+        reply = await llm_call(work, tools)
+
+        if not reply.tool_calls:
+            return ToolLoopResult(text=reply.content or "", deferred_messages=deferred)
+
+        # Гейт доступа: если любой запрошенный тул закрыт — короткое замыкание на заглушку.
+        for tc in reply.tool_calls:
+            spec = registry.get(tc["function"]["name"])
+            if spec and spec.gate and not tool_context.get(spec.gate, False):
+                denial = tool_context.get("denial_text") or DEFAULT_DENIAL
+                return ToolLoopResult(text=None, deferred_messages=[], denial=denial)
+
+        # Assistant-сообщение с tool_calls + reasoning_content (V4 round-trip, иначе 400).
+        work.append({
+            "role": "assistant",
+            "content": reply.content or "",
+            "reasoning_content": reply.reasoning_content,
+            "tool_calls": reply.tool_calls,
+        })
+
+        for tc in reply.tool_calls:
+            name = tc["function"]["name"]
+            spec = registry.get(name)
+            args = _parse_args(tc["function"]["arguments"])
+            if spec is None:
+                result = {"error": "unknown_tool"}
+            elif args is None:
+                result = {"error": "bad_arguments"}
+            else:
+                try:
+                    result = await spec.func(tool_context=tool_context, **args)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Тул %s упал: %s", name, exc)
+                    result = {"error": "tool_failed"}
+            deferred.extend(result.pop("_deferred", []) or [])
+            work.append({
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "content": json.dumps(result, ensure_ascii=False),
+            })
+
+        rounds += 1
+        if rounds > max_tool_rounds:
+            reply = await llm_call(work, None)  # финал без тулов
+            return ToolLoopResult(text=reply.content or "", deferred_messages=deferred)
