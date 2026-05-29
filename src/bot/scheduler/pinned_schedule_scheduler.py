@@ -3,7 +3,7 @@
 """
 import asyncio
 import logging
-from datetime import datetime, date
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -74,8 +74,7 @@ class PinnedScheduleScheduler:
         await self._update_pinned_message()
 
     async def _update_pinned_message(self):
-        today = datetime.now(TIMEZONE).date()
-        text = _build_pinned_text(today)
+        text = _build_pinned_text()
 
         pinned_id = _load_pinned_id(PINNED_SCHEDULE_MESSAGE_FILE)
 
@@ -141,14 +140,12 @@ def start_pinned_schedule_scheduler(bot: Bot):
     scheduler.start()
     return scheduler
 
-def _build_pinned_text(today: date) -> Optional[str]:
+def _build_pinned_text() -> Optional[str]:
     """Формирует текст закреплённого сообщения. None => удалить закреп."""
-    effective_date = schedule_service.get_effective_date(TIMEZONE)
+    effective_date, day_label, base_title_today = schedule_service.get_effective_date_with_titles(TIMEZONE)
     today_events = schedule_service.get_classes_for_date(effective_date)
     lines: list[str] = []
     used_next_date: Optional[date] = None
-    day_label = "завтра" if effective_date == date.fromordinal(today.toordinal() + 1) else "сегодня"
-    base_title_today = "Пары на завтра" if day_label == "завтра" else "Пары на сегодня"
 
     # Блок «Сегодня/Завтра»
     if today_events:

@@ -180,6 +180,18 @@ class ScheduleService:
             return date.fromordinal(today.toordinal() + 1)
         return today
 
+    def get_effective_date_with_titles(self, timezone: ZoneInfo) -> Tuple[date, str, str]:
+        """Актуальная дата + day_label ('сегодня'/'завтра') + заголовок ('Пары на …').
+
+        Единая точка вычисления для рассылки, закрепа и команды «пары»:
+        после последней пары катимся на завтра (см. get_effective_date).
+        """
+        effective_date = self.get_effective_date(timezone)
+        today = datetime.now(timezone).date()
+        day_label = "завтра" if effective_date == date.fromordinal(today.toordinal() + 1) else "сегодня"
+        base_title = "Пары на завтра" if day_label == "завтра" else "Пары на сегодня"
+        return effective_date, day_label, base_title
+
     def get_next_classes_after(self, base_date: date) -> Tuple[Optional[date], List[ScheduleEvent]]:
         """
         Возвращает дату и список ближайших будущих пар после указанной даты.

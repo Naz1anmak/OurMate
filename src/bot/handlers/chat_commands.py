@@ -213,11 +213,8 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
                 await schedule_refresher.ensure_fresh("cmd:пары")
             except Exception as exc:  # noqa: BLE001
                 logger.warning("ensure_fresh из 'пары' упал: %s", exc)
-        effective_date = schedule_service.get_effective_date(TIMEZONE)
+        effective_date, day_label, base_title = schedule_service.get_effective_date_with_titles(TIMEZONE)
         events = schedule_service.get_classes_for_date(effective_date)
-        today = datetime.now(TIMEZONE).date()
-        day_label = "завтра" if effective_date == date.fromordinal(today.toordinal() + 1) else "сегодня"
-        base_title = "Пары на завтра" if day_label == "завтра" else "Пары на сегодня"
         empty_text = schedule_service.get_no_pairs_message(day_label)
         if events:
             text = schedule_service.format_day_block(effective_date, base_title, icon_common=str(E.NO_CLASS_BOOKS))

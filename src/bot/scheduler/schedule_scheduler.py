@@ -2,7 +2,6 @@
 Планировщик для ежедневного уведомления о парах.
 """
 import logging
-from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -47,10 +46,13 @@ class ScheduleScheduler:
         await self._daily_classes()
 
     async def _daily_classes(self):
-        today = datetime.now(TIMEZONE).date()
-        events = schedule_service.get_classes_for_date(today)
+        # Берём актуальный день: после последней пары — завтрашний (как /пары и закреп).
+        # Так вечерняя рассылка (напр. в 21:00) пришлёт «Пары на завтра», а утренняя —
+        # как и раньше «Пары на сегодня». Если в актуальный день пар нет — молчим.
+        effective_date, _day_label, base_title = schedule_service.get_effective_date_with_titles(TIMEZONE)
+        events = schedule_service.get_classes_for_date(effective_date)
         if events:
-            text = schedule_service.format_day_block(today, "Пары на сегодня", icon_common=str(E.NO_CLASS_BOOKS))
+            text = schedule_service.format_day_block(effective_date, base_title, icon_common=str(E.NO_CLASS_BOOKS))
             await self.bot.send_message(CHAT_ID, text, parse_mode="HTML")
 
     def stop(self):
