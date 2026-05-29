@@ -163,8 +163,12 @@ def render(summary: DiffSummary, *, known_groups: frozenset[str]) -> str | None:
         # Внутри кластера дифы идентичны → берём первый
         rep = diffs[0]
         pair_blocks: list[str] = []
+        # ✅ — пара заняла слот удалённой (замена предмета в то же время начала),
+        # 🆕 — пара реально новая (в этом слоте раньше ничего не было).
+        removed_starts = {r.start for r in rep.removed}
         for e in rep.added:
-            pair_blocks.append(_format_event_line("✅", e))
+            emoji = "✅" if e.start in removed_starts else "🆕"
+            pair_blocks.append(_format_event_line(emoji, e))
         for e in rep.removed:
             pair_blocks.append(_format_event_line("❌", e))
         for before, after in rep.changed:

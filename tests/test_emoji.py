@@ -20,6 +20,15 @@ def test_alarm_clock_in_all_emoji_table():
     assert E.ALARM_CLOCK in ALL_EMOJI
 
 
+def test_new_has_unicode_and_premium_id():
+    assert E.NEW.unicode == "🆕"
+    assert E.NEW.premium_id == "5361979468887893611"
+
+
+def test_new_in_all_emoji_table():
+    assert E.NEW in ALL_EMOJI
+
+
 def test_plus_green_and_minus_red_are_gone():
     assert not hasattr(E, "PLUS_GREEN")
     assert not hasattr(E, "MINUS_RED")

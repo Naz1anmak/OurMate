@@ -54,12 +54,37 @@ def test_render_appearance_short_header_only():
 
 # --- формат строк ---
 
-def test_render_added_uses_check_and_new_format():
+def test_render_added_to_empty_slot_uses_new_emoji():
+    """Пара в пустой слот (без удаления в том же времени) → 🆕."""
     e = _ev(14, summary="Технология ООП", kind="Лекция")
     day = _day(added=[e], old_events=[], new_events=[e])
     text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
-    assert "✅ 14:00–14:40 · Лекция" in text
+    assert "🆕 14:00–14:40 · Лекция" in text
     assert "<b>Технология ООП</b>" in text
+
+
+def test_render_added_over_removed_same_start_uses_check():
+    """Замена предмета в том же слоте: старый ❌, новый ✅ (а не 🆕)."""
+    old = _ev(14, summary="Программирование", kind="Лекция")
+    new = _ev(14, summary="Технология ООП", kind="Лекция")
+    day = _day(added=[new], removed=[old], old_events=[old], new_events=[new])
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "✅ 14:00–14:40 · Лекция" in text
+    assert "❌ 14:00–14:40 · Лекция" in text
+    assert "🆕" not in text
+
+
+def test_render_added_with_unrelated_removal_other_slot_uses_new():
+    """Удаление в другом слоте не делает добавление заменой → остаётся 🆕."""
+    added = _ev(18, summary="Иностранный язык", kind="Зачет")
+    removed = _ev(14, summary="Химия", kind="Лекция")
+    day = _day(
+        added=[added], removed=[removed],
+        old_events=[removed], new_events=[added],
+    )
+    text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
+    assert "🆕 18:00–18:40 · Зачет" in text
+    assert "❌ 14:00–14:40 · Лекция" in text
 
 
 def test_render_removed_uses_cross_and_new_format():
@@ -74,8 +99,8 @@ def test_render_added_without_kind_omits_dot_separator():
     e = _ev(14, summary="Семинар", kind="")
     day = _day(added=[e], old_events=[], new_events=[e])
     text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
-    assert "✅ 14:00–14:40\n<b>Семинар</b>" in text
-    time_line = next(ln for ln in text.splitlines() if "✅" in ln)
+    assert "🆕 14:00–14:40\n<b>Семинар</b>" in text
+    time_line = next(ln for ln in text.splitlines() if "🆕" in ln)
     assert "·" not in time_line  # в строке времени нет точки-разделителя
 
 
@@ -118,8 +143,8 @@ def test_render_blank_line_between_pairs_in_same_day():
     e2 = _ev(12, summary="Вторая")
     day = _day(added=[e1, e2], old_events=[], new_events=[e1, e2])
     text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
-    # между двумя ✅-блоками должна быть пустая строка
-    assert "<b>Первая</b>\n\n✅" in text
+    # между двумя 🆕-блоками должна быть пустая строка
+    assert "<b>Первая</b>\n\n🆕" in text
 
 
 def test_render_blank_line_between_days():
@@ -137,7 +162,7 @@ def test_render_wraps_day_content_in_blockquote():
     e = _ev(14, summary="Технология ООП", kind="Лекция")
     day = _day(added=[e], old_events=[], new_events=[e])
     text = render(DiffSummary(days=[day]), known_groups=frozenset({"40001"}))
-    assert "<blockquote>✅ 14:00–14:40 · Лекция\n<b>Технология ООП</b></blockquote>" in text
+    assert "<blockquote>🆕 14:00–14:40 · Лекция\n<b>Технология ООП</b></blockquote>" in text
 
 
 def test_render_escapes_html_in_summary():

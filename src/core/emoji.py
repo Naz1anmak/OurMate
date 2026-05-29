@@ -74,6 +74,7 @@ class E:
 
     # ── Diff расписания ────────────────────────────────────────
     ALARM_CLOCK = Emoji("⏰", premium_id="5413704112220949842")
+    NEW = Emoji("🆕", premium_id="5361979468887893611")
 
 
 ALL_EMOJI: tuple[Emoji, ...] = tuple(
