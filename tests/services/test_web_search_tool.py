@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from src.bot.services.web_search_tool import web_search
+from src.bot.services.web_search_tool import web_search, WEB_SEARCH_SCHEMA, build_web_search_registry
 import src.bot.services.web_search_tool as wst
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -75,3 +75,16 @@ async def test_web_search_quota_resets_next_day():
     tomorrow = NOW + timedelta(days=1)
     ok = await web_search("q3", tool_context={}, search_fn=_fake_search(payload), now=tomorrow, daily_cap=1)
     assert ok["error"] is None
+
+
+def test_web_search_schema_shape():
+    fn = WEB_SEARCH_SCHEMA["function"]
+    assert fn["name"] == "web_search"
+    assert set(fn["parameters"]["required"]) == {"query"}
+
+
+def test_build_web_search_registry_has_tool_no_gate():
+    reg = build_web_search_registry()
+    spec = reg.get("web_search")
+    assert spec is not None
+    assert spec.gate is None  # доступен всем, без гейта
