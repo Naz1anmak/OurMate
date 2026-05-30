@@ -51,6 +51,13 @@ API_HEADERS = {
     "Authorization": f"Bearer {os.getenv('LLM_API_KEY')}"
 }
 
+# ===== ВЕБ-ПОИСК (Tavily) =====
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")  # None → тул web_search не регистрируется
+TAVILY_URL = _get_env("TAVILY_URL", "https://api.tavily.com/search", log_default=False)
+TAVILY_MAX_RESULTS = _get_env("TAVILY_MAX_RESULTS", 5, cast=int, log_default=True)
+TAVILY_SEARCH_DEPTH = _get_env("TAVILY_SEARCH_DEPTH", "basic", log_default=True)
+WEB_SEARCH_DAILY_CAP = _get_env("WEB_SEARCH_DAILY_CAP", 200, cast=int, log_default=True)
+
 # ===== НАСТРОЙКИ ДНЕЙ РОЖДЕНИЯ =====
 # Путь к файлу с данными о днях рождения
 # По умолчанию ищем файл birthdays.json в папке data относительно корня проекта
