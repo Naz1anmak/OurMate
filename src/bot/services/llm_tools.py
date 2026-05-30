@@ -26,6 +26,7 @@ class ToolLoopResult:
     text: Optional[str] = None
     deferred_messages: list[str] = field(default_factory=list)
     denial: Optional[str] = None
+    called_tools: list[str] = field(default_factory=list)
 
 
 class ToolRegistry:
@@ -64,6 +65,7 @@ async def run_tool_loop(
 ) -> ToolLoopResult:
     """Гоняет tool use: вызов LLM → исполнение тулов → повторный вызов. Не знает про Telegram."""
     deferred: list[str] = []
+    called: list[str] = []
     work = list(messages)
     rounds = 0
 
@@ -72,7 +74,8 @@ async def run_tool_loop(
         reply = await llm_call(work, tools)
 
         if not reply.tool_calls:
-            return ToolLoopResult(text=reply.content or "", deferred_messages=deferred)
+            return ToolLoopResult(text=reply.content or "", deferred_messages=deferred,
+                                  called_tools=called)
 
         # Гейт доступа: если любой запрошенный тул закрыт — короткое замыкание на заглушку.
         for tc in reply.tool_calls:
@@ -91,6 +94,7 @@ async def run_tool_loop(
 
         for tc in reply.tool_calls:
             name = tc["function"]["name"]
+            called.append(name)
             if on_tool_start is not None:
                 try:
                     await on_tool_start(name)
@@ -118,4 +122,5 @@ async def run_tool_loop(
         rounds += 1
         if rounds > max_tool_rounds:
             reply = await llm_call(work, None)  # финал без тулов
-            return ToolLoopResult(text=reply.content or "", deferred_messages=deferred)
+            return ToolLoopResult(text=reply.content or "", deferred_messages=deferred,
+                                  called_tools=called)

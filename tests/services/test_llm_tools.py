@@ -142,6 +142,7 @@ async def test_run_tool_loop_calls_on_tool_start():
                               llm_call=llm_call, on_tool_start=on_tool_start)
     assert seen == ["demo_tool"]
     assert res.text == "финал"
+    assert res.called_tools == ["demo_tool"]
 
 
 @pytest.mark.asyncio

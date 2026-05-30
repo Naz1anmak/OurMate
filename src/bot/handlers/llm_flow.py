@@ -701,6 +701,7 @@ async def run_schedule_aware_response(
         return False
 
     await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
-    logger.info("%s; Бот (tool-flow) для %s: %s", "GR" if is_group_chat else "PM",
-                user_login or "?", final_answer)
+    flow_label = f"tool: {', '.join(result.called_tools)}" if result.called_tools else "стрим"
+    logger.info("%s; Бот (%s) для %s: %s", "GR" if is_group_chat else "PM",
+                flow_label, user_login or "?", final_answer)
     return True
