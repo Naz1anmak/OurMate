@@ -606,7 +606,8 @@ class StreamRenderer:
             elif self.placeholder:
                 await self.message.bot.edit_message_text(chat_id=self.placeholder.chat.id,
                                                          message_id=self.placeholder.message_id,
-                                                         text=rendered, parse_mode="HTML")
+                                                         text=rendered, parse_mode="HTML",
+                                                         disable_web_page_preview=True)
         except Exception as exc:  # noqa: BLE001
             logger.debug("StreamRenderer render failed: %s", exc)
 
@@ -615,13 +616,14 @@ class StreamRenderer:
         safe = _trim_html(render_html_with_code(final_text))
         try:
             if self.use_draft:
-                await self.message.answer(safe, parse_mode="HTML")
+                await self.message.answer(safe, parse_mode="HTML", disable_web_page_preview=True)
             elif self.placeholder:
                 await self.message.bot.edit_message_text(chat_id=self.placeholder.chat.id,
                                                          message_id=self.placeholder.message_id,
-                                                         text=safe, parse_mode="HTML")
+                                                         text=safe, parse_mode="HTML",
+                                                         disable_web_page_preview=True)
             else:
-                await self.message.reply(safe, parse_mode="HTML")
+                await self.message.reply(safe, parse_mode="HTML", disable_web_page_preview=True)
             return True
         except Exception as exc:  # noqa: BLE001
             logger.warning("StreamRenderer finalize failed: %s", exc)
