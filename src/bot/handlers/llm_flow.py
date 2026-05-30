@@ -10,7 +10,8 @@ from aiogram.exceptions import TelegramRetryAfter, TelegramBadRequest
 from aiogram.types import Message
 from aiogram.methods import SendMessageDraft
 
-from src.bot.services.llm_service import LLMService, LLMServiceError
+from src.bot.services.llm_service import LLMService, LLMServiceError, stream_with_tools
+from src.bot.services.llm_tools import run_tool_loop, ToolLoopResult
 from src.bot.services.context_service import context_service
 
 from src.bot.handlers.errors import notify_owner_error
@@ -526,3 +527,129 @@ async def try_streaming_response(
             await typing_task
         except Exception:
             pass
+
+
+async def send_tool_loop_extras(message, *, deferred_messages: list[str], denial: str | None) -> None:
+    """Отправляет заглушку отказа ИЛИ отложенные сообщения (diff) после основного ответа."""
+    if denial:
+        try:
+            await message.answer(denial, parse_mode="HTML")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Не удалось отправить заглушку отказа: %s", exc)
+        return
+    for text in deferred_messages:
+        try:
+            await message.answer(text, parse_mode="HTML")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Не удалось отправить отложенное сообщение: %s", exc)
+
+
+class StreamRenderer:
+    """Живой стрим: группа — эдиты плейсхолдера, ЛС — драфты. feed() — приёмник токенов."""
+
+    def __init__(self, message, *, prefix: str = ""):
+        self.message = message
+        self.is_group = message.chat.type in ("group", "supergroup")
+        self.use_draft = message.chat.type == "private"
+        self.placeholder = None
+        self.draft_id = int(time.monotonic_ns() % 900_000_000) + 1
+        self.buffer = prefix
+        self.last_sent_len = len(prefix)
+        self.last_flush = 0.0
+        self.min_interval = 1.2 if self.is_group else 0.8
+        self.min_chars = 110 if self.is_group else 50
+
+    async def start(self, placeholder_text: str) -> None:
+        """В группе показывает заглушку ожидания; в ЛС стрим идёт драфтами без отдельного плейсхолдера."""
+        if self.is_group:
+            try:
+                self.placeholder = await self.message.reply(placeholder_text, parse_mode="HTML")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("StreamRenderer start failed: %s", exc)
+                self.placeholder = None
+
+    async def feed(self, token: str) -> None:
+        self.buffer += token
+        now = time.monotonic()
+        if (len(self.buffer) - self.last_sent_len) < self.min_chars and (now - self.last_flush) < self.min_interval:
+            return
+        await self._render(self.buffer)
+        self.last_sent_len = len(self.buffer)
+        self.last_flush = now
+
+    async def _render(self, text: str) -> None:
+        rendered = _trim_html(render_html_with_code(text))
+        try:
+            if self.use_draft:
+                await self.message.bot(SendMessageDraft(chat_id=self.message.chat.id,
+                                                        draft_id=self.draft_id,
+                                                        text=rendered, parse_mode="HTML"))
+            elif self.placeholder:
+                await self.message.bot.edit_message_text(chat_id=self.placeholder.chat.id,
+                                                         message_id=self.placeholder.message_id,
+                                                         text=rendered, parse_mode="HTML")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("StreamRenderer render failed: %s", exc)
+
+    async def finalize(self, final_text: str) -> bool:
+        """Фиксирует финал: эдит плейсхолдера (группа) или реальное сообщение (ЛС — драфт эфемерен)."""
+        safe = _trim_html(render_html_with_code(final_text))
+        try:
+            if self.use_draft:
+                await self.message.answer(safe, parse_mode="HTML")
+            elif self.placeholder:
+                await self.message.bot.edit_message_text(chat_id=self.placeholder.chat.id,
+                                                         message_id=self.placeholder.message_id,
+                                                         text=safe, parse_mode="HTML")
+            else:
+                await self.message.reply(safe, parse_mode="HTML")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("StreamRenderer finalize failed: %s", exc)
+            return False
+
+
+async def run_schedule_aware_response(
+    message,
+    messages: list,
+    first_name: str,
+    user_login: str,
+    text_for_llm: str,
+    has_context: bool,
+    tool_context: dict,
+    registry,
+) -> bool:
+    """Тул-флоу со стримом: фаза1 (стрим болтовни / детект tool_calls) → run_tool_loop → стрим финала + deferred."""
+    is_group_chat = message.chat.type in ("group", "supergroup")
+    prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
+    renderer = StreamRenderer(message, prefix=prefix)
+    await renderer.start(pick_placeholder_variant().text)
+
+    # Один и тот же приёмник на обе фазы: болтовня и финал стримятся; тул-фазы content не дают.
+    async def llm_call(msgs, tools):
+        return await stream_with_tools(msgs, tools, on_content_token=renderer.feed)
+
+    try:
+        result: ToolLoopResult = await run_tool_loop(
+            messages, tool_context, registry=registry, llm_call=llm_call)
+    except LLMServiceError as exc:
+        logger.warning("tool-flow LLM error: %s", exc)
+        await renderer.finalize(ERROR_NOTICE_PLAIN)
+        return True
+
+    if result.denial:
+        await renderer.finalize(result.denial)
+        return True
+
+    final_answer = format_final_answer(first_name, result.text or "", has_context)
+    context_service.save_context(
+        message.chat.id, text_for_llm,
+        format_final_answer("", result.text or "", has_context) if is_group_chat else final_answer)
+
+    if not await renderer.finalize(final_answer):
+        return False
+
+    await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
+    logger.info("%s; Бот (tool-flow) для %s: %s", "GR" if is_group_chat else "PM",
+                user_login or "?", final_answer)
+    return True
