@@ -31,3 +31,22 @@ async def test_web_search_parses_answer_and_results():
         {"title": "T1", "url": "https://a.example/1", "content": "c1"},
         {"title": "T2", "url": "https://a.example/2", "content": "c2"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_web_search_empty_query_returns_error():
+    res = await web_search("   ", tool_context={}, search_fn=_fake_search({}),
+                           now=NOW, daily_cap=200)
+    assert res["error"] == "search_failed"
+    assert res["results"] == []
+
+
+@pytest.mark.asyncio
+async def test_web_search_network_failure_returns_error():
+    async def _boom(query, **kwargs):
+        raise RuntimeError("network down")
+    res = await web_search("курс доллара", tool_context={}, search_fn=_boom,
+                           now=NOW, daily_cap=200)
+    assert res["error"] == "search_failed"
+    assert res["answer"] is None
+    assert res["results"] == []
