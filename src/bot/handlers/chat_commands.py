@@ -208,9 +208,10 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
         tag = "GR" if ctx["is_group_chat"] else "PM"
         logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'пары'")
-        if schedule_refresher is not None:
+        refresh_result = None
+        if schedule_refresher is not None and ctx["is_group_chat"]:
             try:
-                await schedule_refresher.ensure_fresh("cmd:пары")
+                refresh_result = await schedule_refresher.ensure_fresh("cmd:пары")
             except Exception as exc:  # noqa: BLE001
                 logger.warning("ensure_fresh из 'пары' упал: %s", exc)
         effective_date, day_label, base_title = schedule_service.get_effective_date_with_titles(TIMEZONE)
@@ -226,15 +227,21 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
             else:
                 text = empty_text
         await message.answer(text, parse_mode="HTML")
+        if refresh_result is not None and getattr(refresh_result, "diff_message", None):
+            try:
+                await message.answer(refresh_result.diff_message, parse_mode="HTML")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Не удалось отправить diff после 'пары': %s", exc)
         return True
 
     if normalized_text == "пары завтра" and ctx["should_process_schedule_command"]:
         user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
         tag = "GR" if ctx["is_group_chat"] else "PM"
         logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'пары завтра'")
-        if schedule_refresher is not None:
+        refresh_result = None
+        if schedule_refresher is not None and ctx["is_group_chat"]:
             try:
-                await schedule_refresher.ensure_fresh("cmd:пары завтра")
+                refresh_result = await schedule_refresher.ensure_fresh("cmd:пары завтра")
             except Exception as exc:  # noqa: BLE001
                 logger.warning("ensure_fresh из 'пары завтра' упал: %s", exc)
         tomorrow = date.fromordinal(datetime.now(TIMEZONE).date().toordinal() + 1)
@@ -250,6 +257,11 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
             else:
                 text = empty_text
         await message.answer(text, parse_mode="HTML")
+        if refresh_result is not None and getattr(refresh_result, "diff_message", None):
+            try:
+                await message.answer(refresh_result.diff_message, parse_mode="HTML")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Не удалось отправить diff после 'пары завтра': %s", exc)
         return True
 
     if normalized_text == "обнови расписание" and ctx["should_process_schedule_command"]:
