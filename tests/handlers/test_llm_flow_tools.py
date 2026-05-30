@@ -45,3 +45,45 @@ async def test_stream_renderer_pm_finalize_sends_message():
     ok = await r.finalize("привет мир")
     assert ok is True
     message.answer.assert_awaited()    # финал — реальное сообщение (драфт эфемерен)
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_tool_indicator_group_edits_placeholder():
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")           # в группе создаётся плейсхолдер
+    message.bot.edit_message_text.reset_mock()
+    await r.show_tool_indicator("web_search")
+    message.bot.edit_message_text.assert_awaited()   # индикатор показан через edit
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_tool_indicator_pm_noop():
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "private"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    await r.show_tool_indicator("web_search")
+    message.bot.edit_message_text.assert_not_awaited()  # в ЛС индикатора нет
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_tool_indicator_unknown_tool_noop():
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    message.bot.edit_message_text.reset_mock()
+    await r.show_tool_indicator("get_schedule")          # без индикатора
+    message.bot.edit_message_text.assert_not_awaited()
+
+
+def test_web_search_note_mentions_trigger_and_sources():
+    from src.bot.handlers.llm_flow import WEB_SEARCH_NOTE
+    note = WEB_SEARCH_NOTE.lower()
+    assert "загугли" in note            # явный триггер описан
+    assert "источник" in note           # политика ссылок описана

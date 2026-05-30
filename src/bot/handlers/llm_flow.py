@@ -544,6 +544,12 @@ async def send_tool_loop_extras(message, *, deferred_messages: list[str], denial
             logger.debug("Не удалось отправить отложенное сообщение: %s", exc)
 
 
+# Тул-специфичные заглушки на момент исполнения тула (только группа).
+TOOL_INDICATORS = {
+    "web_search": "🔎 Ищу в интернете…",
+}
+
+
 class StreamRenderer:
     """Живой стрим: группа — эдиты плейсхолдера, ЛС — драфты. feed() — приёмник токенов."""
 
@@ -567,6 +573,19 @@ class StreamRenderer:
             except Exception as exc:  # noqa: BLE001
                 logger.debug("StreamRenderer start failed: %s", exc)
                 self.placeholder = None
+
+    async def show_tool_indicator(self, tool_name: str) -> None:
+        """В группе подменяет плейсхолдер на тул-индикатор (web_search и т.п.). В ЛС — ничего."""
+        text = TOOL_INDICATORS.get(tool_name)
+        if not text or not self.is_group or not self.placeholder:
+            return
+        try:
+            await self.message.bot.edit_message_text(
+                chat_id=self.placeholder.chat.id,
+                message_id=self.placeholder.message_id,
+                text=text, parse_mode="HTML")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("show_tool_indicator failed: %s", exc)
 
     async def feed(self, token: str) -> None:
         self.buffer += token
@@ -616,6 +635,15 @@ SCHEDULE_PRESENTATION_NOTE = (
     "блока), не повторяй её во вводной фразе. Если в нужный день пар нет — скажи это один раз, без повторов."
 )
 
+WEB_SEARCH_NOTE = (
+    "Если для ответа нужны свежие/проверяемые факты (новости, что вышло, курсы, погода, события) "
+    "или пользователь просит «загугли …», «найди в интернете …», «поищи …» — вызови web_search. "
+    "Бери факты из его выдачи, не выдумывай. Для точных/новостных/спорных вопросов в конце дай "
+    "блок «Источники» с 2–3 ссылками в HTML-анкорах <a href=\"…\">…</a>. Для бытового и быстрого "
+    "(погода, простой факт) — обычный ответ без ссылок. Если поиск не дал результата или вернул "
+    "ошибку — честно скажи, что найти не удалось."
+)
+
 
 def _inject_system_note(messages: list, note: str) -> list:
     """Вставляет system-заметку после ведущих system-сообщений, не мутируя исходный список."""
@@ -640,6 +668,7 @@ async def run_schedule_aware_response(
     """Тул-флоу со стримом: фаза1 (стрим болтовни / детект tool_calls) → run_tool_loop → стрим финала + deferred."""
     is_group_chat = message.chat.type in ("group", "supergroup")
     messages = _inject_system_note(messages, SCHEDULE_PRESENTATION_NOTE)
+    messages = _inject_system_note(messages, WEB_SEARCH_NOTE)
     prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
     renderer = StreamRenderer(message, prefix=prefix)
     await renderer.start(pick_placeholder_variant().text)
@@ -650,7 +679,8 @@ async def run_schedule_aware_response(
 
     try:
         result: ToolLoopResult = await run_tool_loop(
-            messages, tool_context, registry=registry, llm_call=llm_call)
+            messages, tool_context, registry=registry, llm_call=llm_call,
+            on_tool_start=renderer.show_tool_indicator)
     except LLMServiceError as exc:
         logger.warning("tool-flow LLM error: %s", exc)
         await renderer.finalize(ERROR_NOTICE_PLAIN)
