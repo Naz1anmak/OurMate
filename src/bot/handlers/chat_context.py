@@ -1,9 +1,22 @@
 """Вспомогательные функции для построения контекста и подготовки сообщений LLM."""
+from datetime import datetime
+
 from aiogram.types import Message
 
-from src.config.settings import PROMPT_TEMPLATE_CHAT, OWNER_CHAT_ID, CHAT_ID
+from src.config.settings import PROMPT_TEMPLATE_CHAT, OWNER_CHAT_ID, CHAT_ID, TIMEZONE
 from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
+
+_WEEKDAY_RU = ("понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье")
+
+
+def build_time_context_line() -> str:
+    """System-строка с текущей датой/днём недели/таймзоной — чтобы LLM разрешал относительные даты в тулах."""
+    now = datetime.now(TIMEZONE)
+    return (
+        f"Контекст времени: сегодня {now:%Y-%m-%d}, {_WEEKDAY_RU[now.weekday()]}, часовой пояс {TIMEZONE}. "
+        "Относительные даты («сегодня», «завтра», «в субботу», «на следующей неделе») считай от этой даты."
+    )
 
 def is_public_command(text: str) -> bool:
     """Возвращает True для публичных команд др/пары/обнови расписание."""
@@ -139,7 +152,10 @@ def build_group_llm_input(
 
 def build_llm_messages(chat_id: int, current_text: str, user_id: int | None = None) -> list:
     """Формирует список сообщений для отправки в LLM."""
-    messages = [{"role": "system", "content": PROMPT_TEMPLATE_CHAT}]
+    messages = [
+        {"role": "system", "content": PROMPT_TEMPLATE_CHAT},
+        {"role": "system", "content": build_time_context_line()},
+    ]
 
     prev_pairs = context_service.get_context(chat_id)
     if prev_pairs:
