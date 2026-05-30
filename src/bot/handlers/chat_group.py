@@ -25,11 +25,15 @@ from src.bot.handlers.chat_context import (
 from src.bot.handlers.llm_flow import (
     try_streaming_response,
     format_final_answer,
+    run_schedule_aware_response,
     _trim_html,
     ERROR_NOTICE_PLAIN,
 )
 from src.core.emoji import E
 from src.bot.handlers.placeholder_variants import pick_placeholder_variant
+
+# Реестр тулов расписания; инжектится из main.py при старте (None → тул-флоу выключен, идём по старому пути).
+schedule_tool_registry = None
 
 FALLBACK_EDIT_TIMEOUT_SEC = 6.0
 _PROCESSED_GROUP_MESSAGES: dict[tuple[int, int], float] = {}
@@ -65,7 +69,7 @@ async def _notify_owner_delivery_issue(
         extra=f"chat_id={message.chat.id}; ответ: {final_answer[:300]}",
     )
 
-async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
+async def handle_group_chat(message: Message, bot_username: str, bot_id: int, ctx: dict | None = None):
     chat_id = message.chat.id
     text = message.text or ""
     text_for_llm = strip_bot_mention(text, bot_username)
@@ -111,6 +115,22 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int):
     has_context = bool(existing_context)
     llm_input_text = build_group_llm_input(message, text_for_llm, bot_id)
     messages = build_llm_messages(chat_id, llm_input_text)
+
+    # Тул-флоу расписания (стрим + function calling). В группе рефреш/diff включены.
+    if schedule_tool_registry is not None:
+        denial_text = (
+            f"{E.CROSS} <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>"
+        )
+        tool_context = {
+            "allow_refresh": True,
+            "schedule_allowed": bool(ctx and ctx.get("should_process_schedule_command")),
+            "denial_text": denial_text,
+        }
+        handled = await run_schedule_aware_response(
+            message, messages, first_name, user_login, text_for_llm,
+            has_context, tool_context, schedule_tool_registry)
+        if handled:
+            return
 
     streamed, placeholder_msg = await try_streaming_response(
         message,

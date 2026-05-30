@@ -18,14 +18,21 @@ from src.bot.handlers.chat_context import (
     build_llm_messages,
 )
 from src.bot.handlers.errors import notify_owner_error
-from src.bot.handlers.llm_flow import try_streaming_response, format_final_answer
+from src.bot.handlers.llm_flow import (
+    try_streaming_response,
+    format_final_answer,
+    run_schedule_aware_response,
+)
 from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
 ERROR_NOTICE_PLAIN_PM = f"{E.WARNING} LLM временно недоступен. Попробуй ещё раз через пару минут."
 
-async def handle_private_chat(message: Message, bot_username: str, bot_id: int):
+# Реестр тулов расписания; инжектится из main.py при старте (None → тул-флоу выключен, идём по старому пути).
+schedule_tool_registry = None
+
+async def handle_private_chat(message: Message, bot_username: str, bot_id: int, ctx: dict | None = None):
     chat_id = message.chat.id
     text = message.text or ""
     text_for_llm = strip_bot_mention(text, bot_username)
@@ -45,6 +52,20 @@ async def handle_private_chat(message: Message, bot_username: str, bot_id: int):
     existing_context = context_service.get_context(chat_id)
     has_context = bool(existing_context)
     messages = build_llm_messages(chat_id, text_for_llm)
+
+    # Тул-флоу расписания (стрим + function calling). В ЛС рефреш/diff отключены by design.
+    if schedule_tool_registry is not None:
+        denial_text = f"{E.CROSS} <b>Эта команда доступна только избранным пользователям.</b>"
+        tool_context = {
+            "allow_refresh": False,
+            "schedule_allowed": bool(ctx and ctx.get("should_process_schedule_command")),
+            "denial_text": denial_text,
+        }
+        handled = await run_schedule_aware_response(
+            message, messages, first_name, user_login, text_for_llm,
+            has_context, tool_context, schedule_tool_registry)
+        if handled:
+            return
 
     streamed, placeholder_msg = await try_streaming_response(
         message,

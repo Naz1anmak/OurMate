@@ -20,6 +20,9 @@ from src.bot.services.ruz_client import RuzClient
 from src.bot.services.schedule_refresher import ScheduleRefresher
 from src.bot.services.schedule_service import schedule_service
 from src.bot.handlers import chat_commands as chat_commands_module
+from src.bot.handlers import chat_group as chat_group_module
+from src.bot.handlers import chat_pm as chat_pm_module
+from src.bot.services.schedule_tools import build_schedule_registry
 from src.config.settings import (
     RUZ_BASE_URL, RUZ_FACULTY_ID, RUZ_HTTP_TIMEOUT,
     RUZ_WEEKS_AHEAD, RUZ_LAZY_TTL_MIN, RUZ_GROUP_IDS,
@@ -45,6 +48,7 @@ async def main() -> None:
         pinned_scheduler_instance = start_pinned_schedule_scheduler(bot)
         auto_refresh_instance = start_schedule_auto_refresh_scheduler(bot)
 
+        refresher = None
         if SCHEDULE_AUTO_UPDATE_ENABLED:
             ruz_client = RuzClient(
                 base_url=RUZ_BASE_URL,
@@ -67,6 +71,12 @@ async def main() -> None:
             logger.info("Автообновление расписания включено, группы: %s", list(RUZ_GROUP_IDS))
         else:
             logger.info("Автообновление расписания выключено (SCHEDULE_AUTO_UPDATE_ENABLED=false)")
+
+        # Реестр тулов расписания для NL-вопросов (работает и без refresher — тулы берут глобальный schedule_service).
+        schedule_tool_registry = build_schedule_registry(refresher=refresher)
+        chat_group_module.schedule_tool_registry = schedule_tool_registry
+        chat_pm_module.schedule_tool_registry = schedule_tool_registry
+        logger.info("Реестр тулов расписания подключён (refresh: %s)", "вкл" if refresher else "выкл")
 
         logger.info("Планировщики запущены")
 

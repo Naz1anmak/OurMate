@@ -99,9 +99,9 @@ async def on_mention_or_reply(message: Message):
                 return
 
     if message.chat.type == "private":
-        await handle_private_chat(message, bot_username, bot_info.id)
+        await handle_private_chat(message, bot_username, bot_info.id, ctx)
     else:
-        await handle_group_chat(message, bot_username, bot_info.id)
+        await handle_group_chat(message, bot_username, bot_info.id, ctx)
 
 def register_chat_handlers(dp):
     """
