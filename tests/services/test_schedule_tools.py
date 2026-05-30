@@ -51,6 +51,7 @@ async def test_get_schedule_day_with_classes():
     assert "Предмет A" in res["formatted"]
     assert res["events"][0]["summary"] == "Предмет A"
     assert res["events"][0]["start"] == "10:00"
+    assert "location" not in res["events"][0]   # место не отдаём (заочка)
 
 @pytest.mark.asyncio
 async def test_get_schedule_empty_day_shows_next():
@@ -105,13 +106,31 @@ async def test_find_next_class_substring_case_insensitive():
     assert res["events"][0]["summary"] == "Высшая математика"
 
 @pytest.mark.asyncio
-async def test_find_next_class_nearest_of_several():
+async def test_find_next_class_nearest_first_returns_all_future():
     svc = _svc([_ev(2026, 6, 5, 10, "Физика"),
                 _ev(2026, 6, 2, 10, "Физика")])
     res = await find_next_class("физика",
                                 tool_context={"allow_refresh": False}, service=svc, refresher=None,
                                 now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
+    # ближайшее первым, но отдаём все будущие, не только ближайший день
     assert res["events"][0]["date"] == "2026-06-02"
+    assert [e["date"] for e in res["events"]] == ["2026-06-02", "2026-06-05"]
+
+@pytest.mark.asyncio
+async def test_find_next_class_surfaces_later_exam_behind_practice():
+    # практика раньше, экзамен позже — экзамен не должен «прятаться» за ближайшей практикой
+    practice = _ev(2026, 6, 3, 12, "Базы данных")
+    exam = ScheduleEvent(summary="Базы данных", location="DL",
+                         start=datetime(2026, 6, 11, 12, 0, tzinfo=TZ),
+                         end=datetime(2026, 6, 11, 18, 30, tzinfo=TZ),
+                         kind="Экзамен", groups=frozenset({""}))
+    svc = _svc([practice, exam])
+    res = await find_next_class("базы данных",
+                                tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                                now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
+    dates = [e["date"] for e in res["events"]]
+    assert "2026-06-03" in dates and "2026-06-11" in dates
+    assert any(e["kind"] == "Экзамен" for e in res["events"])
 
 @pytest.mark.asyncio
 async def test_find_next_class_not_found():

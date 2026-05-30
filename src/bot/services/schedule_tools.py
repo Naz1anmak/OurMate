@@ -40,7 +40,6 @@ def _event_payload(e: ScheduleEvent) -> dict:
         "end": f"{e.end:%H:%M}",
         "kind": e.kind,
         "summary": e.summary,
-        "location": e.location,
         "groups": sorted(g for g in e.groups if g),
     }
 
@@ -113,7 +112,11 @@ async def find_next_class(
     refresher=None,
     now: Optional[datetime] = None,
 ) -> dict:
-    """Ближайшее будущее событие, чьё summary содержит subject (подстрока, регистронезависимо)."""
+    """Все будущие пары, чьё summary содержит subject (подстрока, регистронезависимо), отсортированные по дате.
+
+    Возвращает весь список предстоящих занятий по предмету (практики, лекции, зачёты, экзамены),
+    а не только ближайшее, — чтобы по виду пары можно было ответить на «когда экзамен/зачёт по X».
+    """
     if tool_context.get("allow_refresh") and refresher is not None:
         try:
             await refresher.ensure_fresh("tool:find_next_class")
@@ -131,9 +134,7 @@ async def find_next_class(
     if not matches:
         return {"found": False, "events": []}
 
-    target_date = matches[0].start.date()
-    same_day = [e for e in matches if e.start.date() == target_date]
-    return {"found": True, "events": [_event_payload(e) for e in same_day]}
+    return {"found": True, "events": [_event_payload(e) for e in matches[:20]]}
 
 
 GET_SCHEDULE_SCHEMA = {
@@ -163,8 +164,10 @@ FIND_NEXT_CLASS_SCHEMA = {
     "function": {
         "name": "find_next_class",
         "description": (
-            "Найти ближайшую будущую пару по названию предмета. Используй для вопросов "
-            "«когда следующая физика», «когда у нас матан». subject — название предмета или его часть."
+            "Вернуть все предстоящие занятия по предмету (отсортированы по дате): практики, лекции, "
+            "зачёты, экзамены. Используй для «когда следующая физика», «когда экзамен по базам данных», "
+            "«когда зачёт по матану» — потом сам выбери нужное занятие по полю kind (Лекция/Практика/"
+            "Зачет/Экзамен). subject — название предмета или его часть."
         ),
         "parameters": {
             "type": "object",
