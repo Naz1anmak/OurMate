@@ -1,7 +1,8 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from src.bot.services.web_search_tool import web_search
+import src.bot.services.web_search_tool as wst
 
 TZ = ZoneInfo("Europe/Moscow")
 NOW = datetime(2026, 5, 30, 9, 0, tzinfo=TZ)
@@ -50,3 +51,27 @@ async def test_web_search_network_failure_returns_error():
     assert res["error"] == "search_failed"
     assert res["answer"] is None
     assert res["results"] == []
+
+
+@pytest.mark.asyncio
+async def test_web_search_quota_exhausted():
+    wst._usage["date"] = None  # сброс состояния перед тестом
+    payload = {"answer": "ok", "results": []}
+    r1 = await web_search("q1", tool_context={}, search_fn=_fake_search(payload), now=NOW, daily_cap=2)
+    r2 = await web_search("q2", tool_context={}, search_fn=_fake_search(payload), now=NOW, daily_cap=2)
+    r3 = await web_search("q3", tool_context={}, search_fn=_fake_search(payload), now=NOW, daily_cap=2)
+    assert r1["error"] is None and r2["error"] is None
+    assert r3["error"] == "quota_exhausted"
+    assert r3["results"] == []
+
+
+@pytest.mark.asyncio
+async def test_web_search_quota_resets_next_day():
+    wst._usage["date"] = None
+    payload = {"answer": "ok", "results": []}
+    await web_search("q1", tool_context={}, search_fn=_fake_search(payload), now=NOW, daily_cap=1)
+    blocked = await web_search("q2", tool_context={}, search_fn=_fake_search(payload), now=NOW, daily_cap=1)
+    assert blocked["error"] == "quota_exhausted"
+    tomorrow = NOW + timedelta(days=1)
+    ok = await web_search("q3", tool_context={}, search_fn=_fake_search(payload), now=tomorrow, daily_cap=1)
+    assert ok["error"] is None
