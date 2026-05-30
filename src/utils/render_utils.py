@@ -16,6 +16,17 @@ def render_html_with_code(text: str) -> str:
         # После html.escape звёздочки/нижние подчёркивания остаются, поэтому конвертируем их в теги
         s = html.escape(raw)
 
+        # markdown-ссылки [текст](url) → <a href>. Конвертируем ПЕРВЫМИ и прячем готовый
+        # тег за плейсхолдер, чтобы последующие правила (курсив по _ в URL и т.п.) его не трогали.
+        links: list[str] = []
+
+        def link_sub(match: re.Match[str]) -> str:
+            label, url = match.group(1), match.group(2)
+            links.append(f'<a href="{url}">{label}</a>')
+            return f"\x00L{len(links) - 1}\x00"
+
+        s = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", link_sub, s)
+
         def bold_sub(match: re.Match[str]) -> str:
             return f"<b>{match.group(1)}</b>"
 
@@ -35,6 +46,10 @@ def render_html_with_code(text: str) -> str:
 
         # `inline code`
         s = re.sub(r"`([^`]+?)`", code_inline_sub, s)
+
+        # Возвращаем готовые анкоры на место плейсхолдеров.
+        for i, tag in enumerate(links):
+            s = s.replace(f"\x00L{i}\x00", tag)
         return s
 
     parts: list[str] = []
