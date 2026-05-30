@@ -546,7 +546,7 @@ async def send_tool_loop_extras(message, *, deferred_messages: list[str], denial
 
 # Тул-специфичные заглушки на момент исполнения тула (только группа).
 TOOL_INDICATORS = {
-    "web_search": "🔎 Ищу в интернете…",
+    "web_search": f"{E.THINK_SEARCH} Ищу в интернете…",
 }
 
 
