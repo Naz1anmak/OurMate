@@ -10,12 +10,89 @@ import aiohttp
 import certifi
 import requests
 from requests import RequestException
-from typing import List, Dict, AsyncGenerator
+from typing import Awaitable, Callable, List, Dict, AsyncGenerator, Optional
 
 from src.config.settings import API_URL, API_HEADERS, MODEL
+from src.bot.services.llm_tools import LLMReply
 
 class LLMServiceError(Exception):
     """Ошибка при обращении к LLM API."""
+
+
+def accumulate_tool_calls(acc: dict, deltas: list) -> None:
+    """Склеивает фрагменты tool_calls по index из стрим-дельт OpenAI-формата."""
+    for d in deltas or []:
+        idx = d.get("index", 0)
+        slot = acc.setdefault(idx, {"id": None, "type": "function",
+                                    "function": {"name": "", "arguments": ""}})
+        if d.get("id"):
+            slot["id"] = d["id"]
+        fn = d.get("function") or {}
+        if fn.get("name"):
+            slot["function"]["name"] = fn["name"]
+        if fn.get("arguments"):
+            slot["function"]["arguments"] += fn["arguments"]
+
+
+async def stream_with_tools(
+    messages: list,
+    tools: Optional[list],
+    on_content_token: Optional[Callable[[str], Awaitable[None]]] = None,
+) -> LLMReply:
+    """Один стрим-вызов с тулами. content-токены отдаёт в on_content_token; копит reasoning и tool_calls."""
+    payload = {"model": MODEL, "messages": messages, "stream": True,
+               "stream_options": {"include_usage": True}}
+    if tools:
+        payload["tools"] = tools
+
+    content_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    tool_acc: dict = {}
+
+    timeout = aiohttp.ClientTimeout(total=120, sock_read=15)
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
+            async with session.post(API_URL, headers=API_HEADERS, json=payload) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    raise LLMServiceError(f"LLM tools stream returned {resp.status}. Body: {body[:500]}")
+                async for raw_chunk in resp.content:
+                    for raw_line in raw_chunk.splitlines():
+                        line = raw_line.decode("utf-8").strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        line = line[len("data:"):].strip()
+                        if line == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(line)
+                        except Exception:
+                            continue
+                        choices = data.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta") or {}
+                        if delta.get("reasoning_content"):
+                            reasoning_parts.append(delta["reasoning_content"])
+                        if delta.get("tool_calls"):
+                            accumulate_tool_calls(tool_acc, delta["tool_calls"])
+                        token = delta.get("content")
+                        if token:
+                            content_parts.append(token)
+                            if on_content_token:
+                                await on_content_token(token)
+    except aiohttp.ClientError as exc:
+        raise LLMServiceError(f"HTTP tools stream error: {exc}") from exc
+    except asyncio.TimeoutError as exc:
+        raise LLMServiceError("LLM tools stream timed out") from exc
+
+    tool_calls = [tool_acc[i] for i in sorted(tool_acc)] or None
+    return LLMReply(
+        content="".join(content_parts) or None,
+        tool_calls=tool_calls,
+        reasoning_content="".join(reasoning_parts) or None,
+    )
 
 class LLMService:
     """
