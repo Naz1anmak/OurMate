@@ -120,31 +120,31 @@ async def test_get_schedule_refresh_diff_deferred():
                              tool_context={"allow_refresh": True}, service=svc, refresher=FakeRefresher())
     assert res["_deferred"] == ["расписание изменилось"]
 
-from src.bot.services.schedule_tools import find_next_class
+from src.bot.services.schedule_tools import find_classes_by_subject
 
 @pytest.mark.asyncio
-async def test_find_next_class_substring_case_insensitive():
+async def test_find_classes_substring_case_insensitive():
     svc = _svc([_ev(2026, 6, 1, 10, "Высшая математика"),
                 _ev(2026, 6, 2, 12, "Физика")])
-    res = await find_next_class("матем",
+    res = await find_classes_by_subject("матем",
                                 tool_context={"allow_refresh": False}, service=svc, refresher=None,
                                 now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
     assert res["found"] is True
     assert res["events"][0]["summary"] == "Высшая математика"
 
 @pytest.mark.asyncio
-async def test_find_next_class_nearest_first_returns_all_future():
+async def test_find_classes_returns_all_sorted():
     svc = _svc([_ev(2026, 6, 5, 10, "Физика"),
                 _ev(2026, 6, 2, 10, "Физика")])
-    res = await find_next_class("физика",
+    res = await find_classes_by_subject("физика",
                                 tool_context={"allow_refresh": False}, service=svc, refresher=None,
                                 now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
-    # ближайшее первым, но отдаём все будущие, не только ближайший день
+    # ближайшее первым, отдаём все занятия по предмету
     assert res["events"][0]["date"] == "2026-06-02"
     assert [e["date"] for e in res["events"]] == ["2026-06-02", "2026-06-05"]
 
 @pytest.mark.asyncio
-async def test_find_next_class_surfaces_later_exam_behind_practice():
+async def test_find_classes_surfaces_later_exam_behind_practice():
     # практика раньше, экзамен позже — экзамен не должен «прятаться» за ближайшей практикой
     practice = _ev(2026, 6, 3, 12, "Базы данных")
     exam = ScheduleEvent(summary="Базы данных", location="DL",
@@ -152,7 +152,7 @@ async def test_find_next_class_surfaces_later_exam_behind_practice():
                          end=datetime(2026, 6, 11, 18, 30, tzinfo=TZ),
                          kind="Экзамен", groups=frozenset({""}))
     svc = _svc([practice, exam])
-    res = await find_next_class("базы данных",
+    res = await find_classes_by_subject("базы данных",
                                 tool_context={"allow_refresh": False}, service=svc, refresher=None,
                                 now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
     dates = [e["date"] for e in res["events"]]
@@ -160,9 +160,63 @@ async def test_find_next_class_surfaces_later_exam_behind_practice():
     assert any(e["kind"] == "Экзамен" for e in res["events"])
 
 @pytest.mark.asyncio
-async def test_find_next_class_not_found():
+async def test_find_classes_includes_past_with_flag():
+    # «был ли уже зачёт по X»: прошлое тоже ищем, помечаем past=True (баг «цифровой аналитики»).
+    yesterday = ScheduleEvent(summary="Цифровая аналитика", location="DL",
+                              start=datetime(2026, 5, 29, 10, 0, tzinfo=TZ),
+                              end=datetime(2026, 5, 29, 13, 20, tzinfo=TZ),
+                              kind="Зачет", groups=frozenset({""}))
+    svc = _svc([yesterday])
+    res = await find_classes_by_subject("цифровая аналитика",
+                                tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                                now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))  # сегодня сб, зачёт был вчера
+    assert res["found"] is True
+    assert res["events"][0]["past"] is True
+    assert res["events"][0]["kind"] == "Зачет"
+
+@pytest.mark.asyncio
+async def test_find_classes_token_subset_beats_morphology():
+    # матчинг по токенам: «баз данных» (морфология) находит экзамен «Базы данных»,
+    # хотя непрерывной подстроки «баз данных» в «базы данных» нет.
+    exam = ScheduleEvent(summary="Базы данных", location="DL",
+                         start=datetime(2026, 6, 11, 12, 0, tzinfo=TZ),
+                         end=datetime(2026, 6, 11, 18, 30, tzinfo=TZ),
+                         kind="Экзамен", groups=frozenset({""}))
+    lecture = _ev(2026, 6, 1, 12, "Программирование баз данных")
+    svc = _svc([exam, lecture])
+    res = await find_classes_by_subject("баз данных",
+                                tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                                now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
+    assert any(e["summary"] == "Базы данных" and e["kind"] == "Экзамен" for e in res["events"])
+
+@pytest.mark.asyncio
+async def test_find_classes_matches_declined_form():
+    # юзер пишет в косвенном падеже («по цифровой аналитике»), а в расписании — именительный.
+    zachet = ScheduleEvent(summary="Цифровая аналитика", location="DL",
+                           start=datetime(2026, 5, 29, 10, 0, tzinfo=TZ),
+                           end=datetime(2026, 5, 29, 13, 20, tzinfo=TZ),
+                           kind="Зачет", groups=frozenset({""}))
+    svc = _svc([zachet])
+    res = await find_classes_by_subject("цифровой аналитике",
+                                tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                                now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
+    assert res["found"] is True
+    assert res["events"][0]["summary"] == "Цифровая аналитика"
+
+@pytest.mark.asyncio
+async def test_find_classes_ignores_preposition():
+    # «по физике»: предлог «по» не должен требоваться к совпадению с названием.
+    svc = _svc([_ev(2026, 6, 2, 10, "Физика")])
+    res = await find_classes_by_subject("по физике",
+                                tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                                now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
+    assert res["found"] is True
+    assert res["events"][0]["summary"] == "Физика"
+
+@pytest.mark.asyncio
+async def test_find_classes_not_found():
     svc = _svc([_ev(2026, 6, 1, 10, "Физика")])
-    res = await find_next_class("химия",
+    res = await find_classes_by_subject("химия",
                                 tool_context={"allow_refresh": False}, service=svc, refresher=None,
                                 now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
     assert res["found"] is False
@@ -173,7 +227,7 @@ from src.bot.services.schedule_tools import build_schedule_registry
 def test_build_registry_has_both_tools_and_gate():
     reg = build_schedule_registry(refresher=None)
     names = {s["function"]["name"] for s in reg.schemas()}
-    assert names == {"get_schedule", "find_next_class"}
+    assert names == {"get_schedule", "find_classes_by_subject"}
     assert reg.get("get_schedule").gate == "schedule_allowed"
     # схема get_schedule требует обе даты
     params = reg.get("get_schedule").schema["function"]["parameters"]

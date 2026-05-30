@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 WEEKDAY_NAMES = {0: "понедельник", 1: "вторник", 2: "среда", 3: "четверг",
                  4: "пятница", 5: "суббота", 6: "воскресенье"}
 
+# Предлоги/частицы из запроса предмета: их нельзя требовать к совпадению с названием («по физике»).
+SUBJECT_STOPWORDS = frozenset({
+    "по", "на", "в", "во", "о", "об", "обо", "про", "за", "для", "к", "ко", "с", "со", "у", "от", "из",
+})
+
 DEFAULT_MAX_DAYS = (RUZ_WEEKS_AHEAD + 1) * 7
 
 
@@ -30,6 +35,18 @@ def validate_date_range(
     if (d_to - d_from).days > max_days:
         return False, {"error": "bad_range", "hint": f"Диапазон больше {max_days} дней."}
     return True, (d_from, d_to)
+
+
+def _token_matches(token: str, words: list[str]) -> bool:
+    """Слово запроса «совпадает» со словом названия: подстрока в любую сторону или общий префикс ≥5.
+
+    Префикс гасит русскую морфологию окончаний («цифровой»/«цифровая», «аналитике»/«аналитика»),
+    подстрока — сокращения и корни («баз» в «базы», «матан» в «матану»).
+    """
+    return any(
+        token in w or w in token or (min(len(token), len(w)) >= 5 and token[:5] == w[:5])
+        for w in words
+    )
 
 
 def _event_payload(e: ScheduleEvent) -> dict:
@@ -121,7 +138,7 @@ async def get_schedule(
     return out
 
 
-async def find_next_class(
+async def find_classes_by_subject(
     subject: str,
     *,
     tool_context: dict,
@@ -129,29 +146,45 @@ async def find_next_class(
     refresher=None,
     now: Optional[datetime] = None,
 ) -> dict:
-    """Все будущие пары, чьё summary содержит subject (подстрока, регистронезависимо), отсортированные по дате.
+    """Все занятия по предмету — прошлые И будущие, отсортированы по дате; у каждого payload['past'].
 
-    Возвращает весь список предстоящих занятий по предмету (практики, лекции, зачёты, экзамены),
-    а не только ближайшее, — чтобы по виду пары можно было ответить на «когда экзамен/зачёт по X».
+    Матчинг по набору токенов: каждое слово запроса должно быть подстрокой названия. Это устойчивее
+    к порядку слов и морфологии («баз»/«базы»), чем одна непрерывная подстрока, и не даёт экзамену
+    «Базы данных» спрятаться мимо запроса. Прошлое возвращаем тоже — чтобы отвечать на «был ли уже
+    зачёт/экзамен по X».
     """
     if tool_context.get("allow_refresh") and refresher is not None:
         try:
-            await refresher.ensure_fresh("tool:find_next_class")
+            await refresher.ensure_fresh("tool:find_classes_by_subject")
         except Exception as exc:  # noqa: BLE001
-            logger.warning("ensure_fresh из find_next_class упал: %s", exc)
+            logger.warning("ensure_fresh из find_classes_by_subject упал: %s", exc)
 
-    now = now or datetime.now(service.timezone)
-    from_date = now.date()
-    needle = " ".join(subject.lower().split())
+    today = (now or datetime.now(service.timezone)).date()
+    raw = [t for t in subject.lower().split() if t]
+    tokens = [t for t in raw if t not in SUBJECT_STOPWORDS] or raw  # не выкидываем всё, если предмет = стоп-слово
+    if not tokens:
+        return {"found": False, "events": []}
 
-    matches = [
-        e for e in sorted(service.events, key=lambda e: e.start)
-        if e.start.date() >= from_date and needle in " ".join(e.summary.lower().split())
-    ]
+    matches = sorted(
+        (e for e in service.events
+         if all(_token_matches(tok, e.summary.lower().split()) for tok in tokens)),
+        key=lambda e: e.start,
+    )
     if not matches:
         return {"found": False, "events": []}
 
-    return {"found": True, "events": [_event_payload(e) for e in matches[:20]]}
+    # Если событий очень много — оставляем 20 ближайших к сегодня (свежее прошлое + ближайшее будущее,
+    # включая будущий экзамен), затем снова по дате.
+    if len(matches) > 20:
+        matches = sorted(matches, key=lambda e: abs((e.start.date() - today).days))[:20]
+        matches.sort(key=lambda e: e.start)
+
+    events = []
+    for e in matches:
+        payload = _event_payload(e)
+        payload["past"] = e.start.date() < today
+        events.append(payload)
+    return {"found": True, "events": events}
 
 
 GET_SCHEDULE_SCHEMA = {
@@ -176,15 +209,17 @@ GET_SCHEDULE_SCHEMA = {
     },
 }
 
-FIND_NEXT_CLASS_SCHEMA = {
+FIND_CLASSES_BY_SUBJECT_SCHEMA = {
     "type": "function",
     "function": {
-        "name": "find_next_class",
+        "name": "find_classes_by_subject",
         "description": (
-            "Вернуть все предстоящие занятия по предмету (отсортированы по дате): практики, лекции, "
-            "зачёты, экзамены. Используй для «когда следующая физика», «когда экзамен по базам данных», "
-            "«когда зачёт по матану» — потом сам выбери нужное занятие по полю kind (Лекция/Практика/"
-            "Зачет/Экзамен). subject — название предмета или его часть."
+            "Найти все занятия по предмету — прошлые И будущие (отсортированы по дате): лекции, практики, "
+            "зачёты, экзамены. У каждого события есть date, weekday, kind и past (true — занятие уже прошло). "
+            "Используй для «когда следующая физика», «когда зачёт/экзамен по базам данных» (бери будущие "
+            "события нужного kind), а также «был ли уже зачёт/экзамен по X», «что было по X» (смотри события "
+            "с past=true). Учти: зачёт и экзамен — разные kind; если зачёта нет, но есть экзамен (или "
+            "наоборот) — так и скажи. subject — название предмета или его часть, можно несколько слов."
         ),
         "parameters": {
             "type": "object",
@@ -205,9 +240,9 @@ def build_schedule_registry(*, refresher) -> ToolRegistry:
         func=functools.partial(get_schedule, refresher=refresher),
         gate="schedule_allowed",
     ))
-    reg.register("find_next_class", ToolSpec(
-        schema=FIND_NEXT_CLASS_SCHEMA,
-        func=functools.partial(find_next_class, refresher=refresher),
+    reg.register("find_classes_by_subject", ToolSpec(
+        schema=FIND_CLASSES_BY_SUBJECT_SCHEMA,
+        func=functools.partial(find_classes_by_subject, refresher=refresher),
         gate="schedule_allowed",
     ))
     return reg
