@@ -117,6 +117,34 @@ async def test_deferred_messages_collected():
     assert "_deferred" not in tool_msg["content"]   # модель не видит служебное поле
 
 @pytest.mark.asyncio
+async def test_run_tool_loop_calls_on_tool_start():
+    seen = []
+
+    async def on_tool_start(name):
+        seen.append(name)
+
+    calls = {"n": 0}
+    async def llm_call(messages, tools):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return LLMReply(content="", tool_calls=[
+                {"id": "c1", "function": {"name": "demo_tool", "arguments": "{}"}}])
+        return LLMReply(content="финал", tool_calls=None)
+
+    reg = ToolRegistry()
+    async def _fn(*, tool_context, **kwargs):
+        return {"ok": True}
+    reg.register("demo_tool", ToolSpec(
+        schema={"type": "function", "function": {"name": "demo_tool", "parameters": {}}},
+        func=_fn, gate=None))
+
+    res = await run_tool_loop([], {}, registry=reg,
+                              llm_call=llm_call, on_tool_start=on_tool_start)
+    assert seen == ["demo_tool"]
+    assert res.text == "финал"
+
+
+@pytest.mark.asyncio
 async def test_loop_limit_forces_final():
     async def tool(*, tool_context, **kw):
         return {"error": "bad_arguments"}

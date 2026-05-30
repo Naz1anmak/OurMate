@@ -60,6 +60,7 @@ async def run_tool_loop(
     registry: ToolRegistry,
     llm_call: Callable[..., Awaitable[LLMReply]],
     max_tool_rounds: int = 1,
+    on_tool_start: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> ToolLoopResult:
     """Гоняет tool use: вызов LLM → исполнение тулов → повторный вызов. Не знает про Telegram."""
     deferred: list[str] = []
@@ -90,6 +91,11 @@ async def run_tool_loop(
 
         for tc in reply.tool_calls:
             name = tc["function"]["name"]
+            if on_tool_start is not None:
+                try:
+                    await on_tool_start(name)
+                except Exception as exc:  # noqa: BLE001 — индикатор не критичен
+                    logger.debug("on_tool_start упал: %s", exc)
             spec = registry.get(name)
             args = _parse_args(tc["function"]["arguments"])
             if spec is None:
