@@ -46,7 +46,8 @@ def test_range_too_wide():
 async def test_get_schedule_day_with_classes():
     svc = _svc([_ev(2026, 6, 1, 10, "Предмет A")])
     res = await get_schedule("2026-06-01", "2026-06-01",
-                             tool_context={"allow_refresh": False}, service=svc, refresher=None)
+                             tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                             now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
     assert res["empty"] is False
     assert "Предмет A" in res["formatted"]
     assert res["events"][0]["summary"] == "Предмет A"
@@ -57,24 +58,36 @@ async def test_get_schedule_day_with_classes():
 async def test_get_schedule_empty_day_shows_next():
     svc = _svc([_ev(2026, 6, 3, 10, "Предмет B")])  # пар 1 июня нет, ближайшие 3-го
     res = await get_schedule("2026-06-01", "2026-06-01",
-                             tool_context={"allow_refresh": False}, service=svc, refresher=None)
+                             tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                             now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
     assert res["empty"] is True
     assert res["events"] == []
     assert "Предмет B" in res["formatted"]  # блок «следующие пары»
 
 @pytest.mark.asyncio
-async def test_get_schedule_empty_day_uses_absolute_labels_not_relative():
-    # Регресс: «пары завтра» на пустое вс не должно отдавать относительный ярлык «завтра» —
-    # иначе LLM приклеивает понедельничные пары к воскресенью (баг 30.05).
-    svc = _svc([_ev(2026, 6, 1, 10, "Предмет M")])  # ближайшие пары — в понедельник
+async def test_get_schedule_empty_tomorrow_uses_word_not_number():
+    # Завтра пар нет: день называем словом «завтра» без числа; ближайшие пары (не сегодня/завтра)
+    # — с числом и якорем к СЕГОДНЯ, чтобы «завтра» из блока не схлопывалось с «завтра» из вопроса.
+    svc = _svc([_ev(2026, 6, 1, 10, "Предмет M")])  # ближайшие — в понедельник
     res = await get_schedule("2026-05-31", "2026-05-31",
-                             tool_context={"allow_refresh": False}, service=svc, refresher=None)
+                             tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                             now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))  # сегодня сб, 31.05 = завтра
     assert res["empty"] is True
     assert res["events"] == []
     low = res["formatted"].lower()
-    assert "завтра" not in low and "сегодня" not in low   # никаких относительных ярлыков
-    assert "воскресенье" in low and "31.05" in low         # запрошенный пустой день — абсолютно
-    assert "понедельник" in low and "01.06" in low         # ближайшие пары — абсолютно
+    assert "завтра" in low and "31.05" not in low        # завтрашний день — словом, без числа
+    assert "понедельник" in low and "01.06" in low        # ближайшие пары — с числом
+
+@pytest.mark.asyncio
+async def test_get_schedule_empty_other_day_uses_number():
+    # День не сегодня/не завтра: называем «в среду (03.06)» — с числом.
+    svc = _svc([_ev(2026, 6, 5, 10, "Предмет K")])
+    res = await get_schedule("2026-06-03", "2026-06-03",
+                             tool_context={"allow_refresh": False}, service=svc, refresher=None,
+                             now=datetime(2026, 5, 30, 9, 0, tzinfo=TZ))
+    low = res["formatted"].lower()
+    assert "03.06" in low
+    assert "сегодня" not in low and "завтра" not in low
 
 @pytest.mark.asyncio
 async def test_get_schedule_bad_range_returns_error():

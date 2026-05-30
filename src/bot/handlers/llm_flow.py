@@ -609,6 +609,26 @@ class StreamRenderer:
             return False
 
 
+SCHEDULE_PRESENTATION_NOTE = (
+    "Если вызвал get_schedule или find_next_class и показываешь пары: поле formatted в результате — "
+    "это уже готовый блок расписания (HTML с цитатой <blockquote>, как в команде «пары»). Выведи его "
+    "ДОСЛОВНО, как есть, не переписывая пары, не меняя теги и не оборачивая в кодовый блок, и НЕ добавляя "
+    "свой заголовок с датой — дата уже внутри блока. До или после блока можно добавить короткую живую "
+    "фразу, но дату в ней не повторяй. Поле events — только для подсчётов (например, «во сколько последняя "
+    "пара»), его в ответ не выводи."
+)
+
+
+def _inject_system_note(messages: list, note: str) -> list:
+    """Вставляет system-заметку после ведущих system-сообщений, не мутируя исходный список."""
+    msgs = list(messages)
+    at = 0
+    while at < len(msgs) and msgs[at].get("role") == "system":
+        at += 1
+    msgs.insert(at, {"role": "system", "content": note})
+    return msgs
+
+
 async def run_schedule_aware_response(
     message,
     messages: list,
@@ -621,6 +641,7 @@ async def run_schedule_aware_response(
 ) -> bool:
     """Тул-флоу со стримом: фаза1 (стрим болтовни / детект tool_calls) → run_tool_loop → стрим финала + deferred."""
     is_group_chat = message.chat.type in ("group", "supergroup")
+    messages = _inject_system_note(messages, SCHEDULE_PRESENTATION_NOTE)
     prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
     renderer = StreamRenderer(message, prefix=prefix)
     await renderer.start(pick_placeholder_variant().text)

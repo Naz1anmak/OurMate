@@ -44,13 +44,22 @@ def _event_payload(e: ScheduleEvent) -> dict:
     }
 
 
-def _title_for(service: "ScheduleService", d: date) -> str:
-    today = datetime.now(service.timezone).date()
+def _title_for(service: "ScheduleService", d: date, today: date) -> str:
+    """Заголовок блока дня: сегодня/завтра — словом без числа, иначе «Пары в понедельник (01.06)»."""
     if d == today:
         return "Пары на сегодня"
     if d.toordinal() == today.toordinal() + 1:
         return "Пары на завтра"
     return f"Пары {service.weekday_with_preposition(d)} ({d:%d.%m})"
+
+
+def _day_phrase(service: "ScheduleService", d: date, today: date) -> str:
+    """Краткая форма дня для «пар нет»: сегодня/завтра без числа, иначе «в понедельник (01.06)»."""
+    if d == today:
+        return "сегодня"
+    if d.toordinal() == today.toordinal() + 1:
+        return "завтра"
+    return f"{service.weekday_with_preposition(d)} ({d:%d.%m})"
 
 
 async def get_schedule(
@@ -60,12 +69,14 @@ async def get_schedule(
     tool_context: dict,
     service: "ScheduleService" = schedule_service,
     refresher=None,
+    now: Optional[datetime] = None,
 ) -> dict:
     """Возвращает гибрид {formatted, events, empty} за дату/диапазон. Diff (если есть) — в _deferred."""
     ok, value = validate_date_range(date_from, date_to)
     if not ok:
         return value  # {"error": "bad_range", "hint": ...}
     d_from, d_to = value
+    today = (now or datetime.now(service.timezone)).date()
 
     deferred: list[str] = []
     if tool_context.get("allow_refresh") and refresher is not None:
@@ -79,20 +90,19 @@ async def get_schedule(
     in_range = [e for e in service.events if d_from <= e.start.date() <= d_to]
 
     if not in_range:
-        # Пусто — не ошибка: «пар нет» + ближайшие будущие пары.
-        # В тул-выдаче НЕ используем относительные ярлыки («сегодня»/«завтра»): LLM путает
-        # их с «завтра» из вопроса юзера и приклеивает чужие пары к запрошенному дню. Только
-        # абсолютные «день недели (дд.мм)».
+        # Пусто — не ошибка: «пар нет» + ближайшие будущие пары. День называем словом для
+        # сегодня/завтра и «день недели (дд.мм)» для остальных. Заголовок блока ближайших
+        # пар якорим к СЕГОДНЯ (_title_for), а не к запрошенному дню, — иначе «завтра» из
+        # блока схлопывается с «завтра» из вопроса и LLM путает дни.
         if d_from == d_to:
-            day_label = f"{service.weekday_with_preposition(d_from)} ({d_from:%d.%m})"
+            day_label = _day_phrase(service, d_from, today)
         else:
             day_label = f"в период {d_from:%d.%m}–{d_to:%d.%m}"
         empty_text = service.get_no_pairs_message(day_label)
         next_date, next_events = service.get_next_classes_after(d_to)
         formatted = empty_text
         if next_date and next_events:
-            next_title = f"Ближайшие пары {service.weekday_with_preposition(next_date)} ({next_date:%d.%m})"
-            formatted = f"{empty_text}\n\n{service.format_day_block(next_date, next_title)}"
+            formatted = f"{empty_text}\n\n{service.format_day_block(next_date, _title_for(service, next_date, today))}"
         out = {"formatted": formatted, "events": [], "empty": True}
         if deferred:
             out["_deferred"] = deferred
@@ -100,7 +110,7 @@ async def get_schedule(
 
     # Есть события: по блоку на каждую дату диапазона, где есть пары.
     dates = sorted({e.start.date() for e in in_range})
-    blocks = [service.format_day_block(d, _title_for(service, d)) for d in dates]
+    blocks = [service.format_day_block(d, _title_for(service, d, today)) for d in dates]
     out = {
         "formatted": "\n\n".join(b for b in blocks if b),
         "events": [_event_payload(e) for e in sorted(in_range, key=lambda e: e.start)],

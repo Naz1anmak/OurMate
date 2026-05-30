@@ -1,6 +1,23 @@
 import pytest
 from unittest.mock import AsyncMock
-from src.bot.handlers.llm_flow import send_tool_loop_extras
+from src.bot.handlers.llm_flow import (
+    send_tool_loop_extras,
+    _inject_system_note,
+    SCHEDULE_PRESENTATION_NOTE,
+)
+
+
+def test_inject_system_note_after_leading_system_messages():
+    messages = [
+        {"role": "system", "content": "персона"},
+        {"role": "system", "content": "контекст времени"},
+        {"role": "user", "content": "что в субботу?"},
+    ]
+    out = _inject_system_note(messages, SCHEDULE_PRESENTATION_NOTE)
+    assert len(messages) == 3  # исходный список не мутирован
+    assert len(out) == 4
+    assert out[2] == {"role": "system", "content": SCHEDULE_PRESENTATION_NOTE}
+    assert out[3]["role"] == "user"
 
 @pytest.mark.asyncio
 async def test_send_deferred_messages_after_answer():
