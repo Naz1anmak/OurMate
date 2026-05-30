@@ -79,13 +79,20 @@ async def get_schedule(
     in_range = [e for e in service.events if d_from <= e.start.date() <= d_to]
 
     if not in_range:
-        # Пусто — не ошибка: «пар нет» + ближайшие будущие пары (как команда «пары»).
-        label = "сегодня" if d_from == datetime.now(service.timezone).date() else _title_for(service, d_from).lower()
-        empty_text = service.get_no_pairs_message(label if label in ("сегодня", "завтра") else "в этот день")
+        # Пусто — не ошибка: «пар нет» + ближайшие будущие пары.
+        # В тул-выдаче НЕ используем относительные ярлыки («сегодня»/«завтра»): LLM путает
+        # их с «завтра» из вопроса юзера и приклеивает чужие пары к запрошенному дню. Только
+        # абсолютные «день недели (дд.мм)».
+        if d_from == d_to:
+            day_label = f"{service.weekday_with_preposition(d_from)} ({d_from:%d.%m})"
+        else:
+            day_label = f"в период {d_from:%d.%m}–{d_to:%d.%m}"
+        empty_text = service.get_no_pairs_message(day_label)
         next_date, next_events = service.get_next_classes_after(d_to)
         formatted = empty_text
         if next_date and next_events:
-            formatted = f"{empty_text}\n\n{service.format_next_classes_block(next_date, base_date=d_to)}"
+            next_title = f"Ближайшие пары {service.weekday_with_preposition(next_date)} ({next_date:%d.%m})"
+            formatted = f"{empty_text}\n\n{service.format_day_block(next_date, next_title)}"
         out = {"formatted": formatted, "events": [], "empty": True}
         if deferred:
             out["_deferred"] = deferred

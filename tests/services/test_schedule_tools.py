@@ -63,6 +63,20 @@ async def test_get_schedule_empty_day_shows_next():
     assert "Предмет B" in res["formatted"]  # блок «следующие пары»
 
 @pytest.mark.asyncio
+async def test_get_schedule_empty_day_uses_absolute_labels_not_relative():
+    # Регресс: «пары завтра» на пустое вс не должно отдавать относительный ярлык «завтра» —
+    # иначе LLM приклеивает понедельничные пары к воскресенью (баг 30.05).
+    svc = _svc([_ev(2026, 6, 1, 10, "Предмет M")])  # ближайшие пары — в понедельник
+    res = await get_schedule("2026-05-31", "2026-05-31",
+                             tool_context={"allow_refresh": False}, service=svc, refresher=None)
+    assert res["empty"] is True
+    assert res["events"] == []
+    low = res["formatted"].lower()
+    assert "завтра" not in low and "сегодня" not in low   # никаких относительных ярлыков
+    assert "воскресенье" in low and "31.05" in low         # запрошенный пустой день — абсолютно
+    assert "понедельник" in low and "01.06" in low         # ближайшие пары — абсолютно
+
+@pytest.mark.asyncio
 async def test_get_schedule_bad_range_returns_error():
     svc = _svc([])
     res = await get_schedule("2026-06-02", "2026-06-01",
