@@ -32,8 +32,8 @@ from src.bot.handlers.llm_flow import (
 from src.core.emoji import E
 from src.bot.handlers.placeholder_variants import pick_placeholder_variant
 
-# Реестр тулов расписания; инжектится из main.py при старте (None → тул-флоу выключен, идём по старому пути).
-schedule_tool_registry = None
+# Реестр тулов; инжектится из main.py при старте (None → тул-флоу выключен, идём по старому пути).
+tool_registry = None
 
 FALLBACK_EDIT_TIMEOUT_SEC = 6.0
 _PROCESSED_GROUP_MESSAGES: dict[tuple[int, int], float] = {}
@@ -117,7 +117,7 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int, ct
     messages = build_llm_messages(chat_id, llm_input_text)
 
     # Тул-флоу расписания (стрим + function calling). В группе рефреш/diff включены.
-    if schedule_tool_registry is not None:
+    if tool_registry is not None:
         denial_text = (
             f"{E.CROSS} <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>"
         )
@@ -128,7 +128,7 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int, ct
         }
         handled = await run_schedule_aware_response(
             message, messages, first_name, user_login, text_for_llm,
-            has_context, tool_context, schedule_tool_registry)
+            has_context, tool_context, tool_registry)
         if handled:
             return
 

@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 ERROR_NOTICE_PLAIN_PM = f"{E.WARNING} LLM временно недоступен. Попробуй ещё раз через пару минут."
 
-# Реестр тулов расписания; инжектится из main.py при старте (None → тул-флоу выключен, идём по старому пути).
-schedule_tool_registry = None
+# Реестр тулов; инжектится из main.py при старте (None → тул-флоу выключен, идём по старому пути).
+tool_registry = None
 
 async def handle_private_chat(message: Message, bot_username: str, bot_id: int, ctx: dict | None = None):
     chat_id = message.chat.id
@@ -54,7 +54,7 @@ async def handle_private_chat(message: Message, bot_username: str, bot_id: int, 
     messages = build_llm_messages(chat_id, text_for_llm)
 
     # Тул-флоу расписания (стрим + function calling). В ЛС рефреш/diff отключены by design.
-    if schedule_tool_registry is not None:
+    if tool_registry is not None:
         denial_text = f"{E.CROSS} <b>Эта команда доступна только избранным пользователям.</b>"
         tool_context = {
             "allow_refresh": False,
@@ -63,7 +63,7 @@ async def handle_private_chat(message: Message, bot_username: str, bot_id: int, 
         }
         handled = await run_schedule_aware_response(
             message, messages, first_name, user_login, text_for_llm,
-            has_context, tool_context, schedule_tool_registry)
+            has_context, tool_context, tool_registry)
         if handled:
             return
 
