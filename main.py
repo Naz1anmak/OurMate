@@ -72,11 +72,20 @@ async def main() -> None:
         else:
             logger.info("Автообновление расписания выключено (SCHEDULE_AUTO_UPDATE_ENABLED=false)")
 
-        # Реестр тулов расписания для NL-вопросов (работает и без refresher — тулы берут глобальный schedule_service).
-        schedule_tool_registry = build_schedule_registry(refresher=refresher)
-        chat_group_module.schedule_tool_registry = schedule_tool_registry
-        chat_pm_module.schedule_tool_registry = schedule_tool_registry
-        logger.info("Реестр тулов расписания подключён (refresh: %s)", "вкл" if refresher else "выкл")
+        # Общий реестр тулов для NL-вопросов (работает и без refresher — тулы берут глобальный schedule_service).
+        tool_registry = build_schedule_registry(refresher=refresher)
+        from src.bot.services.web_search_tool import build_web_search_registry
+        from src.config.settings import TAVILY_API_KEY
+        if TAVILY_API_KEY:
+            ws_reg = build_web_search_registry()
+            ws_spec = ws_reg.get("web_search")
+            tool_registry.register("web_search", ws_spec)
+            logger.info("Тул web_search подключён (Tavily)")
+        else:
+            logger.info("web_search выключен (TAVILY_API_KEY не задан)")
+        chat_group_module.tool_registry = tool_registry
+        chat_pm_module.tool_registry = tool_registry
+        logger.info("Реестр тулов подключён (refresh: %s)", "вкл" if refresher else "выкл")
 
         logger.info("Планировщики запущены")
 
