@@ -104,6 +104,14 @@ def resolve(audience: Audience, ctx: dict) -> Decision:
     return Decision(False, DenialReason.NOT_PRIVILEGED)
 
 
+async def send_denial(message: Message, reason: DenialReason) -> None:
+    """Единая отправка отказа по причине. Глушит сбои доставки (как и хендлеры)."""
+    try:
+        await message.answer(DENIAL_TEXTS[reason], parse_mode="HTML")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("send_denial не доставлен (%s): %s", reason.name, exc)
+
+
 def detect_trigger(message: Message, bot_username: str, bot_id: int) -> bool:
     """Позвали ли бота: упоминание в тексте или реплай на его сообщение.
 

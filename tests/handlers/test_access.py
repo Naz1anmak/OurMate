@@ -1,5 +1,6 @@
 import pytest
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from src.bot.handlers.access import (
     Audience,
@@ -9,6 +10,7 @@ from src.bot.handlers.access import (
     resolve,
     is_public_command,
     detect_trigger,
+    send_denial,
 )
 
 
@@ -122,3 +124,13 @@ def test_detect_trigger_reply_without_from_user_does_not_crash():
     # Реплай от имени канала / анонимного админа: from_user is None
     m = _trigger_msg(reply_present=True, reply_no_user=True)
     assert detect_trigger(m, BOT_USERNAME, BOT_ID) is False
+
+
+@pytest.mark.asyncio
+async def test_send_denial_sends_text_for_reason():
+    message = AsyncMock()
+    await send_denial(message, DenialReason.NOT_PRIVILEGED)
+    message.answer.assert_awaited_once()
+    sent_text = message.answer.await_args.args[0]
+    assert "только избранным" in sent_text
+    assert message.answer.await_args.kwargs["parse_mode"] == "HTML"
