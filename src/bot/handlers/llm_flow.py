@@ -698,6 +698,12 @@ async def run_schedule_aware_response(
     except LLMServiceError as exc:
         logger.warning("tool-flow LLM error: %s", exc)
         await renderer.finalize(ERROR_NOTICE_PLAIN)
+        await notify_owner_error(
+            message.bot, exc,
+            tg_id=message.from_user.id if message.from_user else None,
+            username=message.from_user.username if message.from_user else None,
+            context=f"LLM tool-flow ({'GR' if is_group_chat else 'PM'})",
+            extra=f"chat_id={message.chat.id}; запрос: {text_for_llm[:300]}")
         return True
 
     if result.denial:
@@ -710,7 +716,15 @@ async def run_schedule_aware_response(
         format_final_answer("", result.text or "", has_context) if is_group_chat else final_answer)
 
     if not await renderer.finalize(final_answer):
-        return False
+        logger.warning("%s; tool-flow finalize не доставил ответ для %s",
+                       "GR" if is_group_chat else "PM", user_login or "?")
+        await notify_owner_error(
+            message.bot, Exception("finalize failed"),
+            tg_id=message.from_user.id if message.from_user else None,
+            username=message.from_user.username if message.from_user else None,
+            context=f"Telegram delivery tool-flow ({'GR' if is_group_chat else 'PM'})",
+            extra=f"chat_id={message.chat.id}; ответ: {final_answer[:300]}")
+        return True
 
     await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
     flow_label = _flow_label(streamed=renderer.streamed, called_tools=result.called_tools)

@@ -116,3 +116,67 @@ def test_flow_label_variants():
     assert _flow_label(streamed=False, called_tools=["web_search"]) == "LLM; tool: web_search"
     assert _flow_label(streamed=True, called_tools=["web_search"]) == "LLM stream; tool: web_search"
     assert _flow_label(streamed=True, called_tools=["a", "b"]) == "LLM stream; tool: a, b"
+
+
+@pytest.mark.asyncio
+async def test_run_schedule_aware_notifies_owner_on_finalize_failure(monkeypatch):
+    import src.bot.handlers.llm_flow as flow
+    from src.bot.services.llm_tools import ToolLoopResult
+
+    async def fake_stream(messages, tools, on_content_token=None):
+        from src.bot.services.llm_tools import LLMReply
+        return LLMReply(content="ответ")
+
+    async def fake_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None):
+        await llm_call(messages, None)               # имитируем один вызов LLM
+        return ToolLoopResult(text="ответ", called_tools=[])
+
+    notified = {"n": 0}
+    async def fake_notify(*args, **kwargs):
+        notified["n"] += 1
+
+    monkeypatch.setattr(flow, "stream_with_tools", fake_stream)
+    monkeypatch.setattr(flow, "run_tool_loop", fake_loop)
+    monkeypatch.setattr(flow, "notify_owner_error", fake_notify)
+    monkeypatch.setattr(flow.context_service, "save_context", lambda *a, **k: None)
+
+    message = AsyncMock()
+    message.chat.type = "private"
+    message.chat.id = 1
+    message.from_user.id = 7
+    message.from_user.username = "u"
+    # finalize в ЛС шлёт message.answer — заставим упасть, плюс reply упадёт → finalize вернёт False
+    message.answer.side_effect = Exception("send boom")
+    message.reply.side_effect = Exception("reply boom")
+
+    res = await flow.run_schedule_aware_response(
+        message, [], "", "u", "вопрос", False, {}, registry=object())
+    assert res is True
+    assert notified["n"] == 1                        # владелец оповещён о сбое доставки
+
+
+@pytest.mark.asyncio
+async def test_run_schedule_aware_notifies_owner_on_llm_error(monkeypatch):
+    import src.bot.handlers.llm_flow as flow
+    from src.bot.services.llm_service import LLMServiceError
+
+    async def fake_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None):
+        raise LLMServiceError("llm down")
+
+    notified = {"n": 0}
+    async def fake_notify(*args, **kwargs):
+        notified["n"] += 1
+
+    monkeypatch.setattr(flow, "run_tool_loop", fake_loop)
+    monkeypatch.setattr(flow, "notify_owner_error", fake_notify)
+
+    message = AsyncMock()
+    message.chat.type = "private"
+    message.chat.id = 1
+    message.from_user.id = 7
+    message.from_user.username = "u"
+
+    res = await flow.run_schedule_aware_response(
+        message, [], "", "u", "вопрос", False, {}, registry=object())
+    assert res is True
+    assert notified["n"] == 1                        # владелец оповещён об ошибке LLM
