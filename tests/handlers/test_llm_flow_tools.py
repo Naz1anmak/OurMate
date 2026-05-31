@@ -107,3 +107,12 @@ async def test_stream_renderer_streamed_flag_true_after_feed():
     r = StreamRenderer(message)
     await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
     assert r.streamed is True
+
+
+def test_flow_label_variants():
+    from src.bot.handlers.llm_flow import _flow_label
+    assert _flow_label(streamed=False, called_tools=[]) == "LLM"
+    assert _flow_label(streamed=True, called_tools=[]) == "LLM stream"
+    assert _flow_label(streamed=False, called_tools=["web_search"]) == "LLM; tool: web_search"
+    assert _flow_label(streamed=True, called_tools=["web_search"]) == "LLM stream; tool: web_search"
+    assert _flow_label(streamed=True, called_tools=["a", "b"]) == "LLM stream; tool: a, b"

@@ -650,6 +650,15 @@ WEB_SEARCH_NOTE = (
 )
 
 
+def _flow_label(*, streamed: bool, called_tools: list[str]) -> str:
+    """Метка для лога: ось доставки (LLM / LLM stream) + факт вызова тулов."""
+    delivery = "LLM stream" if streamed else "LLM"
+    parts = [delivery]
+    if called_tools:
+        parts.append(f"tool: {', '.join(called_tools)}")
+    return "; ".join(parts)
+
+
 def _inject_system_note(messages: list, note: str) -> list:
     """Вставляет system-заметку после ведущих system-сообщений, не мутируя исходный список."""
     msgs = list(messages)
@@ -704,7 +713,7 @@ async def run_schedule_aware_response(
         return False
 
     await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
-    flow_label = f"tool: {', '.join(result.called_tools)}" if result.called_tools else "стрим"
+    flow_label = _flow_label(streamed=renderer.streamed, called_tools=result.called_tools)
     logger.info("%s; Бот (%s) для %s: %s", "GR" if is_group_chat else "PM",
                 flow_label, user_login or "?", final_answer)
     return True
