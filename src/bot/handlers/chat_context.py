@@ -6,7 +6,7 @@ from aiogram.types import Message
 from src.config.settings import PROMPT_TEMPLATE_CHAT, OWNER_CHAT_ID, CHAT_ID, TIMEZONE
 from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
-from src.bot.handlers.access import detect_trigger, is_public_command  # noqa: F401  (re-export)
+from src.bot.handlers.access import is_public_command  # noqa: F401  (re-export)
 
 _WEEKDAY_RU = ("понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье")
 
@@ -50,12 +50,6 @@ def build_command_context(message: Message, bot_username: str, bot_id: int) -> d
         "is_group_main": is_group_main,
         "is_whitelisted_private": is_whitelisted_private,
     }
-
-def should_process_message(message: Message, bot_username: str, bot_id: int) -> bool:
-    """В ЛС обрабатываем всё; в группе — только упоминание/реплай (через detect_trigger)."""
-    if message.chat.type not in ("group", "supergroup"):
-        return True
-    return detect_trigger(message, bot_username, bot_id)
 
 def extract_user_login(message: Message, text: str, bot_username: str) -> str:
     """Извлекает логин пользователя из сообщения."""

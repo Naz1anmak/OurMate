@@ -7,7 +7,6 @@ from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
 from src.utils.text_utils import get_first_name_by_user_id
 from src.bot.handlers.chat_context import (
-    should_process_message,
     extract_user_login,
     strip_bot_mention,
     build_llm_messages,
@@ -27,9 +26,6 @@ async def handle_private_chat(message: Message, bot_username: str, bot_id: int, 
     chat_id = message.chat.id
     text = message.text or ""
     text_for_llm = strip_bot_mention(text, bot_username)
-
-    if not should_process_message(message, bot_username, bot_id):
-        return
 
     user_login = extract_user_login(message, text, bot_username)
     user_name = message.from_user.full_name or str(message.from_user.id)

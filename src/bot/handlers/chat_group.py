@@ -8,7 +8,6 @@ from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
 from src.utils.text_utils import get_first_name_by_user_id
 from src.bot.handlers.chat_context import (
-    should_process_message,
     extract_user_login,
     strip_bot_mention,
     build_group_llm_input,
@@ -45,8 +44,7 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int, ct
     text = message.text or ""
     text_for_llm = strip_bot_mention(text, bot_username)
 
-    if not should_process_message(message, bot_username, bot_id):
-        return
+    # Триггер-гейт групп выполнен выше в chat.py (detect_trigger) — повторно не проверяем.
 
     # Дедупликация на случай повторной доставки одного и того же апдейта при сетевых сбоях polling.
     message_key = (chat_id, message.message_id)
