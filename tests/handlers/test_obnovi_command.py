@@ -29,10 +29,6 @@ def ctx_allowed():
         "normalized_text": "обнови расписание",
         "text_for_commands": "обнови расписание",
         "is_group_chat": True,
-        "is_private_non_owner": False,
-        "is_whitelisted_private": False,
-        "should_process_schedule_command": True,
-        "should_process_birthday_command": True,
     }
 
 

@@ -3,14 +3,10 @@ import logging
 from datetime import datetime, date, timedelta
 from typing import TYPE_CHECKING
 from aiogram.types import Message
-from aiogram.exceptions import TelegramBadRequest
-
 from src.config.settings import OWNER_CHAT_ID, TIMEZONE
 from src.bot.services.birthday_service import birthday_service
 from src.bot.services.schedule_service import schedule_service
 from src.utils.date_utils import format_birthday_date
-from src.bot.handlers.owner_commands import handle_owner_command, OWNER_COMMANDS
-from src.bot.handlers.chat_context import is_public_command
 from src.core.emoji import E
 
 if TYPE_CHECKING:
@@ -62,24 +58,13 @@ async def handle_unsubscribe_command(message: Message, normalized_text: str) -> 
         return False
 
     user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-    in_group = message.chat.type in ("group", "supergroup")
-    tag_unsub = "GR" if in_group else "PM"
-    if in_group:
-        logger.info("%s; От %s (%s): запрос 'отписаться' в группе — отклонено", tag_unsub, user_login_log, message.from_user.full_name)
-        deny_text = f"{E.CROSS} Эта команда доступна только в личных сообщениях с ботом."
-        try:
-            await message.answer(deny_text, parse_mode="HTML")
-        except TelegramBadRequest:
-            await message.answer(f"{E.CROSS} Эта команда доступна только в личных сообщениях с ботом.", parse_mode="HTML")
-        return True
-    else:
-        logger.info(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): запрос 'отписаться'")
+    logger.info(f"PM; От {user_login_log} ({message.from_user.full_name}): запрос 'отписаться'")
 
     user = next((u for u in birthday_service.users if u.user_id == message.from_user.id), None)
     if user:
         if user.interacted_with_bot:
             user.interacted_with_bot = False
-            logger.info(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): успешная отписка от поздравлений")
+            logger.info(f"PM; От {user_login_log} ({message.from_user.full_name}): успешная отписка от поздравлений")
             birthday_service.save_users()
             success_text = (
                 f"{E.CHECK} Вы отписались от поздравлений.\n\n"
@@ -87,40 +72,16 @@ async def handle_unsubscribe_command(message: Message, normalized_text: str) -> 
             )
             await message.answer(success_text, parse_mode="HTML")
         else:
-            logger.info(f"{tag_unsub}; От {user_login_log} ({message.from_user.full_name}): повторная отписка от поздравлений")
+            logger.info(f"PM; От {user_login_log} ({message.from_user.full_name}): повторная отписка от поздравлений")
             info_text = (
                 f"{E.INFO_ALT} Вы и так не подписаны на поздравления.\n\n"
                 "Чтобы получать поздравления, напишите боту любое сообщение."
             )
             await message.answer(info_text, parse_mode="HTML")
     else:
-        logger.info(f"{tag_unsub}; Бот: пользователь {user_login_log or message.from_user.id} не найден в списке пользователей")
+        logger.info(f"PM; Бот: пользователь {user_login_log or message.from_user.id} не найден в списке пользователей")
         not_found_text = f"{E.CROSS} Вы не найдены в списке пользователей."
-        try:
-            await message.answer(not_found_text, parse_mode="HTML")
-        except TelegramBadRequest:
-            await message.answer(f"{E.CROSS} Вы не найдены в списке пользователей.", parse_mode="HTML")
-    return True
-
-async def handle_owner_commands(message: Message, normalized_text: str) -> bool:
-    if normalized_text not in OWNER_COMMANDS:
-        return False
-
-    if message.from_user.id != OWNER_CHAT_ID:
-        user_login = f"@{message.from_user.username}" if message.from_user.username else ""
-        if message.chat.type in ("group", "supergroup"):
-            logger.info(f"GR; От {user_login} ({message.from_user.full_name}): попытка команды '{message.text}' — отказано")
-        else:
-            logger.info(f"PM; От {user_login} ({message.from_user.full_name}): попытка команды '{message.text}' — отказано")
-        deny_text = f"{E.CROSS} <b>В доступе отказано</b>\n\nЭта команда доступна только владельцу бота."
-        try:
-            await message.answer(deny_text, parse_mode="HTML")
-        except TelegramBadRequest:
-            await message.answer(f"{E.CROSS} <b>В доступе отказано</b>\n\nЭта команда доступна только владельцу бота.", parse_mode="HTML")
-        return True
-
-    if await handle_owner_command(message):
-        return True
+        await message.answer(not_found_text, parse_mode="HTML")
     return True
 
 async def handle_public_commands(message: Message, ctx: dict) -> bool:
@@ -128,19 +89,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
     text_for_commands = ctx["text_for_commands"]
     is_group_chat = ctx["is_group_chat"]
 
-    if ctx["is_private_non_owner"] and not ctx["is_whitelisted_private"] and is_public_command(normalized_text):
-        user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-        logger.info(
-            f"PM; От {user_login_log} ({message.from_user.full_name}): попытка команды '{normalized_text}' — отклонено (нет в списке)"
-        )
-        deny_text = f"{E.CROSS} <b>Эта команда доступна только избранным пользователям.</b>"
-        try:
-            await message.answer(deny_text, parse_mode="HTML")
-        except TelegramBadRequest:
-            await message.answer(f"{E.CROSS} <b>Эта команда доступна только избранным пользователям.</b>", parse_mode="HTML")
-        return True
-
-    if normalized_text == "др" and ctx["should_process_birthday_command"]:
+    if normalized_text == "др":
         user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
         tag = "GR" if is_group_chat else "PM"
         logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'др'")
@@ -158,7 +107,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
             await message.answer("Нет данных о следующем дне рождения")
         return True
 
-    if normalized_text.startswith("др ") and ctx["should_process_birthday_command"]:
+    if normalized_text.startswith("др "):
         parts = text_for_commands.strip().split()
         target_id = None
         target_username = None
@@ -204,7 +153,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
             await message.answer("Пользователь не найден в списке дней рождения.")
         return True
 
-    if normalized_text == "пары" and ctx["should_process_schedule_command"]:
+    if normalized_text == "пары":
         user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
         tag = "GR" if ctx["is_group_chat"] else "PM"
         logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'пары'")
@@ -234,7 +183,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
                 logger.debug("Не удалось отправить diff после 'пары': %s", exc)
         return True
 
-    if normalized_text == "пары завтра" and ctx["should_process_schedule_command"]:
+    if normalized_text == "пары завтра":
         user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
         tag = "GR" if ctx["is_group_chat"] else "PM"
         logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'пары завтра'")
@@ -264,7 +213,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
                 logger.debug("Не удалось отправить diff после 'пары завтра': %s", exc)
         return True
 
-    if normalized_text == "обнови расписание" and ctx["should_process_schedule_command"]:
+    if normalized_text == "обнови расписание":
         user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
         tag = "GR" if ctx["is_group_chat"] else "PM"
         logger.info(f"{tag}; От {user_login_log} ({message.from_user.full_name}): запрос 'обнови расписание'")

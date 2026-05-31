@@ -6,17 +6,16 @@ import logging
 
 from aiogram.types import Message
 
-from src.config.settings import OWNER_CHAT_ID
 from src.bot.services.birthday_service import birthday_service
-from src.bot.handlers.chat_context import build_command_context, is_public_command
+from src.bot.handlers.chat_context import build_command_context
 from src.bot.handlers.chat_commands import (
     handle_help_command,
     handle_unsubscribe_command,
-    handle_owner_commands,
     handle_public_commands,
 )
+from src.bot.handlers.owner_commands import handle_owner_command
+from src.bot.handlers import access
 from src.bot.handlers.chat_pm import handle_private_chat
-from src.core.emoji import E
 from src.bot.handlers.chat_group import handle_group_chat
 from src.utils.telegram_cache import (
     get_cached_bot_identity,
@@ -58,45 +57,32 @@ async def on_mention_or_reply(message: Message):
     bot_username = cached_username or f"@{bot_info.username}"
     ctx = build_command_context(message, bot_username, bot_info.id) if message.text else None
 
-    # Команды: help/команды доступны всем; остальные — только владельцу
-    if ctx:
-        if await handle_help_command(message, ctx["normalized_text"]):
-            return
-
-        if await handle_unsubscribe_command(message, ctx["normalized_text"]):
-            return
-
-        if await handle_owner_commands(message, ctx["normalized_text"]):
-            return
-
-        # Публичные команды "др" и "пары":
-        # - доступны всем в беседе CHAT_ID (при упоминании бота или ответе ему)
-        # - доступны владельцу также в ЛС
-        if await handle_public_commands(message, ctx):
-            return
-
-    # Обрабатываем только текстовые сообщения для LLM
-    if not message.text:
+    # В группе бот реагирует только на упоминание/реплай — единый триггер-гейт.
+    if message.chat.type in ("group", "supergroup") and not access.detect_trigger(
+        message, bot_username, bot_info.id
+    ):
         return
 
-    # Если это другая группа (не основная) и пришли ключевые команды — вежливо отказываем, не зовем LLM
     if ctx:
-        if (
-            message.chat.type in ("group", "supergroup")
-            and not ctx["is_group_main"]
-            and not (message.from_user and message.from_user.id == OWNER_CHAT_ID)
-            and (ctx["is_mention"] or ctx["is_reply"])
-        ):
-            blocked_cmd = is_public_command(ctx["normalized_text"])
-            if blocked_cmd:
-                user_login_log = f"@{message.from_user.username}" if message.from_user.username else ""
-                logger.info("GR; От %s (%s): команда '%s' в чужой группе — отклонено", user_login_log, message.from_user.full_name, ctx["normalized_text"])
-                deny_text = f"{E.CROSS} <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>"
-                try:
-                    await message.answer(deny_text, parse_mode="HTML")
-                except Exception:
-                    pass
+        audience = access.classify(ctx["normalized_text"])
+        if audience is not None:
+            decision = access.resolve(audience, ctx)
+            if not decision.allowed:
+                await access.send_denial(message, decision.denial)
                 return
+            if audience is access.Audience.EVERYONE:
+                await handle_help_command(message, ctx["normalized_text"])
+            elif audience is access.Audience.UNSUBSCRIBE:
+                await handle_unsubscribe_command(message, ctx["normalized_text"])
+            elif audience is access.Audience.OWNER:
+                await handle_owner_command(message)
+            else:  # Audience.PUBLIC
+                await handle_public_commands(message, ctx)
+            return
+
+    # Не команда → LLM (только текст).
+    if not message.text:
+        return
 
     if message.chat.type == "private":
         await handle_private_chat(message, bot_username, bot_info.id, ctx)
