@@ -6,6 +6,7 @@ from aiogram.types import Message
 from src.config.settings import PROMPT_TEMPLATE_CHAT, OWNER_CHAT_ID, CHAT_ID, TIMEZONE
 from src.bot.services.context_service import context_service
 from src.bot.services.birthday_service import birthday_service
+from src.bot.handlers.access import detect_trigger, is_public_command  # noqa: F401  (re-export)
 
 _WEEKDAY_RU = ("понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье")
 
@@ -18,20 +19,9 @@ def build_time_context_line() -> str:
         "Относительные даты («сегодня», «завтра», «в субботу», «на следующей неделе») считай от этой даты."
     )
 
-def is_public_command(text: str) -> bool:
-    """Возвращает True для публичных команд др/пары/обнови расписание."""
-    return (
-        text == "др"
-        or text.startswith("др ")
-        or text == "пары"
-        or text == "пары завтра"
-        or text == "обнови расписание"
-    )
-
 def build_command_context(message: Message, bot_username: str, bot_id: int) -> dict:
     text = message.text or ""
     is_mention = any(token == bot_username for token in text.split())
-    is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot_id
 
     text_for_commands = text
     if is_mention:
@@ -39,51 +29,33 @@ def build_command_context(message: Message, bot_username: str, bot_id: int) -> d
 
     normalized_text = text_for_commands.lower().strip()
 
-    is_owner = message.from_user and message.from_user.id == OWNER_CHAT_ID
+    is_owner = bool(message.from_user and message.from_user.id == OWNER_CHAT_ID)
     is_group_chat = message.chat.type in ("group", "supergroup")
     is_group_main = is_group_chat and message.chat.id == CHAT_ID
-    is_owner_pm = message.chat.type == "private" and is_owner
-    is_private_non_owner = message.chat.type == "private" and not is_owner
-    is_whitelisted_private = is_private_non_owner and any(
-        user.user_id == message.from_user.id for user in birthday_service.users if user.user_id is not None
+    is_whitelisted_private = (
+        message.chat.type == "private"
+        and not is_owner
+        and any(
+            user.user_id == message.from_user.id
+            for user in birthday_service.users
+            if user.user_id is not None
+        )
     )
-
-    is_main_trigger = is_group_main and (is_mention or is_reply)
-    is_owner_trigger = is_owner and is_group_chat and (is_mention or is_reply)
-
-    should_process_birthday_command = is_owner_pm or is_main_trigger or is_owner_trigger or is_whitelisted_private
-    should_process_schedule_command = is_owner_pm or is_main_trigger or is_owner_trigger or is_whitelisted_private
 
     return {
         "text_for_commands": text_for_commands,
         "normalized_text": normalized_text,
-        "is_mention": is_mention,
-        "is_reply": is_reply,
         "is_owner": is_owner,
         "is_group_chat": is_group_chat,
         "is_group_main": is_group_main,
-        "is_owner_pm": is_owner_pm,
-        "is_private_non_owner": is_private_non_owner,
         "is_whitelisted_private": is_whitelisted_private,
-        "is_main_trigger": is_main_trigger,
-        "is_owner_trigger": is_owner_trigger,
-        "should_process_birthday_command": should_process_birthday_command,
-        "should_process_schedule_command": should_process_schedule_command,
     }
 
 def should_process_message(message: Message, bot_username: str, bot_id: int) -> bool:
-    """
-    Проверяет, нужно ли обрабатывать сообщение.
-    """
-    # В личных сообщениях обрабатываем все
+    """В ЛС обрабатываем всё; в группе — только упоминание/реплай (через detect_trigger)."""
     if message.chat.type not in ("group", "supergroup"):
         return True
-
-    # В группе обрабатываем только упоминания или ответы на сообщения бота
-    is_mention = any(token == bot_username for token in (message.text or "").split())
-    is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot_id
-
-    return is_mention or is_reply
+    return detect_trigger(message, bot_username, bot_id)
 
 def extract_user_login(message: Message, text: str, bot_username: str) -> str:
     """Извлекает логин пользователя из сообщения."""

@@ -15,7 +15,7 @@ from src.bot.handlers.chat_context import (
     build_llm_messages,
 )
 from src.bot.handlers.llm_flow import run_schedule_aware_response, ERROR_NOTICE_PLAIN
-from src.core.emoji import E
+from src.bot.handlers import access
 
 logger = logging.getLogger(__name__)
 
@@ -96,13 +96,10 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int, ct
             pass
         return
 
-    denial_text = (
-        f"{E.CROSS} <b>Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы.</b>"
-    )
     tool_context = {
         "allow_refresh": True,
-        "schedule_allowed": bool(ctx and ctx.get("should_process_schedule_command")),
-        "denial_text": denial_text,
+        "schedule_allowed": bool(ctx and access.resolve(access.Audience.PUBLIC, ctx).allowed),
+        "denial_text": access.DENIAL_TEXTS[access.DenialReason.FOREIGN_GROUP],
     }
     await run_schedule_aware_response(
         message, messages, first_name, user_login, text_for_llm,
