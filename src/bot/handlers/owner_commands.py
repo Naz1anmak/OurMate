@@ -3,7 +3,6 @@ import logging
 
 from aiogram.types import Message
 
-from src.config.settings import OWNER_CHAT_ID
 from src.bot.services.system_service import system_service
 from src.bot.services.birthday_service import birthday_service
 from src.core.emoji import E
@@ -19,10 +18,11 @@ OWNER_COMMANDS = {
 
 
 async def handle_owner_command(message: Message) -> bool:
-    """Возвращает True, если команда обработана."""
-    if message.from_user.id != OWNER_CHAT_ID:
-        return False
+    """Возвращает True, если команда обработана.
 
+    Проверка владельца не дублируется здесь: доступ гейтится выше — в `chat.py`
+    через `access.resolve(Audience.OWNER, ctx)`, и сюда доходит только владелец.
+    """
     text = message.text.lower().strip()
 
     user_login = f"@{message.from_user.username}" if message.from_user.username else ""
