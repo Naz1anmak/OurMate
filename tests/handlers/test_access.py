@@ -32,7 +32,7 @@ def _ctx(*, is_owner=False, is_group_chat=False, is_group_main=False, is_whiteli
     ("др @user", Audience.PUBLIC),
     ("пары", Audience.PUBLIC),
     ("пары завтра", Audience.PUBLIC),
-    ("обнови расписание", Audience.PUBLIC),
+    ("обнови расписание", Audience.GROUP_OR_OWNER),
     ("logs", Audience.OWNER),
     ("full logs", Audience.OWNER),
     ("проверка ссылок", Audience.OWNER),
@@ -47,6 +47,7 @@ def test_is_public_command_still_exported():
     assert is_public_command("пары") is True
     assert is_public_command("др 5") is True
     assert is_public_command("logs") is False
+    assert is_public_command("обнови расписание") is False  # уехала в GROUP_OR_OWNER
 
 
 # EVERYONE — всегда ALLOW
@@ -84,6 +85,21 @@ def test_public_audience_pm():
     assert resolve(Audience.PUBLIC, _ctx(is_owner=True)).allowed is True
     assert resolve(Audience.PUBLIC, _ctx(is_whitelisted_private=True)).allowed is True
     assert resolve(Audience.PUBLIC, _ctx()) == Decision(False, DenialReason.NOT_PRIVILEGED)
+
+
+# GROUP_OR_OWNER — в беседе как PUBLIC, в ЛС только владелец
+def test_group_or_owner_audience_group():
+    assert resolve(Audience.GROUP_OR_OWNER, _ctx(is_group_chat=True, is_group_main=True)).allowed is True
+    assert resolve(Audience.GROUP_OR_OWNER, _ctx(is_group_chat=True, is_owner=True)).allowed is True  # owner в чужой группе
+    d = resolve(Audience.GROUP_OR_OWNER, _ctx(is_group_chat=True))  # чужая группа, не owner
+    assert d == Decision(False, DenialReason.FOREIGN_GROUP)
+
+
+def test_group_or_owner_audience_pm():
+    assert resolve(Audience.GROUP_OR_OWNER, _ctx(is_owner=True)).allowed is True
+    # whitelisted в ЛС — НЕ пускаем (в отличие от PUBLIC)
+    assert resolve(Audience.GROUP_OR_OWNER, _ctx(is_whitelisted_private=True)) == Decision(False, DenialReason.GROUP_ONLY)
+    assert resolve(Audience.GROUP_OR_OWNER, _ctx()) == Decision(False, DenialReason.GROUP_ONLY)
 
 
 # detect_trigger

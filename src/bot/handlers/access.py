@@ -12,13 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 def is_public_command(text: str) -> bool:
-    """Публичные команды: др / пары / пары завтра / обнови расписание."""
+    """Публичные команды: др / пары / пары завтра."""
     return (
         text == "др"
         or text.startswith("др ")
         or text == "пары"
         or text == "пары завтра"
-        or text == "обнови расписание"
     )
 
 
@@ -27,6 +26,7 @@ class Audience(Enum):
     EVERYONE = auto()
     UNSUBSCRIBE = auto()
     PUBLIC = auto()
+    GROUP_OR_OWNER = auto()
     OWNER = auto()
 
 
@@ -34,6 +34,7 @@ class DenialReason(Enum):
     """Причина отказа — определяет текст."""
     FOREIGN_GROUP = auto()
     NOT_PRIVILEGED = auto()
+    GROUP_ONLY = auto()
     OWNER_ONLY = auto()
     PM_ONLY = auto()
 
@@ -45,6 +46,9 @@ DENIAL_TEXTS: dict[DenialReason, str] = {
     ),
     DenialReason.NOT_PRIVILEGED: (
         f"{E.CROSS} <b>Эта команда доступна только избранным пользователям.</b>"
+    ),
+    DenialReason.GROUP_ONLY: (
+        f"{E.CROSS} <b>Эта команда работает только в беседе.</b>"
     ),
     DenialReason.OWNER_ONLY: (
         f"{E.CROSS} <b>В доступе отказано</b>\n\n"
@@ -72,6 +76,8 @@ def classify(normalized_text: str) -> Audience | None:
         return Audience.EVERYONE
     if normalized_text == "отписаться":
         return Audience.UNSUBSCRIBE
+    if normalized_text == "обнови расписание":
+        return Audience.GROUP_OR_OWNER
     if is_public_command(normalized_text):
         return Audience.PUBLIC
     if normalized_text in OWNER_COMMANDS:
@@ -93,6 +99,16 @@ def resolve(audience: Audience, ctx: dict) -> Decision:
         if ctx["is_owner"] or ctx["is_whitelisted_private"]:
             return _ALLOW
         return Decision(False, DenialReason.NOT_PRIVILEGED)
+
+    if audience is Audience.GROUP_OR_OWNER:
+        # В беседе — как PUBLIC; в ЛС — только владелец (whitelisted не пускаем).
+        if ctx["is_group_chat"]:
+            if ctx["is_group_main"] or ctx["is_owner"]:
+                return _ALLOW
+            return Decision(False, DenialReason.FOREIGN_GROUP)
+        if ctx["is_owner"]:
+            return _ALLOW
+        return Decision(False, DenialReason.GROUP_ONLY)
 
     # Audience.PUBLIC
     if ctx["is_group_chat"]:

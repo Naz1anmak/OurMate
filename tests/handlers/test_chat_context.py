@@ -9,8 +9,9 @@ from src.bot.handlers.chat_context import (
 from src.config.settings import TIMEZONE
 
 
-def test_obnovi_raspisanie_is_public():
-    assert is_public_command("обнови расписание") is True
+def test_obnovi_raspisanie_not_public():
+    # «обнови расписание» теперь GROUP_OR_OWNER, не PUBLIC.
+    assert is_public_command("обнови расписание") is False
 
 
 def test_existing_public_commands_still_work():

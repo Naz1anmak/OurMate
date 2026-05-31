@@ -76,7 +76,7 @@ async def on_mention_or_reply(message: Message):
                 await handle_unsubscribe_command(message, ctx["normalized_text"])
             elif audience is access.Audience.OWNER:
                 await handle_owner_command(message)
-            else:  # Audience.PUBLIC
+            else:  # Audience.PUBLIC / GROUP_OR_OWNER → общий роутер команд
                 await handle_public_commands(message, ctx)
             return
 
