@@ -558,6 +558,7 @@ class StreamRenderer:
         self.is_group = message.chat.type in ("group", "supergroup")
         self.use_draft = message.chat.type == "private"
         self.placeholder = None
+        self.streamed = False
         self.draft_id = int(time.monotonic_ns() % 900_000_000) + 1
         self.buffer = prefix
         self.last_sent_len = len(prefix)
@@ -603,11 +604,13 @@ class StreamRenderer:
                 await self.message.bot(SendMessageDraft(chat_id=self.message.chat.id,
                                                         draft_id=self.draft_id,
                                                         text=rendered, parse_mode="HTML"))
+                self.streamed = True
             elif self.placeholder:
                 await self.message.bot.edit_message_text(chat_id=self.placeholder.chat.id,
                                                          message_id=self.placeholder.message_id,
                                                          text=rendered, parse_mode="HTML",
                                                          disable_web_page_preview=True)
+                self.streamed = True
         except Exception as exc:  # noqa: BLE001
             logger.debug("StreamRenderer render failed: %s", exc)
 

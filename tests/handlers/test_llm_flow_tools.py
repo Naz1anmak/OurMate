@@ -87,3 +87,23 @@ def test_web_search_note_mentions_trigger_and_sources():
     note = WEB_SEARCH_NOTE.lower()
     assert "загугли" in note            # явный триггер описан
     assert "источник" in note           # политика ссылок описана
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_streamed_flag_false_without_feed():
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    assert r.streamed is False     # старт без feed — не стрим
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_streamed_flag_true_after_feed():
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "private"          # ЛС → драфты
+    r = StreamRenderer(message)
+    await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
+    assert r.streamed is True
