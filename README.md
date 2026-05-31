@@ -121,53 +121,36 @@ OurMate_bot/
 │   ├── bot/                                 # Логика Telegram бота
 │   │   ├── setup.py                         # Сборка Bot/Dispatcher + middleware
 │   │   ├── handlers/                        # Обработчики сообщений
-│   │   │   ├── chat.py                      # Роутер: команды + dispatch PM/GR
-│   │   │   ├── chat_pm.py                   # Обработка ЛС (стрим + фолбэк)
-│   │   │   ├── chat_group.py                # Обработка групп (стрим + фолбэк)
-│   │   │   ├── chat_commands.py             # Общие публичные/владельческие команды
-│   │   │   ├── llm_flow.py                  # Стриминг LLM ответов
-│   │   │   ├── placeholder_variants.py      # Плейсхолдеры «думаю над ответом…»
-│   │   │   ├── commands.py                  # Обработка команд (/start)
-│   │   │   └── owner_commands.py            # Команды владельца
+│   │   │   ├── chat.py                      # Роутер: триггер-гейт + dispatch PM/GR
+│   │   │   ├── access.py                    # Единый гейтинг доступа (classify/resolve)
+│   │   │   ├── chat_pm.py / chat_group.py   # Обработка ЛС / групп (стрим + фолбэк)
+│   │   │   ├── chat_commands.py             # Публичные команды (др/пары/обнови расписание)
+│   │   │   ├── owner_commands.py            # Команды владельца (logs/проверка ссылок)
+│   │   │   ├── llm_flow.py                  # Стриминг LLM-ответов + рендер (тул-флоу)
+│   │   │   └── …                            # chat_context, commands, errors, placeholder_variants
 │   │   ├── middlewares/                     # Middleware aiogram
-│   │   │   └── emoji.py                     # PremiumEmojiMiddleware: подмена unicode → <tg-emoji>
+│   │   │   └── emoji.py                     # PremiumEmojiMiddleware: unicode → <tg-emoji>
 │   │   ├── services/                        # Бизнес-логика
-│   │   │   ├── llm_service.py               # Работа с LLM API
-│   │   │   ├── birthday_service.py          # Логика дней рождения
-│   │   │   ├── schedule_service.py          # Парсинг и кеш расписания
-│   │   │   ├── context_service.py           # Управление контекстом
-│   │   │   └── system_service.py            # Системные команды
-│   │   └── scheduler/                       # Планировщик задач
-│   │       ├── birthday_scheduler.py        # Планировщик поздравлений
-│   │       ├── schedule_scheduler.py        # Планировщик рассылки расписания
-│   │       └── pinned_schedule_scheduler.py # Планировщик закрепа расписания
-│   ├── core/                                # Доменное ядро
-│   │   └── emoji.py                         # Класс E с unicode+premium_id
-│   ├── models/                              # Модели данных
-│   │   └── user.py                          # Модель пользователя
-│   ├── utils/                               # Вспомогательные функции
-│   │   ├── logging.py                       # configure_logging() — единый формат
-│   │   ├── date_utils.py                    # Работа с датами
-│   │   ├── render_utils.py                  # HTML-рендер с поддержкой Markdown
-│   │   ├── telegram_cache.py                # Кеш bot.get_me()
-│   │   └── text_utils.py                    # Работа с текстом
-│   └── config/                              # Конфигурация
-│       └── settings.py                      # Настройки приложения
-├── data/                                    # Данные приложения
-│   ├── birthdays.json                       # Файл с днями рождения
-│   ├── <CODE>/                              # Подпапка на каждую группу
-│   │   └── schedule.json                    # Снимок расписания из JSON-API
-│   └── cache/                               # Кеш
-│       ├── last_birthday_greeting.txt       # Дата последнего поздравления (дедупликация)
-│       ├── schedule_cache.json              # Кеш расписания (объединённый по группам)
-│       └── pinned_schedule_id.txt           # Сообщение с закрепом расписания (message_id)
+│   │   │   ├── llm_service.py               # LLM API + стрим с тулами
+│   │   │   ├── llm_tools.py                 # Каркас function calling (ToolRegistry/run_tool_loop)
+│   │   │   ├── schedule_tools.py            # Тулы расписания (get_schedule, find_classes_by_subject)
+│   │   │   ├── web_search_tool.py           # Тул web_search через сторонний Tavily
+│   │   │   ├── schedule_*.py                # Пайплайн расписания: ruz_client/ruz_parser/diff/refresher/service
+│   │   │   └── *_service.py                 # birthday / context / system
+│   │   └── scheduler/                       # 4 cron-задачи: поздравления, рассылка/закреп/автообновление расписания
+│   ├── core/                                # Доменное ядро (emoji.py — класс E: unicode + premium_id)
+│   ├── models/                              # Модели данных (user.py)
+│   ├── utils/                               # Хелперы: логи, даты, HTML-рендер, кеш get_me, текст
+│   └── config/                              # settings.py — настройки из .env
+├── data/                                    # Данные приложения (не в git)
+│   ├── birthdays.json                       # Дни рождения
+│   ├── <CODE>/schedule.json                 # Снимок расписания из JSON-API (подпапка на группу)
+│   └── cache/                               # Кеш: дедуп поздравлений, расписание, message_id закрепа
 ├── main.py                                  # Точка входа (тонкий entrypoint)
-├── docker-compose.yml                       # Описание контейнера bot
-├── Dockerfile                               # Сборка образа
+├── docker-compose.yml / Dockerfile          # Контейнер bot и сборка образа
 ├── Makefile                                 # Цели для разработки и эксплуатации
 ├── requirements.txt                         # Зависимости Python
-├── .env.example                             # Шаблон переменных окружения
-├── .env                                     # Реальные переменные (не в git)
+├── .env.example                             # Шаблон переменных окружения (.env — реальный, не в git)
 └── README.md                                # Документация
 ```
 
