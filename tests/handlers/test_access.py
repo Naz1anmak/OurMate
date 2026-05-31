@@ -112,7 +112,7 @@ def _trigger_msg(text="", reply_from_id=None, reply_present=False, reply_no_user
     return SimpleNamespace(text=text, reply_to_message=reply)
 
 
-BOT_USERNAME = "@ourmate_bot"
+BOT_USERNAME = "@test_bot"
 BOT_ID = 777
 
 
@@ -158,7 +158,7 @@ async def test_send_denial_sends_text_for_reason():
 @pytest.mark.asyncio
 async def test_send_denial_logs_at_info(caplog):
     message = AsyncMock()
-    message.text = "@ourmate_bot обнови расписание"
+    message.text = f"{BOT_USERNAME} обнови расписание"
     message.chat.type = "private"
     message.from_user = SimpleNamespace(username="user", full_name="Test User")
     with caplog.at_level("INFO", logger="src.bot.handlers.access"):
