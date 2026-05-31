@@ -102,3 +102,17 @@ def resolve(audience: Audience, ctx: dict) -> Decision:
     if ctx["is_owner"] or ctx["is_whitelisted_private"]:
         return _ALLOW
     return Decision(False, DenialReason.NOT_PRIVILEGED)
+
+
+def detect_trigger(message: Message, bot_username: str, bot_id: int) -> bool:
+    """Позвали ли бота: упоминание в тексте или реплай на его сообщение.
+
+    Изолированный узел — точка расширения для будущего keyword-trigger.
+    None-guard на reply.from_user: реплай от имени канала / анонимного админа
+    приходит без from_user.
+    """
+    text = message.text or ""
+    is_mention = any(token == bot_username for token in text.split())
+    reply = message.reply_to_message
+    is_reply = bool(reply and reply.from_user and reply.from_user.id == bot_id)
+    return is_mention or is_reply

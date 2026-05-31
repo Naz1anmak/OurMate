@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 from src.bot.handlers.access import (
     Audience,
@@ -7,6 +8,7 @@ from src.bot.handlers.access import (
     classify,
     resolve,
     is_public_command,
+    detect_trigger,
 )
 
 
@@ -80,3 +82,43 @@ def test_public_audience_pm():
     assert resolve(Audience.PUBLIC, _ctx(is_owner=True)).allowed is True
     assert resolve(Audience.PUBLIC, _ctx(is_whitelisted_private=True)).allowed is True
     assert resolve(Audience.PUBLIC, _ctx()) == Decision(False, DenialReason.NOT_PRIVILEGED)
+
+
+# detect_trigger
+
+def _trigger_msg(text="", reply_from_id=None, reply_present=False, reply_no_user=False):
+    reply = None
+    if reply_present:
+        from_user = None if reply_no_user else SimpleNamespace(id=reply_from_id)
+        reply = SimpleNamespace(from_user=from_user)
+    return SimpleNamespace(text=text, reply_to_message=reply)
+
+
+BOT_USERNAME = "@ourmate_bot"
+BOT_ID = 777
+
+
+def test_detect_trigger_mention():
+    m = _trigger_msg(text=f"{BOT_USERNAME} пары")
+    assert detect_trigger(m, BOT_USERNAME, BOT_ID) is True
+
+
+def test_detect_trigger_reply_to_bot():
+    m = _trigger_msg(reply_present=True, reply_from_id=BOT_ID)
+    assert detect_trigger(m, BOT_USERNAME, BOT_ID) is True
+
+
+def test_detect_trigger_reply_to_other():
+    m = _trigger_msg(reply_present=True, reply_from_id=123)
+    assert detect_trigger(m, BOT_USERNAME, BOT_ID) is False
+
+
+def test_detect_trigger_none_text_no_reply():
+    m = _trigger_msg(text=None)
+    assert detect_trigger(m, BOT_USERNAME, BOT_ID) is False
+
+
+def test_detect_trigger_reply_without_from_user_does_not_crash():
+    # Реплай от имени канала / анонимного админа: from_user is None
+    m = _trigger_msg(reply_present=True, reply_no_user=True)
+    assert detect_trigger(m, BOT_USERNAME, BOT_ID) is False
