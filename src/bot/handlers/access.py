@@ -122,6 +122,14 @@ def resolve(audience: Audience, ctx: dict) -> Decision:
 
 async def send_denial(message: Message, reason: DenialReason) -> None:
     """Единая отправка отказа по причине. Глушит сбои доставки (как и хендлеры)."""
+    user = message.from_user
+    user_login = f"@{user.username}" if user and user.username else ""
+    full_name = user.full_name if user else "?"
+    tag = "GR" if message.chat.type in ("group", "supergroup") else "PM"
+    logger.info(
+        "%s; От %s (%s): отказ '%s' — %s",
+        tag, user_login, full_name, (message.text or "").strip(), reason.name,
+    )
     try:
         await message.answer(DENIAL_TEXTS[reason], parse_mode="HTML")
     except Exception as exc:  # noqa: BLE001

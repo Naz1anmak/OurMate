@@ -145,8 +145,24 @@ def test_detect_trigger_reply_without_from_user_does_not_crash():
 @pytest.mark.asyncio
 async def test_send_denial_sends_text_for_reason():
     message = AsyncMock()
+    message.text = "отписаться"
+    message.chat.type = "private"
+    message.from_user = SimpleNamespace(username="user", full_name="Test User")
     await send_denial(message, DenialReason.NOT_PRIVILEGED)
     message.answer.assert_awaited_once()
     sent_text = message.answer.await_args.args[0]
     assert "только избранным" in sent_text
     assert message.answer.await_args.kwargs["parse_mode"] == "HTML"
+
+
+@pytest.mark.asyncio
+async def test_send_denial_logs_at_info(caplog):
+    message = AsyncMock()
+    message.text = "@ourmate_bot обнови расписание"
+    message.chat.type = "private"
+    message.from_user = SimpleNamespace(username="user", full_name="Test User")
+    with caplog.at_level("INFO", logger="src.bot.handlers.access"):
+        await send_denial(message, DenialReason.GROUP_ONLY)
+    assert any(
+        "отказ" in r.message and "GROUP_ONLY" in r.message for r in caplog.records
+    )
