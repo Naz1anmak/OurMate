@@ -39,8 +39,11 @@ ps: ## Список контейнеров compose
 sh: ## Зайти внутрь контейнера $(SERVICE)
 	docker compose exec $(SERVICE) sh
 
-test: ## Прогон тестов в контейнере
-	docker compose run --rm $(SERVICE) pytest tests/ -v
+# -v "$(PWD)":/app — монтируем живое дерево поверх образа, иначе pytest гоняет код,
+# зашитый при сборке (src/ и tests/ в образе), а не текущие правки. Зависимости берутся
+# из образа (они в site-packages, не в /app), код — с диска.
+test: ## Прогон тестов в контейнере (на текущем коде)
+	docker compose run --rm -v "$(PWD)":/app $(SERVICE) pytest tests/ -v
 
 test-cov: ## Прогон тестов с покрытием
-	docker compose run --rm $(SERVICE) pytest tests/ --cov=src --cov-report=term-missing -v
+	docker compose run --rm -v "$(PWD)":/app $(SERVICE) pytest tests/ --cov=src --cov-report=term-missing -v
