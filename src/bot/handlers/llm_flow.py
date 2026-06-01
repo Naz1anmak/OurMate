@@ -114,10 +114,11 @@ class StreamRenderer:
         self.use_draft = message.chat.type == "private"
         self.placeholder = None
         self.streamed = False
-        # Затвор: пока закрыт, токены копятся в буфер, но НЕ показываются. Открываем его только
-        # когда пошёл тул (open_gate). Так болтовня фазы-1 не мелькает в плейсхолдере/драфте,
-        # если reply окажется tool-call'ом (её пришлось бы стирать — это и было мигание).
-        self.gate_open = False
+        # Затвор живого стрима. В ЛС открыт сразу — драфт стримится живьём (мигание при tool-call
+        # допустимо, главное быстро гасить, см. discard). В группе закрыт до старта тула (open_gate):
+        # там плейсхолдер ожидания уже виден, и болтовня фазы-1 не должна мелькать поверх него,
+        # иначе при tool-call её пришлось бы стирать.
+        self.gate_open = self.use_draft
         self.draft_id = int(time.monotonic_ns() % 900_000_000) + 1
         self.prefix = prefix
         self.buffer = prefix
@@ -193,7 +194,9 @@ class StreamRenderer:
             except Exception as exc:  # noqa: BLE001
                 logger.debug("StreamRenderer discard failed: %s", exc)
             self.placeholder = None
-        elif self.use_draft and self.streamed:
+        elif self.use_draft:
+            # Гасим драфт безусловно (пустым текстом) — даже если стрим не успел отрисоваться,
+            # чтобы в ЛС не остался висеть хвост болтовни после карточки тула.
             try:
                 await self.message.bot(SendMessageDraft(
                     chat_id=self.message.chat.id, draft_id=self.draft_id, text=""))

@@ -100,26 +100,53 @@ async def test_stream_renderer_streamed_flag_false_without_feed():
 
 
 @pytest.mark.asyncio
-async def test_stream_renderer_gate_closed_buffers_without_render():
-    """До open_gate feed() копит в буфер, но ничего не рендерит (нет мигающей болтовни)."""
+async def test_stream_renderer_group_gate_closed_buffers_without_render():
+    """В группе до open_gate feed() копит в буфер, но не рендерит (болтовня не мелькает)."""
     from src.bot.handlers.llm_flow import StreamRenderer
     message = AsyncMock()
-    message.chat.type = "private"          # ЛС → драфты
+    message.chat.type = "supergroup"
     r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    message.bot.edit_message_text.reset_mock()
     await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
-    assert r.streamed is False             # затвор закрыт — драфт не слался
-    message.bot.assert_not_called()
+    assert r.streamed is False                          # затвор закрыт — плейсхолдер не правился
+    message.bot.edit_message_text.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_stream_renderer_streamed_flag_true_after_open_gate():
+async def test_stream_renderer_group_open_gate_starts_streaming():
     from src.bot.handlers.llm_flow import StreamRenderer
     message = AsyncMock()
-    message.chat.type = "private"          # ЛС → драфты
+    message.chat.type = "supergroup"
     r = StreamRenderer(message)
-    r.open_gate()                          # тул стартовал — открываем живой стрим
+    await r.start("ожидаю…")
+    r.open_gate()                                       # тул стартовал — открываем живой стрим
     await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
     assert r.streamed is True
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_pm_streams_by_default():
+    """В ЛС затвор открыт сразу — драфт стримится живьём, без ожидания старта тула."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "private"
+    r = StreamRenderer(message)
+    await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
+    assert r.streamed is True
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_pm_discard_clears_draft():
+    """В ЛС discard() гасит драфт безусловно (пустым текстом) — хвоста не остаётся."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    from aiogram.methods import SendMessageDraft
+    message = AsyncMock()
+    message.chat.type = "private"
+    r = StreamRenderer(message)
+    await r.discard()
+    sent = message.bot.call_args.args[0]
+    assert isinstance(sent, SendMessageDraft) and sent.text == ""
 
 
 def test_flow_label_variants():
