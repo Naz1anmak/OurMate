@@ -117,6 +117,22 @@ async def test_deferred_messages_collected():
     assert "_deferred" not in tool_msg["content"]   # модель не видит служебное поле
 
 @pytest.mark.asyncio
+async def test_silent_flag_sets_suppress_text():
+    async def tool(*, tool_context, **kw):
+        return {"ok": True, "_silent": True}
+    reg = _registry_with(tool)
+    llm_call, calls = _fake_llm([
+        LLMReply(tool_calls=[_tool_call("get_schedule", {"date_from": "2026-06-01", "date_to": "2026-06-01"})]),
+        LLMReply(content="готово"),
+    ])
+    res = await run_tool_loop([{"role": "user", "content": "?"}],
+                              {"schedule_allowed": True}, registry=reg, llm_call=llm_call)
+    assert res.suppress_text is True
+    tool_msg = next(m for m in calls[1]["messages"] if m["role"] == "tool")
+    assert "_silent" not in tool_msg["content"]   # служебное поле не уходит модели
+
+
+@pytest.mark.asyncio
 async def test_run_tool_loop_calls_on_tool_start():
     seen = []
 

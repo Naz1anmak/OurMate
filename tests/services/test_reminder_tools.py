@@ -53,6 +53,7 @@ async def test_create_in_group_posts_card_and_schedules(store):
         "2026-06-01T19:00:00+03:00", "созвон",
         tool_context=ctx, store=store, scheduler=sched, now=NOW)
     assert res["ok"] is True
+    assert res.get("_silent") is True     # карточку отправил тул — финал LLM глушим
     # карточка отправлена в группу
     assert ctx["bot"].sent and ctx["bot"].sent[0][0] == -100
     # job поставлен

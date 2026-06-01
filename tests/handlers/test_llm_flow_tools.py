@@ -156,6 +156,30 @@ async def test_run_schedule_aware_notifies_owner_on_finalize_failure(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_suppress_text_skips_final_answer(monkeypatch):
+    """suppress_text=True (тул сам отправил карточку) → финальный текст LLM не шлётся."""
+    import src.bot.handlers.llm_flow as flow
+    from src.bot.services.llm_tools import ToolLoopResult
+
+    async def fake_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None, **kwargs):
+        return ToolLoopResult(text="готово", called_tools=["create_reminder"], suppress_text=True)
+
+    monkeypatch.setattr(flow, "run_tool_loop", fake_loop)
+    monkeypatch.setattr(flow.context_service, "save_context", lambda *a, **k: None)
+
+    message = AsyncMock()
+    message.chat.type = "private"
+    message.chat.id = 1
+    message.from_user.id = 7
+    message.from_user.username = "u"
+
+    res = await flow.run_schedule_aware_response(
+        message, [], "", "u", "напомни в 15:23 тест", False, {}, registry=object())
+    assert res is True
+    message.answer.assert_not_awaited()   # карточку отправил тул, дубля «готово» нет
+
+
+@pytest.mark.asyncio
 async def test_run_schedule_aware_notifies_owner_on_llm_error(monkeypatch):
     import src.bot.handlers.llm_flow as flow
     from src.bot.services.llm_service import LLMServiceError

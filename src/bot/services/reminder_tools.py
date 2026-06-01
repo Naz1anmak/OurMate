@@ -62,8 +62,10 @@ async def create_reminder(when_iso: str, text: str, *, tool_context: dict,
             chat_id, rs.render_confirm_pm(rem, now), parse_mode="HTML",
             reply_markup=rs.confirm_keyboard(rid, "ok", "no"))
 
+    # Карточка/подтверждение уже отправлены ботом — финальную фразу LLM глушим (_silent),
+    # иначе после карточки прилетает дублирующее «готово».
     return {"ok": True, "id": rid, "scope": scope,
-            "when": rs.humanize_dt(fire_dt, now), "posted": True}
+            "when": rs.humanize_dt(fire_dt, now), "posted": True, "_silent": True}
 
 
 async def list_reminders(*, tool_context: dict, store=reminder_store,
@@ -109,7 +111,7 @@ async def update_reminder(reminder_id: int, *, tool_context: dict,
     await tool_context["bot"].send_message(
         tool_context["chat_id"], diff, parse_mode="HTML",
         reply_markup=rs.confirm_keyboard(reminder_id, "upd", "undo"))
-    return {"ok": True, "id": reminder_id, "awaiting_confirm": True}
+    return {"ok": True, "id": reminder_id, "awaiting_confirm": True, "_silent": True}
 
 
 async def cancel_reminder(reminder_id: int, *, tool_context: dict,
@@ -126,7 +128,7 @@ async def cancel_reminder(reminder_id: int, *, tool_context: dict,
         tool_context["chat_id"],
         f"{E.CROSS} Отменить «{rem['text']}» ({rs.humanize_dt(rs.parse_dt(rem['fire_at']), now)})?",
         parse_mode="HTML", reply_markup=rs.confirm_keyboard(reminder_id, "del", "keep"))
-    return {"ok": True, "id": reminder_id, "awaiting_confirm": True}
+    return {"ok": True, "id": reminder_id, "awaiting_confirm": True, "_silent": True}
 
 
 CREATE_SCHEMA = {

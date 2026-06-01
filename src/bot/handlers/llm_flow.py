@@ -169,6 +169,17 @@ class StreamRenderer:
         except Exception as exc:  # noqa: BLE001
             logger.debug("StreamRenderer render failed: %s", exc)
 
+    async def discard(self) -> None:
+        """Убирает плейсхолдер ожидания: сообщение уже отправил тул, болтовня LLM не нужна.
+        В ЛС плейсхолдера нет (стрим — эфемерные драфты), удалять нечего."""
+        if self.placeholder:
+            try:
+                await self.message.bot.delete_message(
+                    self.placeholder.chat.id, self.placeholder.message_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("StreamRenderer discard failed: %s", exc)
+            self.placeholder = None
+
     async def finalize(self, final_text: str) -> bool:
         """Фиксирует финал: эдит плейсхолдера (группа) или реальное сообщение (ЛС — драфт эфемерен)."""
         safe = _trim_html(render_html_with_code(final_text))
@@ -276,6 +287,16 @@ async def run_schedule_aware_response(
     context_service.save_context(
         message.chat.id, text_for_llm,
         format_final_answer("", result.text or "", has_context) if is_group_chat else final_answer)
+
+    # Тул уже отправил готовое сообщение (карточка/подтверждение напоминания) — финальную
+    # фразу LLM не показываем, только убираем плейсхолдер ожидания. Контекст уже сохранён выше.
+    if result.suppress_text:
+        await renderer.discard()
+        await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
+        logger.info("%s; Бот (tool: %s) для %s: [тихо — сообщение отправил тул]",
+                    "GR" if is_group_chat else "PM",
+                    ", ".join(result.called_tools) or "?", user_login or "?")
+        return True
 
     if not await renderer.finalize(final_answer):
         logger.warning("%s; tool-flow finalize не доставил ответ для %s",

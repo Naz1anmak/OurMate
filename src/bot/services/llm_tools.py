@@ -27,6 +27,9 @@ class ToolLoopResult:
     deferred_messages: list[str] = field(default_factory=list)
     denial: Optional[str] = None
     called_tools: list[str] = field(default_factory=list)
+    # Тул сам отправил готовое сообщение (карточка/подтверждение) — финальный текст LLM
+    # не показываем, иначе дублируем ответ (см. флаг "_silent" в результате тула).
+    suppress_text: bool = False
 
 
 class ToolRegistry:
@@ -70,6 +73,7 @@ async def run_tool_loop(
     """Гоняет tool use: вызов LLM → исполнение тулов → повторный вызов. Не знает про Telegram."""
     deferred: list[str] = []
     called: list[str] = []
+    silent = False
     work = list(messages)
     rounds = 0
 
@@ -79,7 +83,7 @@ async def run_tool_loop(
 
         if not reply.tool_calls:
             return ToolLoopResult(text=reply.content or "", deferred_messages=deferred,
-                                  called_tools=called)
+                                  called_tools=called, suppress_text=silent)
 
         # Гейт доступа: если любой запрошенный тул закрыт — короткое замыкание на заглушку.
         for tc in reply.tool_calls:
@@ -117,6 +121,8 @@ async def run_tool_loop(
                     logger.warning("Тул %s упал: %s", name, exc)
                     result = {"error": "tool_failed"}
             deferred.extend(result.pop("_deferred", []) or [])
+            if result.pop("_silent", False):
+                silent = True
             work.append({
                 "role": "tool",
                 "tool_call_id": tc["id"],
@@ -127,4 +133,4 @@ async def run_tool_loop(
         if rounds > max_tool_rounds:
             reply = await llm_call(work, None)  # финал без тулов
             return ToolLoopResult(text=reply.content or "", deferred_messages=deferred,
-                                  called_tools=called)
+                                  called_tools=called, suppress_text=silent)
