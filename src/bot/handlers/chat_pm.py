@@ -53,6 +53,13 @@ async def handle_private_chat(message: Message, bot_username: str, bot_id: int, 
         "allow_refresh": False,
         "schedule_allowed": bool(ctx and access.resolve(access.Audience.PUBLIC, ctx).allowed),
         "denial_text": access.DENIAL_TEXTS[access.DenialReason.NOT_PRIVILEGED],
+        "bot": message.bot,
+        "chat_id": message.chat.id,
+        "user_id": message.from_user.id,
+        "first_name": first_name,
+        "is_group": False,
+        "is_group_main": False,
+        "is_owner": bool(ctx and ctx.get("is_owner")),
     }
     await run_schedule_aware_response(
         message, messages, first_name, user_login, text_for_llm,

@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.session.aiohttp import AiohttpSession
 
 from src.config.settings import TOKEN, TELEGRAM_PROXY_URL, TELEGRAM_PROXY_ENABLED
 from src.bot.handlers import register_handlers
 from src.bot.handlers.errors import global_error_handler
 from src.bot.middlewares.emoji import PremiumEmojiMiddleware
+from src.bot.handlers.reminder_callbacks import on_reminder_callback
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ def build_bot_and_dispatcher() -> tuple[Bot, Dispatcher]:
 
     dp = Dispatcher()
     register_handlers(dp)
+    dp.callback_query.register(on_reminder_callback, F.data.startswith("rem:"))
     dp.errors.register(global_error_handler)
     logger.info("Обработчики зарегистрированы")
     return bot, dp

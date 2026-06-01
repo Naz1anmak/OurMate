@@ -127,7 +127,7 @@ async def test_run_schedule_aware_notifies_owner_on_finalize_failure(monkeypatch
         from src.bot.services.llm_tools import LLMReply
         return LLMReply(content="ответ")
 
-    async def fake_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None):
+    async def fake_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None, **kwargs):
         await llm_call(messages, None)               # имитируем один вызов LLM
         return ToolLoopResult(text="ответ", called_tools=[])
 
@@ -160,7 +160,7 @@ async def test_run_schedule_aware_notifies_owner_on_llm_error(monkeypatch):
     import src.bot.handlers.llm_flow as flow
     from src.bot.services.llm_service import LLMServiceError
 
-    async def fake_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None):
+    async def fake_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None, **kwargs):
         raise LLMServiceError("llm down")
 
     notified = {"n": 0}

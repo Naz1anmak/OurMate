@@ -42,6 +42,10 @@ class ToolRegistry:
     def schemas(self) -> list[dict]:
         return [spec.schema for spec in self._tools.values()]
 
+    def items(self):
+        """Пары (имя, ToolSpec) — переносить тулы между реестрами без доступа к приватному полю."""
+        return self._tools.items()
+
 
 DEFAULT_DENIAL = "Эта команда доступна в основной беседе или в ЛС для пользователей из списка группы."
 

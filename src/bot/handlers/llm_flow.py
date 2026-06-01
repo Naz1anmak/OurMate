@@ -98,6 +98,10 @@ async def send_tool_loop_extras(message, *, deferred_messages: list[str], denial
 # Тул-специфичные заглушки на момент исполнения тула (только группа).
 TOOL_INDICATORS = {
     "web_search": f"{E.THINK_SEARCH} Ищу в интернете…",
+    "create_reminder": f"{E.REMINDER} Создаю напоминание…",
+    "list_reminders": f"{E.REMINDER} Смотрю напоминания…",
+    "update_reminder": f"{E.REMINDER} Меняю напоминание…",
+    "cancel_reminder": f"{E.REMINDER} Отменяю напоминание…",
 }
 
 
@@ -200,6 +204,12 @@ WEB_SEARCH_NOTE = (
     "ошибку — честно скажи, что найти не удалось."
 )
 
+REMINDER_NOTE = (
+    "Если пользователь просит создать/изменить/отменить/показать напоминание — используй "
+    "тулы напоминаний. Карточку, подтверждение и список бот отправляет сам отдельным "
+    "сообщением; ты отвечай ОДНОЙ короткой фразой, не пересказывая детали и не выдумывая время."
+)
+
 
 def _flow_label(*, streamed: bool, called_tools: list[str]) -> str:
     """Метка для лога: ось доставки (LLM / LLM stream) + факт вызова тулов."""
@@ -234,6 +244,7 @@ async def run_schedule_aware_response(
     is_group_chat = message.chat.type in ("group", "supergroup")
     messages = _inject_system_note(messages, SCHEDULE_PRESENTATION_NOTE)
     messages = _inject_system_note(messages, WEB_SEARCH_NOTE)
+    messages = _inject_system_note(messages, REMINDER_NOTE)
     prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
     renderer = StreamRenderer(message, prefix=prefix)
     await renderer.start(pick_placeholder_variant().text)
@@ -245,7 +256,7 @@ async def run_schedule_aware_response(
     try:
         result: ToolLoopResult = await run_tool_loop(
             messages, tool_context, registry=registry, llm_call=llm_call,
-            on_tool_start=renderer.show_tool_indicator)
+            max_tool_rounds=2, on_tool_start=renderer.show_tool_indicator)
     except LLMServiceError as exc:
         logger.warning("tool-flow LLM error: %s", exc)
         await renderer.finalize(ERROR_NOTICE_PLAIN)

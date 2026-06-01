@@ -23,6 +23,9 @@ from src.bot.handlers import chat_commands as chat_commands_module
 from src.bot.handlers import chat_group as chat_group_module
 from src.bot.handlers import chat_pm as chat_pm_module
 from src.bot.services.schedule_tools import build_schedule_registry
+from src.bot.scheduler.reminder_scheduler import start_reminder_scheduler
+from src.bot.services.reminder_tools import build_reminder_registry
+from src.bot.handlers import reminder_callbacks as reminder_callbacks_module
 from src.config.settings import (
     RUZ_BASE_URL, RUZ_FACULTY_ID, RUZ_HTTP_TIMEOUT,
     RUZ_WEEKS_AHEAD, RUZ_LAZY_TTL_MIN, RUZ_GROUP_IDS,
@@ -47,6 +50,9 @@ async def main() -> None:
         schedule_scheduler_instance = start_schedule_scheduler(bot)
         pinned_scheduler_instance = start_pinned_schedule_scheduler(bot)
         auto_refresh_instance = start_schedule_auto_refresh_scheduler(bot)
+        reminder_scheduler_instance = start_reminder_scheduler(bot)
+        await reminder_scheduler_instance.start()
+        reminder_callbacks_module.scheduler = reminder_scheduler_instance
 
         refresher = None
         if SCHEDULE_AUTO_UPDATE_ENABLED:
@@ -83,6 +89,9 @@ async def main() -> None:
             logger.info("Тул web_search подключён (Tavily)")
         else:
             logger.info("web_search выключен (TAVILY_API_KEY не задан)")
+        for name, spec in build_reminder_registry(scheduler=reminder_scheduler_instance).items():
+            tool_registry.register(name, spec)
+        logger.info("Тулы напоминаний подключены")
         chat_group_module.tool_registry = tool_registry
         chat_pm_module.tool_registry = tool_registry
         logger.info("Реестр тулов подключён (refresh: %s)", "вкл" if refresher else "выкл")
