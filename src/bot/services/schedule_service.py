@@ -150,6 +150,8 @@ class ScheduleService:
                 buckets[k] = ev
             else:
                 existing.groups = existing.groups | ev.groups
+                existing.lesson_groups = existing.lesson_groups | ev.lesson_groups
+                existing.teachers = existing.teachers | ev.teachers
         return list(buckets.values())
 
     def _save_cache(self) -> None:

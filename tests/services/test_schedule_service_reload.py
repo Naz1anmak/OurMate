@@ -39,6 +39,30 @@ def test_read_schedule_json_stamps_group_code_and_reads_lesson_groups(tmp_groups
     assert loaded[0].lesson_groups == frozenset({"Group A"})
 
 
+def test_merge_duplicates_unions_lesson_groups_and_teachers():
+    a = ScheduleEvent(
+        summary="Поток", location="DL",
+        start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
+        groups=frozenset({"40001"}),
+        lesson_groups=frozenset({"Group A", "Group B"}),
+        teachers=frozenset({"Иванов И.И."}),
+    )
+    b = ScheduleEvent(
+        summary="Поток", location="DL",
+        start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
+        groups=frozenset({"40002"}),
+        lesson_groups=frozenset({"Group C"}),
+        teachers=frozenset({"Петров П.П."}),
+    )
+    merged = ScheduleService._merge_duplicates([a, b])
+    assert len(merged) == 1
+    assert merged[0].groups == frozenset({"40001", "40002"})
+    assert merged[0].lesson_groups == frozenset({"Group A", "Group B", "Group C"})
+    assert merged[0].teachers == frozenset({"Иванов И.И.", "Петров П.П."})
+
+
 def test_load_events_from_schedule_json_per_group(tmp_groups_dir):
     save_schedule("40001", [_ev("40001", 10)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
     save_schedule("40002", [_ev("40002", 12)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
