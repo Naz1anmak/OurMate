@@ -73,8 +73,7 @@ async def on_reminder_callback(query: CallbackQuery) -> None:
     if action == "ok":      # подтвердить черновик (ЛС)
         await reminder_store.set_status(reminder_id, "pending")
         scheduler.schedule(reminder_id, rem["fire_at"])
-        await _safe_edit(query, rs.render_confirm_pm(rem, now) + f"\n\n{E.CHECK} Создано",
-                         parse_mode="HTML")
+        await _safe_edit(query, rs.render_created(rem, now), parse_mode="HTML")
         await query.answer("Готово")
     elif action == "no":    # отменить черновик
         await reminder_store.set_status(reminder_id, "cancelled")

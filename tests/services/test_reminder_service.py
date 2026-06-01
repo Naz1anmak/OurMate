@@ -60,6 +60,21 @@ def test_render_ping_splits_over_50():
     assert len(chunks) == 3  # 50 + 50 + 20
 
 
+def test_render_created_has_no_question():
+    rem = _rem(text="Почистить зубы", fire_at="2026-06-01T15:23:00+03:00")
+    out = rs.render_created(rem, NOW)
+    assert "Почистить зубы" in out
+    assert "▎ сегодня, 15:23" in out
+    assert "Создаём?" not in out          # подтверждённое состояние — без вопроса
+
+
+def test_render_confirm_pm_uses_bar_marker():
+    rem = _rem(text="Созвон", fire_at="2026-06-01T19:00:00+03:00")
+    out = rs.render_confirm_pm(rem, NOW)
+    assert "▎ сегодня, 19:00" in out       # время помечено ▎, без эмодзи-календаря
+    assert "🗓" not in out
+
+
 def test_make_diff():
     old = _rem(text="Созвон", fire_at="2026-06-01T18:00:00+03:00")
     diff = rs.make_diff(old, new_text=None, new_fire_at="2026-06-01T19:00:00+03:00", now=NOW)

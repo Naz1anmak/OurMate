@@ -43,13 +43,20 @@ def render_list(items: list[dict], *, header: str, now: datetime) -> str:
 def render_card(rem: dict, sub_count: int, now: datetime) -> str:
     when = humanize_dt(parse_dt(rem["fire_at"]), now)
     return (f"{E.REMINDER} <b>Напомню:</b> {escape(rem['text'])}\n"
-            f"{E.NO_CLASS_CALENDAR} {when} · участников {sub_count}")
+            f"▎ {when} · участников {sub_count}")
 
 
 def render_confirm_pm(rem: dict, now: datetime) -> str:
     when = humanize_dt(parse_dt(rem["fire_at"]), now)
     return (f"{E.REMINDER} Напомнить: <b>{escape(rem['text'])}</b>\n"
-            f"{E.NO_CLASS_CALENDAR} {when}\n\nСоздаём?")
+            f"▎ {when}\n\nСоздаём?")
+
+
+def render_created(rem: dict, now: datetime) -> str:
+    """Подтверждённое состояние черновика (без вопроса «Создаём?»)."""
+    when = humanize_dt(parse_dt(rem["fire_at"]), now)
+    return (f"{E.REMINDER} Напомню: <b>{escape(rem['text'])}</b>\n"
+            f"▎ {when}")
 
 
 def make_diff(old: dict, *, new_text: str | None, new_fire_at: str | None,
@@ -103,7 +110,8 @@ def card_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
 
 def confirm_keyboard(reminder_id: int, ok_action: str, no_action: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=f"{E.CHECK} Да", callback_data=f"rem:{ok_action}:{reminder_id}"),
+        InlineKeyboardButton(text=f"{E.CHECK} Да", callback_data=f"rem:{ok_action}:{reminder_id}",
+                             style="success"),
         InlineKeyboardButton(text=f"{E.CROSS} Отмена", callback_data=f"rem:{no_action}:{reminder_id}",
                              style="danger"),
     ]])
