@@ -100,105 +100,46 @@ async def test_stream_renderer_streamed_flag_false_without_feed():
 
 
 @pytest.mark.asyncio
-async def test_stream_renderer_group_streams_immediately_by_default():
-    """Дефолт open_delay=0: в группе стрим идёт с первого же feed, без ожидания (как просили)."""
-    from src.bot.handlers.llm_flow import StreamRenderer
-    message = AsyncMock()
-    message.chat.type = "supergroup"
-    r = StreamRenderer(message)                          # open_delay по умолчанию = 0.0
-    await r.start("ожидаю…")
-    message.bot.edit_message_text.reset_mock()
-    await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
-    assert r.streamed is True
-    message.bot.edit_message_text.assert_awaited()
-
-
-@pytest.mark.asyncio
-async def test_stream_renderer_group_within_grace_buffers_without_render():
-    """В пределах грейс-окна feed() копит в буфер, но не рендерит (вдруг это преамбула перед тулом)."""
-    from src.bot.handlers.llm_flow import StreamRenderer
-    message = AsyncMock()
-    message.chat.type = "supergroup"
-    t = {"v": 1000.0}
-    r = StreamRenderer(message, open_delay=0.35, clock=lambda: t["v"])
-    await r.start("ожидаю…")
-    message.bot.edit_message_text.reset_mock()
-    await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
-    assert r.streamed is False                          # грейс не вышел — плейсхолдер не правился
-    message.bot.edit_message_text.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_stream_renderer_grace_auto_opens_after_delay():
-    """Грейс истёк, а тула нет → затвор открывается сам, текстовый ответ стримится живьём."""
-    from src.bot.handlers.llm_flow import StreamRenderer
-    message = AsyncMock()
-    message.chat.type = "supergroup"
-    t = {"v": 1000.0}
-    r = StreamRenderer(message, open_delay=0.35, clock=lambda: t["v"])
-    await r.start("ожидаю…")
-    message.bot.edit_message_text.reset_mock()
-    await r.feed("первый кусок ")                        # t=1000, в пределах грейса → молчим
-    assert r.streamed is False
-    t["v"] = 1000.5                                      # 0.5с > 0.35с — грейс прошёл
-    await r.feed("и достаточно длинный хвост ответа без всякого тула")
-    assert r.streamed is True                            # авто-открытие, живой стрим пошёл
-    message.bot.edit_message_text.assert_awaited()
-
-
-@pytest.mark.asyncio
-async def test_stream_renderer_tool_before_grace_no_preamble_shown():
-    """tool_call в пределах грейса → open_gate сбрасывает буфер, преамбулу не показали."""
-    from src.bot.handlers.llm_flow import StreamRenderer
-    message = AsyncMock()
-    message.chat.type = "supergroup"
-    t = {"v": 1000.0}
-    r = StreamRenderer(message, open_delay=0.35, clock=lambda: t["v"])
-    await r.start("ожидаю…")
-    message.bot.edit_message_text.reset_mock()
-    await r.feed("сейчас гляну ")                        # болтовня-преамбула, грейс ещё идёт
-    assert r.streamed is False
-    r.open_gate()                                        # пришёл tool_call → буфер сброшен на префикс
-    assert r.buffer == r.prefix
-    message.bot.edit_message_text.assert_not_awaited()   # преамбула так и не отрисовалась
-
-
-@pytest.mark.asyncio
-async def test_stream_renderer_group_open_gate_starts_streaming():
+async def test_stream_renderer_group_streams_immediately():
+    """В группе стрим идёт с первого же feed, без ожидания."""
     from src.bot.handlers.llm_flow import StreamRenderer
     message = AsyncMock()
     message.chat.type = "supergroup"
     r = StreamRenderer(message)
     await r.start("ожидаю…")
-    r.open_gate()                                       # тул стартовал — открываем живой стрим
+    message.bot.edit_message_text.reset_mock()
     await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
     assert r.streamed is True
+    message.bot.edit_message_text.assert_awaited()
 
 
 @pytest.mark.asyncio
-async def test_stream_renderer_pm_default_uses_draft_grace():
-    """В ЛС дефолт = DRAFT_OPEN_DELAY: короткая преамбула не открывает драфт (он бы залип при гашении)."""
+async def test_stream_renderer_pm_streams_immediately():
+    """В ЛС стрим идёт драфтом с первого же feed (грейса больше нет)."""
     from src.bot.handlers.llm_flow import StreamRenderer
+    from aiogram.methods import SendMessageDraft
     message = AsyncMock()
     message.chat.type = "private"
-    t = {"v": 1000.0}
-    r = StreamRenderer(message, clock=lambda: t["v"])    # open_delay по умолчанию → грейс ЛС
-    assert r.open_delay == StreamRenderer.DRAFT_OPEN_DELAY
-    await r.feed("первый кусок ")                        # в пределах грейса — драфт ещё не шлём
-    assert r.streamed is False
-    t["v"] = 1000.5                                      # грейс прошёл
-    await r.feed("длинный хвост ответа без тула")
-    assert r.streamed is True                            # дальше стримим живьём
+    r = StreamRenderer(message)
+    await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
+    assert r.streamed is True
+    sent = message.bot.call_args.args[0]
+    assert isinstance(sent, SendMessageDraft) and sent.text
 
 
 @pytest.mark.asyncio
-async def test_stream_renderer_group_default_no_grace():
-    """В группе дефолт = 0: ретракт плейсхолдера мгновенный, грейс не нужен."""
+async def test_stream_renderer_reset_buffer_drops_pretool_chatter():
+    """reset_buffer на старте тула сбрасывает буфер на префикс — болтовня раунда 1 не
+    примешается к пост-тульному ответу второго раунда."""
     from src.bot.handlers.llm_flow import StreamRenderer
     message = AsyncMock()
     message.chat.type = "supergroup"
-    r = StreamRenderer(message)
-    assert r.open_delay == 0.0
+    r = StreamRenderer(message, prefix="Имя, ")
+    await r.start("ожидаю…")
+    await r.feed("сейчас гляну...")
+    r.reset_buffer()
+    assert r.buffer == r.prefix == "Имя, "
+    assert r.last_sent_len == len(r.prefix)
 
 
 @pytest.mark.asyncio
