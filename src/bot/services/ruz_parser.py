@@ -87,16 +87,7 @@ def save_schedule(code: str, events: list[ScheduleEvent], *, fetched_at: datetim
 
     payload = {
         "fetched_at": fetched_at.isoformat(),
-        "events": [
-            {
-                "summary": e.summary,
-                "kind": e.kind,
-                "location": e.location,
-                "start": e.start.isoformat(),
-                "end": e.end.isoformat(),
-            }
-            for e in events
-        ],
+        "events": [e.to_dict() for e in events],
     }
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, target)
@@ -110,15 +101,7 @@ def load_schedule(code: str) -> tuple[datetime | None, list[ScheduleEvent]]:
     try:
         raw = json.loads(target.read_text(encoding="utf-8"))
         fetched = datetime.fromisoformat(raw["fetched_at"])
-        events: list[ScheduleEvent] = []
-        for item in raw.get("events", []):
-            events.append(ScheduleEvent(
-                summary=item["summary"],
-                location=item.get("location", ""),
-                start=datetime.fromisoformat(item["start"]),
-                end=datetime.fromisoformat(item["end"]),
-                kind=item.get("kind", ""),
-            ))
+        events = [ScheduleEvent.from_dict(item) for item in raw.get("events", [])]
         return fetched, events
     except Exception as exc:  # noqa: BLE001
         logger.warning("schedule.json %s повреждён или нечитаем: %s", target, exc)

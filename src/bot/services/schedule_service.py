@@ -110,27 +110,12 @@ class ScheduleService:
 
     @staticmethod
     def _read_schedule_json(path: Path, code: str) -> List[ScheduleEvent]:
-        """Читает schedule.json для одной группы. При отсутствии/ошибке — [].
-
-        Локальная десериализация (не через ruz_parser.load_schedule), чтобы не зависеть
-        от ruz_parser: ruz_parser импортирует ScheduleEvent отсюда → циклический импорт
-        ломает загрузку модуля при первой инициализации.
-        """
+        """Читает schedule.json для одной группы. При отсутствии/ошибке — []."""
         if not path.exists():
             return []
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-            events: List[ScheduleEvent] = []
-            for item in raw.get("events", []):
-                events.append(ScheduleEvent(
-                    summary=item["summary"],
-                    location=item.get("location", ""),
-                    start=datetime.fromisoformat(item["start"]),
-                    end=datetime.fromisoformat(item["end"]),
-                    kind=item.get("kind", ""),
-                    groups=frozenset({code}),
-                ))
-            return events
+            return [ScheduleEvent.from_dict(item, group_code=code) for item in raw.get("events", [])]
         except Exception:
             logger.warning("schedule.json %s повреждён или нечитаем", path)
             return []
@@ -172,13 +157,7 @@ class ScheduleService:
         try:
             SCHEDULE_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
             serializable = [
-                {
-                    "summary": e.summary,
-                    "location": e.location,
-                    "start": e.start.isoformat(),
-                    "end": e.end.isoformat(),
-                    "groups": sorted(e.groups),
-                }
+                {**e.to_dict(), "groups": sorted(e.groups)}
                 for e in self.events
             ]
             SCHEDULE_CACHE_FILE.write_text(

@@ -38,6 +38,21 @@ def test_save_load_round_trip(tmp_groups_dir):
     assert loaded_events[1].kind == "Практика"
 
 
+def test_round_trip_preserves_groups_and_teachers(tmp_groups_dir):
+    ev = ScheduleEvent(
+        summary="X", location="101, B-1",
+        start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
+        kind="Лекция",
+        lesson_groups=frozenset({"Group A", "Group B"}),
+        teachers=frozenset({"Иванов И.И."}),
+    )
+    save_schedule("40001", [ev], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
+    _fetched, loaded = load_schedule("40001")
+    assert loaded[0].lesson_groups == frozenset({"Group A", "Group B"})
+    assert loaded[0].teachers == frozenset({"Иванов И.И."})
+
+
 def test_load_returns_none_and_empty_when_no_file(tmp_groups_dir):
     fetched, events = load_schedule("40001")
     assert fetched is None

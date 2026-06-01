@@ -26,6 +26,19 @@ def _ev(code, hh):
     )
 
 
+def test_read_schedule_json_stamps_group_code_and_reads_lesson_groups(tmp_groups_dir):
+    ev = ScheduleEvent(
+        summary="X", location="101",
+        start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
+        kind="Лекция", lesson_groups=frozenset({"Group A"}),
+    )
+    save_schedule("40001", [ev], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
+    loaded = ScheduleService._read_schedule_json(tmp_groups_dir / "40001" / "schedule.json", "40001")
+    assert loaded[0].groups == frozenset({"40001"})
+    assert loaded[0].lesson_groups == frozenset({"Group A"})
+
+
 def test_load_events_from_schedule_json_per_group(tmp_groups_dir):
     save_schedule("40001", [_ev("40001", 10)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
     save_schedule("40002", [_ev("40002", 12)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
