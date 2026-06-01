@@ -53,7 +53,7 @@ async def create_reminder(when_iso: str, text: str, *, tool_context: dict,
     if is_group:
         msg = await bot.send_message(
             chat_id, rs.render_card(rem, 0, now), parse_mode="HTML",
-            reply_markup=rs.card_keyboard(rid, False))
+            reply_markup=rs.card_keyboard(rid))
         await store.set_card_message_id(rid, msg.message_id)
         if scheduler is not None:
             scheduler.schedule(rid, when_iso)

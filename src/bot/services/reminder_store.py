@@ -1,7 +1,7 @@
 """SQLite-слой напоминаний (aiosqlite). Источник правды."""
 import aiosqlite
 
-from src.config.settings import REMINDER_DB_PATH
+from src.config.settings import REMINDER_DB_PATH, REMINDER_RETENTION_DAYS
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS reminders (
@@ -128,6 +128,18 @@ class ReminderStore:
 
     async def list_all_pending(self) -> list[dict]:
         return await self._list("status = 'pending'", ())
+
+    async def cleanup_old(self, *, days: int = REMINDER_RETENTION_DAYS) -> int:
+        """Удаляет завершённые/отменённые/неподтверждённые записи старше N дней.
+        Активные pending не трогаются (фильтр по статусу). Возвращает число удалённых."""
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "DELETE FROM reminders WHERE status IN ('fired', 'cancelled', 'draft') "
+                "AND created_at < datetime('now', ?)",
+                (f"-{days} days",))
+            await db.commit()
+            return cur.rowcount
 
     async def toggle_subscriber(self, reminder_id: int, *, user_id: int,
                                 first_name: str | None, username: str | None) -> bool:

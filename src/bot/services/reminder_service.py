@@ -93,13 +93,11 @@ def can_modify(rem: dict, *, user_id: int, is_owner: bool) -> bool:
 
 # ── Клавиатуры (aiogram 3.26: InlineKeyboardButton.style) ──────────────────
 
-def card_keyboard(reminder_id: int, subscribed: bool) -> InlineKeyboardMarkup:
-    if subscribed:
-        btn = InlineKeyboardButton(text="Отписаться", callback_data=f"rem:sub:{reminder_id}",
-                                   style="danger")
-    else:
-        btn = InlineKeyboardButton(text="Напомни и мне", callback_data=f"rem:sub:{reminder_id}",
-                                   style="primary")
+def card_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
+    """Одна статичная кнопка-toggle. Метка не зависит от того, кто подписан
+    (карточка общая для всех), персональный результат сообщается тостом в callback."""
+    btn = InlineKeyboardButton(text="Подписаться / Отписаться",
+                               callback_data=f"rem:sub:{reminder_id}", style="primary")
     return InlineKeyboardMarkup(inline_keyboard=[[btn]])
 
 

@@ -39,6 +39,9 @@ class ReminderScheduler:
 
     async def start(self) -> None:
         await self.store.init()
+        removed = await self.store.cleanup_old()
+        if removed:
+            logger.info("Старые напоминания вычищены: %s", removed)
         now = datetime.now(TIMEZONE)
         restored = late = stale = 0
         for rem in await self.store.list_all_pending():

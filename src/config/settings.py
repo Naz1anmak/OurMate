@@ -61,6 +61,8 @@ WEB_SEARCH_DAILY_CAP = _get_env("WEB_SEARCH_DAILY_CAP", 200, cast=int, log_defau
 # ===== Напоминания =====
 REMINDER_DB_PATH = _get_env("REMINDER_DB_PATH", "data/reminders.db", log_default=True)
 REMINDER_MISFIRE_HOURS = _get_env("REMINDER_MISFIRE_HOURS", 24, cast=int, log_default=True)
+# Срок хранения завершённых/отменённых/неподтверждённых записей (дни). Чистка — при старте.
+REMINDER_RETENTION_DAYS = _get_env("REMINDER_RETENTION_DAYS", 7, cast=int, log_default=True)
 
 # ===== НАСТРОЙКИ ДНЕЙ РОЖДЕНИЯ =====
 # Путь к файлу с данными о днях рождения
