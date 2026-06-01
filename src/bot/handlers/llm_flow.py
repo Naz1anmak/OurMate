@@ -108,17 +108,22 @@ TOOL_INDICATORS = {
 class StreamRenderer:
     """Живой стрим: группа — эдиты плейсхолдера, ЛС — драфты. feed() — приёмник токенов."""
 
-    def __init__(self, message, *, prefix: str = ""):
+    def __init__(self, message, *, prefix: str = "", open_delay: float = 0.35, clock=time.monotonic):
         self.message = message
         self.is_group = message.chat.type in ("group", "supergroup")
         self.use_draft = message.chat.type == "private"
         self.placeholder = None
         self.streamed = False
-        # Затвор живого стрима. В ЛС открыт сразу — драфт стримится живьём (мигание при tool-call
-        # допустимо, главное быстро гасить, см. discard). В группе закрыт до старта тула (open_gate):
-        # там плейсхолдер ожидания уже виден, и болтовня фазы-1 не должна мелькать поверх него,
-        # иначе при tool-call её пришлось бы стирать.
-        self.gate_open = self.use_draft
+        # Затвор живого стрима с грейс-окном (open_delay). С первого content-токена ждём open_delay:
+        # если за это окно reply окажется tool-call'ом, on_tool_start откроет затвор сам (сбросив
+        # буфер) и покажет индикатор — преамбулу мы не показали, стирать нечего (модель перестаёт
+        # слать content, как только пошли tool_calls, поэтому авто-открытие просто не сработает).
+        # Не дождались тула — это текстовый ответ, открываем затвор и стримим живьём. Грейс работает
+        # одинаково в группе и в ЛС: убирает мелькание преамбулы перед тулом в обоих местах.
+        self.gate_open = False
+        self._clock = clock
+        self.open_delay = open_delay
+        self.first_token_ts = None
         self.draft_id = int(time.monotonic_ns() % 900_000_000) + 1
         self.prefix = prefix
         self.buffer = prefix
@@ -158,9 +163,15 @@ class StreamRenderer:
 
     async def feed(self, token: str) -> None:
         self.buffer += token
+        now = self._clock()
         if not self.gate_open:
-            return  # затвор закрыт — копим молча, пока не ясно, не tool-call ли это (см. open_gate)
-        now = time.monotonic()
+            if self.first_token_ts is None:
+                self.first_token_ts = now
+            # Грейс: пока окно не вышло — копим молча (вдруг это болтовня перед tool-call'ом).
+            # Истекло, а тула всё нет → это текстовый ответ, открываем затвор и стримим.
+            if now - self.first_token_ts < self.open_delay:
+                return
+            self.gate_open = True
         if (len(self.buffer) - self.last_sent_len) < self.min_chars and (now - self.last_flush) < self.min_interval:
             return
         await self._render(self.buffer)
