@@ -27,6 +27,14 @@ def test_time_context_line_has_today_and_weekday():
     assert _WEEKDAY_RU[now.weekday()] in line
 
 
+def test_time_context_line_has_current_time_and_relative_hint():
+    import re
+    line = build_time_context_line()
+    assert "сейчас" in line.lower()             # есть текущий момент, не только дата
+    assert re.search(r"\b\d{2}:\d{2}\b", line)  # время в HH:MM
+    assert "через" in line                      # подсказка про относительное время
+
+
 def test_build_llm_messages_injects_time_context_system():
     messages = build_llm_messages(-999_999, "что в субботу?")
     assert messages[0]["role"] == "system"          # персона
