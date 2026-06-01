@@ -53,6 +53,11 @@ async def on_reminder_callback(query: CallbackQuery) -> None:
         await query.answer()
     elif action == "upd":   # применить отложенную правку
         await reminder_store.apply_pending_update(reminder_id)
+        # Правка может прийти на черновик (ЛС, ещё не подтверждён): подтверждение
+        # правки заодно активирует напоминание, иначе job выстрелит вхолостую (_fire
+        # пропускает не-pending).
+        if rem["status"] == "draft":
+            await reminder_store.set_status(reminder_id, "pending")
         fresh = await reminder_store.get(reminder_id)
         scheduler.schedule(reminder_id, fresh["fire_at"])
         await _refresh_card(query.bot, fresh, now)

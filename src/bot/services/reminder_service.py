@@ -96,9 +96,10 @@ def can_modify(rem: dict, *, user_id: int, is_owner: bool) -> bool:
 def card_keyboard(reminder_id: int, subscribed: bool) -> InlineKeyboardMarkup:
     if subscribed:
         btn = InlineKeyboardButton(text="Отписаться", callback_data=f"rem:sub:{reminder_id}",
-                                   style="destructive")
+                                   style="danger")
     else:
-        btn = InlineKeyboardButton(text="Напомни и мне", callback_data=f"rem:sub:{reminder_id}")
+        btn = InlineKeyboardButton(text="Напомни и мне", callback_data=f"rem:sub:{reminder_id}",
+                                   style="primary")
     return InlineKeyboardMarkup(inline_keyboard=[[btn]])
 
 
@@ -106,5 +107,5 @@ def confirm_keyboard(reminder_id: int, ok_action: str, no_action: str) -> Inline
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=f"{E.CHECK} Да", callback_data=f"rem:{ok_action}:{reminder_id}"),
         InlineKeyboardButton(text=f"{E.CROSS} Отмена", callback_data=f"rem:{no_action}:{reminder_id}",
-                             style="destructive"),
+                             style="danger"),
     ]])

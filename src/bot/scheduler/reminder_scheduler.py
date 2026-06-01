@@ -77,13 +77,19 @@ class ReminderScheduler:
         subs = await self.store.list_subscribers(reminder_id) if rem["scope"] == "chat" else []
         target = rem["chat_id"]
         chunks = rs.render_ping(rem, subs, late_note=late_note)
+        delivered = False
         for chunk in chunks:
             try:
                 await self.bot.send_message(target, chunk, parse_mode="HTML",
                                             disable_web_page_preview=True)
+                delivered = True
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Не удалось отправить напоминание %s: %s", reminder_id, exc)
-        await self.store.set_status(reminder_id, "fired")
+        if delivered:
+            await self.store.set_status(reminder_id, "fired")
+        else:
+            logger.warning("Напоминание %s не доставлено ни одним сообщением — "
+                           "оставляю pending до следующего рестарта", reminder_id)
 
     def stop(self) -> None:
         self.scheduler.shutdown()
