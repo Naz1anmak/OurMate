@@ -40,12 +40,22 @@ def parse_lessons(raw_lessons: list[dict]) -> list[ScheduleEvent]:
             summary = (lesson.get("subject") or "").strip()
             kind = normalize_kind((lesson.get("typeObj") or {}).get("name"))
             location = _format_location(lesson.get("auditories") or [])
+            lesson_groups = frozenset(
+                name for g in (lesson.get("groups") or [])
+                if (name := (g.get("name") or "").strip())
+            )
+            teachers = frozenset(
+                name for t in (lesson.get("teachers") or [])
+                if (name := (t.get("full_name") or "").strip())
+            )
             events.append(ScheduleEvent(
                 summary=summary,
                 location=location,
                 start=start,
                 end=end,
                 kind=kind,
+                lesson_groups=lesson_groups,
+                teachers=teachers,
             ))
         except Exception as exc:  # noqa: BLE001
             logger.warning("Пропускаю битый lesson %r: %s", lesson.get("subject"), exc)

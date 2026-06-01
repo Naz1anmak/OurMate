@@ -31,6 +31,25 @@ def test_parse_lessons_extracts_summary_time_location_kind():
     assert b.kind == "Практика"
 
 
+def test_parse_lessons_extracts_groups_and_teachers():
+    events = parse_lessons(_flatten(FIXTURE))
+    a, b = events
+    assert a.lesson_groups == frozenset({"Group A", "Group B"})
+    assert a.teachers == frozenset({"Иванов И.И."})
+    assert b.lesson_groups == frozenset({"Group A"})
+    assert b.teachers == frozenset({"Петров П.П."})
+
+
+def test_parse_lessons_missing_groups_teachers_default_empty():
+    raw = [{
+        "subject": "Solo", "time_start": "14:00", "time_end": "15:40",
+        "auditories": [], "typeObj": {"name": "Лекции"}, "__date": "2026-05-27",
+    }]
+    events = parse_lessons(raw)
+    assert events[0].lesson_groups == frozenset()
+    assert events[0].teachers == frozenset()
+
+
 def test_normalize_kind_known_mappings():
     assert normalize_kind("Лекции") == "Лекция"
     assert normalize_kind("Практические занятия") == "Практика"
