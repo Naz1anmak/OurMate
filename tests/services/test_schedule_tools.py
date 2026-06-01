@@ -232,3 +232,19 @@ def test_build_registry_has_both_tools_and_gate():
     # схема get_schedule требует обе даты
     params = reg.get("get_schedule").schema["function"]["parameters"]
     assert set(params["required"]) == {"date_from", "date_to"}
+
+
+def test_event_payload_includes_lesson_groups_and_teachers():
+    from src.bot.services.schedule_tools import _event_payload
+    ev = ScheduleEvent(
+        summary="Subject A", location="101",
+        start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
+        kind="Лекция", groups=frozenset({"40001"}),
+        lesson_groups=frozenset({"Group B", "Group A"}),
+        teachers=frozenset({"Иванов И.И."}),
+    )
+    payload = _event_payload(ev)
+    assert payload["lesson_groups"] == ["Group A", "Group B"]
+    assert payload["teachers"] == ["Иванов И.И."]
+    assert payload["groups"] == ["40001"]
