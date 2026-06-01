@@ -77,7 +77,7 @@ async def on_reminder_callback(query: CallbackQuery) -> None:
         await query.answer("Готово")
     elif action == "no":    # отменить черновик
         await reminder_store.set_status(reminder_id, "cancelled")
-        await _safe_edit(query, f"{E.CROSS} Отменено")
+        await _safe_edit(query, f"{E.CROSS} Напоминание отменено", parse_mode="HTML")
         await query.answer()
     elif action == "upd":   # применить отложенную правку
         await reminder_store.apply_pending_update(reminder_id)
@@ -89,7 +89,7 @@ async def on_reminder_callback(query: CallbackQuery) -> None:
         fresh = await reminder_store.get(reminder_id)
         scheduler.schedule(reminder_id, fresh["fire_at"])
         await _refresh_card(query.bot, fresh, now)
-        await _safe_edit(query, f"{E.CHECK} Обновлено")
+        await _safe_edit(query, f"{E.CHECK} Обновлено", parse_mode="HTML")
         await query.answer("Обновлено")
     elif action == "undo":  # отказаться от правки
         await reminder_store.clear_pending_update(reminder_id)
@@ -98,7 +98,7 @@ async def on_reminder_callback(query: CallbackQuery) -> None:
     elif action == "del":   # подтвердить отмену
         await reminder_store.set_status(reminder_id, "cancelled")
         scheduler.unschedule(reminder_id)
-        await _safe_edit(query, f"{E.CROSS} Напоминание отменено")
+        await _safe_edit(query, f"{E.CROSS} Напоминание отменено", parse_mode="HTML")
         await query.answer("Отменено")
     elif action == "keep":  # передумал отменять
         await _safe_edit(query, "Оставил напоминание")

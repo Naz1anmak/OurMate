@@ -108,21 +108,29 @@ TOOL_INDICATORS = {
 class StreamRenderer:
     """Живой стрим: группа — эдиты плейсхолдера, ЛС — драфты. feed() — приёмник токенов."""
 
-    def __init__(self, message, *, prefix: str = "", open_delay: float = 0.35, clock=time.monotonic):
+    # Грейс открытия затвора в ЛС: короткая преамбула перед tool-call'ом не успевает открыть драфт,
+    # который потом залипает при гашении (Telegram убирает пустой draft с лагом). В группе грейс не
+    # нужен — плейсхолдер гасится мгновенным delete_message, поэтому там дефолт 0.
+    DRAFT_OPEN_DELAY = 0.35
+
+    def __init__(self, message, *, prefix: str = "", open_delay: float | None = None, clock=time.monotonic):
         self.message = message
         self.is_group = message.chat.type in ("group", "supergroup")
         self.use_draft = message.chat.type == "private"
         self.placeholder = None
         self.streamed = False
-        # Затвор живого стрима с грейс-окном (open_delay). С первого content-токена ждём open_delay:
-        # если за это окно reply окажется tool-call'ом, on_tool_start откроет затвор сам (сбросив
-        # буфер) и покажет индикатор — преамбулу мы не показали, стирать нечего (модель перестаёт
-        # слать content, как только пошли tool_calls, поэтому авто-открытие просто не сработает).
-        # Не дождались тула — это текстовый ответ, открываем затвор и стримим живьём. Грейс работает
-        # одинаково в группе и в ЛС: убирает мелькание преамбулы перед тулом в обоих местах.
+        # Затвор живого стрима с грейс-окном (open_delay). С первого content-токена ждём open_delay,
+        # прежде чем стримить: если за это окно reply окажется tool-call'ом, on_tool_start откроет
+        # затвор сам (сбросив буфер) — преамбулу мы не показали и ретрактить нечего.
+        # Дефолт зависит от стоимости ретракта: в ГРУППЕ плейсхолдер — реальное сообщение, гасится
+        # мгновенным delete_message, поэтому грейс не нужен (0) — первый кадр стрима как можно раньше.
+        # В ЛС стрим идёт ДРАФТОМ, а его гасить можно только пустым text, и Telegram убирает драфт с
+        # лагом (висит) — поэтому держим грейс DRAFT_OPEN_DELAY: короткая преамбула перед тулом просто
+        # не успевает открыть драфт, и гасить потом нечего (см. discard).
         self.gate_open = False
         self._clock = clock
-        self.open_delay = open_delay
+        self.open_delay = open_delay if open_delay is not None else (
+            self.DRAFT_OPEN_DELAY if self.use_draft else 0.0)
         self.first_token_ts = None
         self.draft_id = int(time.monotonic_ns() % 900_000_000) + 1
         self.prefix = prefix
@@ -169,6 +177,7 @@ class StreamRenderer:
                 self.first_token_ts = now
             # Грейс: пока окно не вышло — копим молча (вдруг это болтовня перед tool-call'ом).
             # Истекло, а тула всё нет → это текстовый ответ, открываем затвор и стримим.
+            # По умолчанию open_delay=0 → затвор открывается с первого же токена (стрим сразу).
             if now - self.first_token_ts < self.open_delay:
                 return
             self.gate_open = True
@@ -205,9 +214,10 @@ class StreamRenderer:
             except Exception as exc:  # noqa: BLE001
                 logger.debug("StreamRenderer discard failed: %s", exc)
             self.placeholder = None
-        elif self.use_draft:
-            # Гасим драфт безусловно (пустым текстом) — даже если стрим не успел отрисоваться,
-            # чтобы в ЛС не остался висеть хвост болтовни после карточки тула.
+        elif self.use_draft and self.streamed:
+            # Гасим драфт пустым текстом ТОЛЬКО если мы его реально открыли (что-то отрисовали).
+            # Иначе (грейс не дал преамбуле открыть драфт) слать пустой SendMessageDraft нельзя —
+            # он сам прилетит пустым пузырём после карточки тула. Нет драфта — нечего гасить.
             try:
                 await self.message.bot(SendMessageDraft(
                     chat_id=self.message.chat.id, draft_id=self.draft_id, text=""))
