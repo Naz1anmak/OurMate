@@ -58,6 +58,10 @@ TAVILY_MAX_RESULTS = _get_env("TAVILY_MAX_RESULTS", 5, cast=int, log_default=Tru
 TAVILY_SEARCH_DEPTH = _get_env("TAVILY_SEARCH_DEPTH", "basic", log_default=True)
 WEB_SEARCH_DAILY_CAP = _get_env("WEB_SEARCH_DAILY_CAP", 200, cast=int, log_default=True)
 
+# ===== Напоминания =====
+REMINDER_DB_PATH = _get_env("REMINDER_DB_PATH", "data/reminders.db", log_default=True)
+REMINDER_MISFIRE_HOURS = _get_env("REMINDER_MISFIRE_HOURS", 24, cast=int, log_default=True)
+
 # ===== НАСТРОЙКИ ДНЕЙ РОЖДЕНИЯ =====
 # Путь к файлу с данными о днях рождения
 # По умолчанию ищем файл birthdays.json в папке data относительно корня проекта

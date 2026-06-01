@@ -76,6 +76,9 @@ class E:
     ALARM_CLOCK = Emoji("⏰", premium_id="5413704112220949842")
     NEW = Emoji("🆕", premium_id="5361979468887893611")
 
+    # ── 🔔 Напоминания ─────────────────────────────────────────
+    REMINDER = Emoji("🔔", premium_id="5242628160297641831")
+
 
 ALL_EMOJI: tuple[Emoji, ...] = tuple(
     v for v in vars(E).values() if isinstance(v, Emoji)
