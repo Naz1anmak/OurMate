@@ -46,10 +46,38 @@ class ScheduleEvent:
     end: datetime
     groups: frozenset[str] = field(default_factory=lambda: frozenset({""}))
     kind: str = ""
+    lesson_groups: frozenset[str] = field(default_factory=frozenset)
+    teachers: frozenset[str] = field(default_factory=frozenset)
 
     def key(self) -> tuple:
         """Ключ идентичности для мёрджа дубликатов."""
         return (self.start, self.end, self.summary, self.location)
+
+    def to_dict(self) -> dict:
+        """Сериализация для schedule.json. `groups` (наши коды) не пишем — он folder-derived."""
+        return {
+            "summary": self.summary,
+            "kind": self.kind,
+            "location": self.location,
+            "start": self.start.isoformat(),
+            "end": self.end.isoformat(),
+            "lesson_groups": sorted(self.lesson_groups),
+            "teachers": sorted(self.teachers),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict, *, group_code: str = "") -> "ScheduleEvent":
+        """Единственная точка десериализации. `groups` ставится из кода папки (folder-derived)."""
+        return cls(
+            summary=data["summary"],
+            location=data.get("location", ""),
+            start=datetime.fromisoformat(data["start"]),
+            end=datetime.fromisoformat(data["end"]),
+            kind=data.get("kind", ""),
+            groups=frozenset({group_code}),
+            lesson_groups=frozenset(data.get("lesson_groups") or []),
+            teachers=frozenset(data.get("teachers") or []),
+        )
 
 class ScheduleService:
     def __init__(self, timezone: ZoneInfo = TIMEZONE):
