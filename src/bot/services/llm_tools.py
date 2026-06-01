@@ -129,6 +129,13 @@ async def run_tool_loop(
                 "content": json.dumps(result, ensure_ascii=False),
             })
 
+        # Тул сам отправил готовое сообщение (карточка/подтверждение) — второй вызов LLM не нужен:
+        # незачем генерить подтверждающую фразу, которую мы всё равно подавим (и которая успевает
+        # мелькнуть в стриме/драфте). Завершаемся сразу.
+        if silent:
+            return ToolLoopResult(text="", deferred_messages=deferred,
+                                  called_tools=called, suppress_text=True)
+
         rounds += 1
         if rounds > max_tool_rounds:
             reply = await llm_call(work, None)  # финал без тулов

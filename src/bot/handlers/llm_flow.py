@@ -170,8 +170,8 @@ class StreamRenderer:
             logger.debug("StreamRenderer render failed: %s", exc)
 
     async def discard(self) -> None:
-        """Убирает плейсхолдер ожидания: сообщение уже отправил тул, болтовня LLM не нужна.
-        В ЛС плейсхолдера нет (стрим — эфемерные драфты), удалять нечего."""
+        """Убирает индикатор: сообщение уже отправил тул, болтовня LLM не нужна.
+        В группе — удаляем плейсхолдер ожидания; в ЛС — гасим повисший драфт (пустым)."""
         if self.placeholder:
             try:
                 await self.message.bot.delete_message(
@@ -179,6 +179,12 @@ class StreamRenderer:
             except Exception as exc:  # noqa: BLE001
                 logger.debug("StreamRenderer discard failed: %s", exc)
             self.placeholder = None
+        elif self.use_draft and self.streamed:
+            try:
+                await self.message.bot(SendMessageDraft(
+                    chat_id=self.message.chat.id, draft_id=self.draft_id, text=""))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("StreamRenderer draft clear failed: %s", exc)
 
     async def finalize(self, final_text: str) -> bool:
         """Фиксирует финал: эдит плейсхолдера (группа) или реальное сообщение (ЛС — драфт эфемерен)."""
