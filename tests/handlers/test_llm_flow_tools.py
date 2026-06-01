@@ -100,11 +100,24 @@ async def test_stream_renderer_streamed_flag_false_without_feed():
 
 
 @pytest.mark.asyncio
-async def test_stream_renderer_streamed_flag_true_after_feed():
+async def test_stream_renderer_gate_closed_buffers_without_render():
+    """До open_gate feed() копит в буфер, но ничего не рендерит (нет мигающей болтовни)."""
     from src.bot.handlers.llm_flow import StreamRenderer
     message = AsyncMock()
     message.chat.type = "private"          # ЛС → драфты
     r = StreamRenderer(message)
+    await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
+    assert r.streamed is False             # затвор закрыт — драфт не слался
+    message.bot.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_streamed_flag_true_after_open_gate():
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "private"          # ЛС → драфты
+    r = StreamRenderer(message)
+    r.open_gate()                          # тул стартовал — открываем живой стрим
     await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
     assert r.streamed is True
 

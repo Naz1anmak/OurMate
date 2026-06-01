@@ -114,7 +114,12 @@ class StreamRenderer:
         self.use_draft = message.chat.type == "private"
         self.placeholder = None
         self.streamed = False
+        # Затвор: пока закрыт, токены копятся в буфер, но НЕ показываются. Открываем его только
+        # когда пошёл тул (open_gate). Так болтовня фазы-1 не мелькает в плейсхолдере/драфте,
+        # если reply окажется tool-call'ом (её пришлось бы стирать — это и было мигание).
+        self.gate_open = False
         self.draft_id = int(time.monotonic_ns() % 900_000_000) + 1
+        self.prefix = prefix
         self.buffer = prefix
         self.last_sent_len = len(prefix)
         self.last_flush = 0.0
@@ -143,8 +148,17 @@ class StreamRenderer:
         except Exception as exc:  # noqa: BLE001
             logger.debug("show_tool_indicator failed: %s", exc)
 
+    def open_gate(self) -> None:
+        """Открывает живой стрим (зовём при старте тула). Буфер сбрасываем на префикс — добитая
+        до тула болтовня не должна примешаться к пост-тульному ответу (web_search и т.п.)."""
+        self.gate_open = True
+        self.buffer = self.prefix
+        self.last_sent_len = len(self.prefix)
+
     async def feed(self, token: str) -> None:
         self.buffer += token
+        if not self.gate_open:
+            return  # затвор закрыт — копим молча, пока не ясно, не tool-call ли это (см. open_gate)
         now = time.monotonic()
         if (len(self.buffer) - self.last_sent_len) < self.min_chars and (now - self.last_flush) < self.min_interval:
             return
@@ -222,9 +236,13 @@ WEB_SEARCH_NOTE = (
 )
 
 REMINDER_NOTE = (
-    "Если пользователь просит создать/изменить/отменить/показать напоминание — используй "
-    "тулы напоминаний. Карточку, подтверждение и список бот отправляет сам отдельным "
-    "сообщением; ты отвечай ОДНОЙ короткой фразой, не пересказывая детали и не выдумывая время."
+    "Если пользователь просит создать/изменить/отменить/показать напоминание — ОБЯЗАТЕЛЬНО вызови "
+    "соответствующий тул напоминаний. Относительное время («через 10 минут», «через две минуты», "
+    "«через час», «через полчаса») — это полноценная просьба о напоминании: посчитай момент от "
+    "контекста времени и передай в when_iso готовой датой-временем. НИКОГДА не пиши «сделано», "
+    "«напомню», «поставил» БЕЗ вызова тула — без вызова напоминание не создаётся, и это будет ложь. "
+    "Карточку, подтверждение и список бот отправляет сам отдельным сообщением; ты отвечай ОДНОЙ "
+    "короткой фразой, не пересказывая детали и не выдумывая время."
 )
 
 
@@ -266,14 +284,19 @@ async def run_schedule_aware_response(
     renderer = StreamRenderer(message, prefix=prefix)
     await renderer.start(pick_placeholder_variant().text)
 
-    # Один и тот же приёмник на обе фазы: болтовня и финал стримятся; тул-фазы content не дают.
+    # Один и тот же приёмник на обе фазы: токены копятся в буфер, но до старта тула затвор
+    # закрыт (болтовня не показывается). Откроется в on_tool_start — тогда стримим пост-тульный ответ.
     async def llm_call(msgs, tools):
         return await stream_with_tools(msgs, tools, on_content_token=renderer.feed)
+
+    async def on_tool_start(name: str) -> None:
+        renderer.open_gate()
+        await renderer.show_tool_indicator(name)
 
     try:
         result: ToolLoopResult = await run_tool_loop(
             messages, tool_context, registry=registry, llm_call=llm_call,
-            max_tool_rounds=2, on_tool_start=renderer.show_tool_indicator)
+            max_tool_rounds=2, on_tool_start=on_tool_start)
     except LLMServiceError as exc:
         logger.warning("tool-flow LLM error: %s", exc)
         await renderer.finalize(ERROR_NOTICE_PLAIN)
