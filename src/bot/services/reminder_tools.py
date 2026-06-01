@@ -50,9 +50,15 @@ async def create_reminder(when_iso: str, text: str, *, tool_context: dict,
                           chat_id=chat_id, author_id=author_id, status=status)
     rem = await store.get(rid)
 
+    when_human = rs.humanize_dt(fire_dt, now)
     if is_group:
+        # Автора сразу подписываем — он почти всегда хочет получить своё же напоминание.
+        await store.toggle_subscriber(rid, user_id=author_id,
+                                      first_name=tool_context.get("first_name"),
+                                      username=tool_context.get("username"))
+        count = await store.count_subscribers(rid)
         msg = await bot.send_message(
-            chat_id, rs.render_card(rem, 0, now), parse_mode="HTML",
+            chat_id, rs.render_card(rem, count, now), parse_mode="HTML",
             reply_markup=rs.card_keyboard(rid))
         await store.set_card_message_id(rid, msg.message_id)
         if scheduler is not None:
@@ -63,9 +69,11 @@ async def create_reminder(when_iso: str, text: str, *, tool_context: dict,
             reply_markup=rs.confirm_keyboard(rid, "ok", "no"))
 
     # Карточка/подтверждение уже отправлены ботом — финальную фразу LLM глушим (_silent),
-    # иначе после карточки прилетает дублирующее «готово».
+    # иначе после карточки прилетает дублирующее «готово». В контекст диалога кладём краткую
+    # служебную пометку (_context_note), чтобы продолжения («перенеси на 16:00») имели опору.
+    note = f"[поставлено напоминание #{rid}: «{text.strip()}» на {when_human}]"
     return {"ok": True, "id": rid, "scope": scope,
-            "when": rs.humanize_dt(fire_dt, now), "posted": True, "_silent": True}
+            "when": when_human, "posted": True, "_silent": True, "_context_note": note}
 
 
 async def list_reminders(*, tool_context: dict, store=reminder_store,
@@ -111,7 +119,8 @@ async def update_reminder(reminder_id: int, *, tool_context: dict,
     await tool_context["bot"].send_message(
         tool_context["chat_id"], diff, parse_mode="HTML",
         reply_markup=rs.confirm_keyboard(reminder_id, "upd", "undo"))
-    return {"ok": True, "id": reminder_id, "awaiting_confirm": True, "_silent": True}
+    return {"ok": True, "id": reminder_id, "awaiting_confirm": True, "_silent": True,
+            "_context_note": f"[предложена правка напоминания #{reminder_id}, ждёт подтверждения]"}
 
 
 async def cancel_reminder(reminder_id: int, *, tool_context: dict,
@@ -128,7 +137,8 @@ async def cancel_reminder(reminder_id: int, *, tool_context: dict,
         tool_context["chat_id"],
         f"{E.CROSS} Отменить «{rem['text']}» ({rs.humanize_dt(rs.parse_dt(rem['fire_at']), now)})?",
         parse_mode="HTML", reply_markup=rs.confirm_keyboard(reminder_id, "del", "keep"))
-    return {"ok": True, "id": reminder_id, "awaiting_confirm": True, "_silent": True}
+    return {"ok": True, "id": reminder_id, "awaiting_confirm": True, "_silent": True,
+            "_context_note": f"[предложена отмена напоминания #{reminder_id}, ждёт подтверждения]"}
 
 
 CREATE_SCHEMA = {

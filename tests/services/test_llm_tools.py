@@ -120,7 +120,7 @@ async def test_deferred_messages_collected():
 async def test_silent_flag_short_circuits_and_suppresses():
     """`_silent` тула → suppress_text и НЕТ второго вызова LLM (тул всё отправил сам)."""
     async def tool(*, tool_context, **kw):
-        return {"ok": True, "_silent": True}
+        return {"ok": True, "_silent": True, "_context_note": "[поставлено напоминание #1]"}
     reg = _registry_with(tool)
     # Только один reply: если бы цикл пошёл в фазу-2, pop из пустого списка упал бы.
     llm_call, calls = _fake_llm([
@@ -130,6 +130,7 @@ async def test_silent_flag_short_circuits_and_suppresses():
                               {"schedule_allowed": True}, registry=reg, llm_call=llm_call)
     assert res.suppress_text is True
     assert res.text == ""
+    assert res.context_note == "[поставлено напоминание #1]"   # пометка для контекста проброшена
     assert len(calls) == 1            # второго (подтверждающего) вызова LLM не было
 
 

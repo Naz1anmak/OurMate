@@ -30,6 +30,9 @@ class ToolLoopResult:
     # Тул сам отправил готовое сообщение (карточка/подтверждение) — финальный текст LLM
     # не показываем, иначе дублируем ответ (см. флаг "_silent" в результате тула).
     suppress_text: bool = False
+    # Краткая служебная пометка от тула ("_context_note") — её кладём в контекст диалога
+    # вместо пустого ответа, когда финал подавлен, чтобы продолжения имели опору.
+    context_note: Optional[str] = None
 
 
 class ToolRegistry:
@@ -74,6 +77,7 @@ async def run_tool_loop(
     deferred: list[str] = []
     called: list[str] = []
     silent = False
+    context_note: Optional[str] = None
     work = list(messages)
     rounds = 0
 
@@ -123,6 +127,9 @@ async def run_tool_loop(
             deferred.extend(result.pop("_deferred", []) or [])
             if result.pop("_silent", False):
                 silent = True
+            note = result.pop("_context_note", None)
+            if note:
+                context_note = note
             work.append({
                 "role": "tool",
                 "tool_call_id": tc["id"],
@@ -134,7 +141,8 @@ async def run_tool_loop(
         # мелькнуть в стриме/драфте). Завершаемся сразу.
         if silent:
             return ToolLoopResult(text="", deferred_messages=deferred,
-                                  called_tools=called, suppress_text=True)
+                                  called_tools=called, suppress_text=True,
+                                  context_note=context_note)
 
         rounds += 1
         if rounds > max_tool_rounds:

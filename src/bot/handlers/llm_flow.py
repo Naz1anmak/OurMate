@@ -290,9 +290,15 @@ async def run_schedule_aware_response(
         return True
 
     final_answer = format_final_answer(first_name, result.text or "", has_context)
-    context_service.save_context(
-        message.chat.id, text_for_llm,
-        format_final_answer("", result.text or "", has_context) if is_group_chat else final_answer)
+    # При подавленном финале (тул сам отправил карточку) в контекст кладём служебную пометку
+    # тула вместо пустого ответа — чтобы продолжения («перенеси на 16:00») имели опору.
+    if result.suppress_text and result.context_note:
+        context_answer = result.context_note
+    elif is_group_chat:
+        context_answer = format_final_answer("", result.text or "", has_context)
+    else:
+        context_answer = final_answer
+    context_service.save_context(message.chat.id, text_for_llm, context_answer)
 
     # Тул уже отправил готовое сообщение (карточка/подтверждение напоминания) — финальную
     # фразу LLM не показываем, только убираем плейсхолдер ожидания. Контекст уже сохранён выше.

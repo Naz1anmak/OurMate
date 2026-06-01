@@ -162,10 +162,13 @@ async def test_suppress_text_skips_final_answer(monkeypatch):
     from src.bot.services.llm_tools import ToolLoopResult
 
     async def fake_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None, **kwargs):
-        return ToolLoopResult(text="готово", called_tools=["create_reminder"], suppress_text=True)
+        return ToolLoopResult(text="", called_tools=["create_reminder"], suppress_text=True,
+                              context_note="[поставлено напоминание #1]")
 
+    saved = {}
     monkeypatch.setattr(flow, "run_tool_loop", fake_loop)
-    monkeypatch.setattr(flow.context_service, "save_context", lambda *a, **k: None)
+    monkeypatch.setattr(flow.context_service, "save_context",
+                        lambda chat_id, q, a: saved.update(answer=a))
 
     message = AsyncMock()
     message.chat.type = "private"
@@ -176,7 +179,8 @@ async def test_suppress_text_skips_final_answer(monkeypatch):
     res = await flow.run_schedule_aware_response(
         message, [], "", "u", "напомни в 15:23 тест", False, {}, registry=object())
     assert res is True
-    message.answer.assert_not_awaited()   # карточку отправил тул, дубля «готово» нет
+    message.answer.assert_not_awaited()              # карточку отправил тул, дубля «готово» нет
+    assert saved["answer"] == "[поставлено напоминание #1]"   # в контекст легла пометка, не пустота
 
 
 @pytest.mark.asyncio

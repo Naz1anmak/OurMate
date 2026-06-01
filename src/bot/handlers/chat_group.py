@@ -102,6 +102,7 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int, ct
         "chat_id": message.chat.id,
         "user_id": message.from_user.id,
         "first_name": first_name,
+        "username": message.from_user.username,
         "is_group": True,
         "is_group_main": bool(ctx and ctx.get("is_group_main")),
         "is_owner": bool(ctx and ctx.get("is_owner")),

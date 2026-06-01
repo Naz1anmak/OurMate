@@ -54,12 +54,16 @@ async def test_create_in_group_posts_card_and_schedules(store):
         tool_context=ctx, store=store, scheduler=sched, now=NOW)
     assert res["ok"] is True
     assert res.get("_silent") is True     # карточку отправил тул — финал LLM глушим
+    assert "#" in res.get("_context_note", "")   # служебная пометка для контекста есть
     # карточка отправлена в группу
     assert ctx["bot"].sent and ctx["bot"].sent[0][0] == -100
     # job поставлен
     assert sched.scheduled and sched.scheduled[0][1] == "2026-06-01T19:00:00+03:00"
     rows = await store.list_pending_for_chat(-100)
     assert len(rows) == 1 and rows[0]["card_message_id"] == 555
+    # автор сразу подписан на своё напоминание
+    assert await store.count_subscribers(rows[0]["id"]) == 1
+    assert await store.has_subscriber(rows[0]["id"], 42) is True
 
 
 @pytest.mark.asyncio
