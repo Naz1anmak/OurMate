@@ -66,3 +66,24 @@ async def test_apply_pending_update(store):
     assert row2["text"] == "новый"
     assert row2["fire_at"] == "2026-06-05T19:00:00+03:00"
     assert row2["pending_text"] is None and row2["pending_fire_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_removes_terminal_keeps_pending(store):
+    keep = await store.add(text="живой", fire_at="2026-06-05T18:00:00+03:00",
+                           scope="chat", chat_id=-100, author_id=1)
+    old_fired = await store.add(text="старый", fire_at="2026-06-05T18:00:00+03:00",
+                                scope="chat", chat_id=-100, author_id=1)
+    await store.set_status(old_fired, "fired")
+    old_draft = await store.add(text="черновик", fire_at="2026-06-05T18:00:00+03:00",
+                                scope="self", chat_id=1, author_id=1, status="draft")
+    # Состарим created_at у всех записей — pending должен пережить чистку по статусу.
+    async with store._db() as db:
+        await store._setup(db)
+        await db.execute("UPDATE reminders SET created_at = datetime('now', '-30 days')")
+        await db.commit()
+    removed = await store.cleanup_old(days=7)
+    assert removed == 2                              # fired + draft
+    assert await store.get(keep) is not None         # pending жив несмотря на возраст
+    assert await store.get(old_fired) is None
+    assert await store.get(old_draft) is None

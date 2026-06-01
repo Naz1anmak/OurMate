@@ -86,13 +86,13 @@ async def test_sub_subscribe_then_unsubscribe(store, sched):
     q1 = _FakeQuery(f"rem:sub:{rid}", AUTHOR_ID)
     await cb.on_reminder_callback(q1)
     assert await store.count_subscribers(rid) == 1
-    assert q1.answers == [("Напомню тебе", False)]
+    assert q1.answers == [("Вы подписаны на напоминание", False)]
 
     # Второй клик → отписан
     q2 = _FakeQuery(f"rem:sub:{rid}", AUTHOR_ID)
     await cb.on_reminder_callback(q2)
     assert await store.count_subscribers(rid) == 0
-    assert q2.answers == [("Отписал", False)]
+    assert q2.answers == [("Вы отписаны от напоминания", False)]
 
 
 # ── 2. ok — подтверждение черновика ───────────────────────────────────────────
@@ -164,3 +164,18 @@ async def test_upd_on_draft_promotes_to_pending(store, sched):
     assert fresh["fire_at"] == new_fire_at        # правка применена
     assert sched.scheduled == [(rid, new_fire_at)]
     assert q.answers == [("Обновлено", False)]
+
+
+# ── 6. подписка на сработавшее напоминание не проходит ───────────────────────
+
+async def test_sub_on_fired_is_rejected(store, sched):
+    rid = await store.add(
+        text="прошедшее", fire_at=FIRE_AT,
+        scope="chat", chat_id=-100, author_id=AUTHOR_ID)
+    await store.set_status(rid, "fired")
+
+    q = _FakeQuery(f"rem:sub:{rid}", STRANGER_ID)
+    await cb.on_reminder_callback(q)
+
+    assert await store.count_subscribers(rid) == 0          # не подписан
+    assert q.answers == [("Это событие уже прошло", False)]  # осмысленный тост
