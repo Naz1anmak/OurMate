@@ -6,6 +6,8 @@ from aiogram.types import Message
 from src.config.settings import OWNER_CHAT_ID, TIMEZONE
 from src.bot.services.birthday_service import birthday_service
 from src.bot.services.schedule_service import schedule_service
+from src.bot.services.reminder_store import reminder_store
+from src.bot.services import reminder_service as rs
 from src.utils.date_utils import format_birthday_date
 from src.core.emoji import E
 
@@ -277,3 +279,18 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         return True
 
     return False
+
+
+async def handle_reminders_command(message: Message) -> bool:
+    """Слово-команда «напоминания»: детерминированный список (в группе — беседы, в ЛС — личные)."""
+    now = datetime.now(TIMEZONE)
+    is_group = message.chat.type in ("group", "supergroup")
+    if is_group:
+        items = await reminder_store.list_pending_for_chat(message.chat.id)
+        header = "Напоминания беседы"
+    else:
+        items = await reminder_store.list_pending_for_author(message.from_user.id)
+        header = "Твои напоминания"
+    await message.answer(rs.render_list(items, header=header, now=now),
+                         parse_mode="HTML", disable_web_page_preview=True)
+    return True

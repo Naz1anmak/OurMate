@@ -12,6 +12,7 @@ from src.bot.handlers.chat_commands import (
     handle_help_command,
     handle_unsubscribe_command,
     handle_public_commands,
+    handle_reminders_command,
 )
 from src.bot.handlers.owner_commands import handle_owner_command
 from src.bot.handlers import access
@@ -64,6 +65,10 @@ async def on_mention_or_reply(message: Message):
         return
 
     if ctx:
+        if ctx["normalized_text"] == "напоминания":
+            await handle_reminders_command(message)
+            return
+
         audience = access.classify(ctx["normalized_text"])
         if audience is not None:
             decision = access.resolve(audience, ctx)
