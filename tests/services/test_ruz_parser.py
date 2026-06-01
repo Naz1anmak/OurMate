@@ -40,6 +40,13 @@ def test_parse_lessons_extracts_groups_and_teachers():
     assert b.teachers == frozenset({"Петров П.П."})
 
 
+def test_parse_lessons_extracts_webinar_url():
+    events = parse_lessons(_flatten(FIXTURE))
+    a, b = events
+    assert a.webinar_url == "https://example.com/webinar/a"
+    assert b.webinar_url == ""  # у второй пары webinar_url нет — дефолт
+
+
 def test_parse_lessons_missing_groups_teachers_default_empty():
     raw = [{
         "subject": "Solo", "time_start": "14:00", "time_end": "15:40",
@@ -48,6 +55,7 @@ def test_parse_lessons_missing_groups_teachers_default_empty():
     events = parse_lessons(raw)
     assert events[0].lesson_groups == frozenset()
     assert events[0].teachers == frozenset()
+    assert events[0].webinar_url == ""
 
 
 def test_normalize_kind_known_mappings():

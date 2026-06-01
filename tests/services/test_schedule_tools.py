@@ -248,3 +248,20 @@ def test_event_payload_includes_lesson_groups_and_teachers():
     assert payload["lesson_groups"] == ["Group A", "Group B"]
     assert payload["teachers"] == ["Иванов И.И."]
     assert payload["groups"] == ["40001"]
+
+
+def test_event_payload_includes_webinar_url_only_when_present():
+    from src.bot.services.schedule_tools import _event_payload
+    with_url = ScheduleEvent(
+        summary="Subject A", location="DL",
+        start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
+        webinar_url="https://example.com/webinar/a",
+    )
+    without = ScheduleEvent(
+        summary="Зачёт", location="DL",
+        start=datetime(2026, 5, 27, 10, 0, tzinfo=TZ),
+        end=datetime(2026, 5, 27, 11, 40, tzinfo=TZ),
+    )
+    assert _event_payload(with_url)["webinar_url"] == "https://example.com/webinar/a"
+    assert "webinar_url" not in _event_payload(without)  # пустую не кладём

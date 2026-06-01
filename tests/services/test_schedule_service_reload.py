@@ -47,6 +47,7 @@ def test_merge_duplicates_unions_lesson_groups_and_teachers():
         groups=frozenset({"40001"}),
         lesson_groups=frozenset({"Group A", "Group B"}),
         teachers=frozenset({"Иванов И.И."}),
+        webinar_url="",
     )
     b = ScheduleEvent(
         summary="Поток", location="DL",
@@ -55,12 +56,14 @@ def test_merge_duplicates_unions_lesson_groups_and_teachers():
         groups=frozenset({"40002"}),
         lesson_groups=frozenset({"Group C"}),
         teachers=frozenset({"Петров П.П."}),
+        webinar_url="https://example.com/webinar/a",
     )
     merged = ScheduleService._merge_duplicates([a, b])
     assert len(merged) == 1
     assert merged[0].groups == frozenset({"40001", "40002"})
     assert merged[0].lesson_groups == frozenset({"Group A", "Group B", "Group C"})
     assert merged[0].teachers == frozenset({"Иванов И.И.", "Петров П.П."})
+    assert merged[0].webinar_url == "https://example.com/webinar/a"  # непустая побеждает
 
 
 def test_load_events_from_schedule_json_per_group(tmp_groups_dir):

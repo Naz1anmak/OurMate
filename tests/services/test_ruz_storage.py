@@ -46,11 +46,13 @@ def test_round_trip_preserves_groups_and_teachers(tmp_groups_dir):
         kind="Лекция",
         lesson_groups=frozenset({"Group A", "Group B"}),
         teachers=frozenset({"Иванов И.И."}),
+        webinar_url="https://example.com/webinar/a",
     )
     save_schedule("40001", [ev], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
     _fetched, loaded = load_schedule("40001")
     assert loaded[0].lesson_groups == frozenset({"Group A", "Group B"})
     assert loaded[0].teachers == frozenset({"Иванов И.И."})
+    assert loaded[0].webinar_url == "https://example.com/webinar/a"
 
 
 def test_load_returns_none_and_empty_when_no_file(tmp_groups_dir):

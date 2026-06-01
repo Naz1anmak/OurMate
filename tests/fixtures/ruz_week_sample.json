@@ -12,6 +12,7 @@
           "auditories": [{"name": "101", "building": {"name": "B-1"}}],
           "groups": [{"id": 1, "name": "Group A"}, {"id": 2, "name": "Group B"}],
           "teachers": [{"full_name": "Иванов И.И."}],
+          "webinar_url": "https://example.com/webinar/a",
           "typeObj": {"id": 14, "name": "Лекции"}
         },
         {

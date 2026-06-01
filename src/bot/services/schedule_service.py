@@ -48,6 +48,7 @@ class ScheduleEvent:
     kind: str = ""
     lesson_groups: frozenset[str] = field(default_factory=frozenset)
     teachers: frozenset[str] = field(default_factory=frozenset)
+    webinar_url: str = ""
 
     def key(self) -> tuple:
         """Ключ идентичности для мёрджа дубликатов."""
@@ -63,6 +64,7 @@ class ScheduleEvent:
             "end": self.end.isoformat(),
             "lesson_groups": sorted(self.lesson_groups),
             "teachers": sorted(self.teachers),
+            "webinar_url": self.webinar_url,
         }
 
     @classmethod
@@ -77,6 +79,7 @@ class ScheduleEvent:
             groups=frozenset({group_code}),
             lesson_groups=frozenset(data.get("lesson_groups") or []),
             teachers=frozenset(data.get("teachers") or []),
+            webinar_url=(data.get("webinar_url") or ""),
         )
 
 class ScheduleService:
@@ -152,6 +155,7 @@ class ScheduleService:
                 existing.groups = existing.groups | ev.groups
                 existing.lesson_groups = existing.lesson_groups | ev.lesson_groups
                 existing.teachers = existing.teachers | ev.teachers
+                existing.webinar_url = existing.webinar_url or ev.webinar_url
         return list(buckets.values())
 
     def _save_cache(self) -> None:

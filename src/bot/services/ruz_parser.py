@@ -48,6 +48,7 @@ def parse_lessons(raw_lessons: list[dict]) -> list[ScheduleEvent]:
                 name for t in (lesson.get("teachers") or [])
                 if (name := (t.get("full_name") or "").strip())
             )
+            webinar_url = (lesson.get("webinar_url") or "").strip()
             events.append(ScheduleEvent(
                 summary=summary,
                 location=location,
@@ -56,6 +57,7 @@ def parse_lessons(raw_lessons: list[dict]) -> list[ScheduleEvent]:
                 kind=kind,
                 lesson_groups=lesson_groups,
                 teachers=teachers,
+                webinar_url=webinar_url,
             ))
         except Exception as exc:  # noqa: BLE001
             logger.warning("Пропускаю битый lesson %r: %s", lesson.get("subject"), exc)
