@@ -1,0 +1,29 @@
+name: uptime-watchdog
+
+# Внешний пульс-монитор: раз в 5 мин дёргает бота с раннера GitHub (вне нашего
+# сервера), поэтому переживает полную смерть машины. Адрес, токен и chat id — в Secrets.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe
+        env:
+          URL: ${{ secrets.WATCHDOG_URL }}
+          TG: ${{ secrets.WATCHDOG_BOT_TOKEN }}
+          ADMIN: ${{ secrets.WATCHDOG_ADMIN_ID }}
+        run: |
+          code=000
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL") || code=000
+            [ "$code" = "200" ] && exit 0
+            [ "$i" -lt 3 ] && sleep 10
+          done
+          curl -s "https://api.telegram.org/bot${TG}/sendMessage" \
+            -d chat_id="${ADMIN}" \
+            -d text="🔴 бот не отвечает (HTTP ${code}) — проверь сервер" >/dev/null
+          exit 1
