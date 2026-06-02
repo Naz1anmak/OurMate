@@ -86,6 +86,10 @@ TIMEZONE = ZoneInfo(_get_env("TIMEZONE", "Europe/Moscow", log_default=True))
 SEND_HOUR = int(_get_env("SEND_HOUR", 10, log_default=True))
 SEND_MINUTE = int(_get_env("SEND_MINUTE", 0, log_default=True))
 
+# Пауза между Telegram-пингами пробера дней рождения (сек). ~30/сек — потолок
+# рассылки у Telegram; 0.1 (≈10/сек) даёт ~3× запас. См. core.telegram.org/bots/faq.
+BIRTHDAY_PROBE_DELAY_SEC = float(_get_env("BIRTHDAY_PROBE_DELAY_SEC", 0.1, log_default=True))
+
 # ===== ПРОМПТЫ =====
 # Шаблон промпта для обычного чата
 PROMPT_TEMPLATE_CHAT = _get_env("PROMPT_TEMPLATE_CHAT", "", log_default=True)

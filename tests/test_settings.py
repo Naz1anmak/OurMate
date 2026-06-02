@@ -59,3 +59,9 @@ def test_schedule_group_ids_empty_when_none_set(monkeypatch):
             monkeypatch.delenv(k, raising=False)
     s = reload_settings(monkeypatch)
     assert s.SCHEDULE_API_GROUP_IDS == {}
+
+
+def test_birthday_probe_delay_default(monkeypatch):
+    monkeypatch.delenv("BIRTHDAY_PROBE_DELAY_SEC", raising=False)
+    s = reload_settings(monkeypatch)
+    assert s.BIRTHDAY_PROBE_DELAY_SEC == 0.1
