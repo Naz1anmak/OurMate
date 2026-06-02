@@ -64,8 +64,8 @@ async def handle_unsubscribe_command(message: Message, normalized_text: str) -> 
 
     user = next((u for u in birthday_service.users if u.user_id == message.from_user.id), None)
     if user:
-        if user.interacted_with_bot:
-            user.interacted_with_bot = False
+        if user.subscribed:
+            user.subscribed = False
             logger.info(f"PM; От {user_login_log} ({message.from_user.full_name}): успешная отписка от поздравлений")
             birthday_service.save_users()
             success_text = (

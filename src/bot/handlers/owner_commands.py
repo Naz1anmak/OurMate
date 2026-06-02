@@ -56,7 +56,7 @@ def _render_links_check() -> str:
         else:
             prefix = str(E.CHECK) if user.status == "active" else str(E.BAN)
 
-        has_cake = user.user_id is not None and user.interacted_with_bot
+        has_cake = user.user_id is not None and user.is_active
         if has_cake:
             prefix = f"{prefix}🎂"
             lines.append(f"{prefix}{mention}{username_info}")

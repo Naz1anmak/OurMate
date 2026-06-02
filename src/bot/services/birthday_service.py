@@ -99,8 +99,8 @@ class BirthdayService:
             return [], []
 
         # Разделяем на взаимодействовавших и не взаимодействовавших
-        interacted = [u for u in users if u.interacted_with_bot]
-        not_interacted = [u for u in users if not u.interacted_with_bot]
+        interacted = [u for u in users if u.is_active]
+        not_interacted = [u for u in users if not u.is_active]
 
         if not interacted:
             return [], not_interacted

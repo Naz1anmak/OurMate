@@ -7,6 +7,7 @@ import logging
 from aiogram.types import Message
 
 from src.bot.services.birthday_service import birthday_service
+from src.models.user import DmState
 from src.bot.handlers.chat_context import build_command_context
 from src.bot.handlers.chat_commands import (
     handle_help_command,
@@ -40,8 +41,13 @@ async def on_mention_or_reply(message: Message):
     # Отслеживаем взаимодействие с ботом в ЛС, кроме явной команды "отписаться"
     if message.chat.type == "private" and message.from_user:
         user = next((u for u in birthday_service.users if u.user_id == message.from_user.id), None)
-        if user and not user.interacted_with_bot and normalized_text != "отписаться":
-            user.interacted_with_bot = True
+        if (
+            user
+            and normalized_text != "отписаться"
+            and not (user.dm_state == DmState.REACHABLE and user.subscribed)
+        ):
+            user.dm_state = DmState.REACHABLE
+            user.subscribed = True
             birthday_service.save_users()
     
     # Инициализируем переменные бота в начале функции

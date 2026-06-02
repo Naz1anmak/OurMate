@@ -10,6 +10,7 @@ from aiogram.filters import Command
 
 from src.bot.services.birthday_service import birthday_service
 from src.core.emoji import E
+from src.models.user import DmState
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,9 @@ async def cmd_start(message: types.Message):
     # Отмечаем пользователя активировавшим бота, если он есть в списке
     from src.config.settings import OWNER_CHAT_ID
     user_record = next((u for u in birthday_service.users if u.user_id == message.from_user.id), None)
-    if user_record and not user_record.interacted_with_bot:
-        user_record.interacted_with_bot = True
+    if user_record and not (user_record.dm_state == DmState.REACHABLE and user_record.subscribed):
+        user_record.dm_state = DmState.REACHABLE
+        user_record.subscribed = True
         birthday_service.save_users()
 
     # Уведомляем владельца о новом /start (кроме его собственного)
