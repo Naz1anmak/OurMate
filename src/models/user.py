@@ -3,19 +3,27 @@
 Содержит структуру данных и методы для работы с пользователями.
 """
 from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
+
+
+class DmState(str, Enum):
+    """Доступность пользователя для бота в ЛС (пишется пробером)."""
+    UNKNOWN = "unknown"             # ещё не пинговали / старая запись
+    REACHABLE = "reachable"         # пинг успешен
+    BLOCKED = "blocked"             # 403 «bot was blocked by the user»
+    NEVER_STARTED = "never_started" # 403 «bot can't initiate conversation»
+    DEACTIVATED = "deactivated"     # 400 «chat not found» / «user is deactivated»
+
 
 @dataclass
 class User:
     """
     Модель пользователя с информацией о дне рождения.
-    
-    Attributes:
-        user_id (Optional[int]): Telegram user_id для упоминания по ID
-        name (str): Полное имя пользователя
-        birthday (str): Дата дня рождения в формате "D.M" или "DD.MM"
-        status (str): Статус пользователя (например, "active" или "-")
-        interacted_with_bot (bool): Взаимодействовал ли пользователь с ботом
+
+    dm_state — доступность для ЛС (владелец-писатель: пробер расписания).
+    subscribed — намерение получать поздравления (владелец: хендлеры «отписаться»/сообщение).
+    is_active — производное: подписан И доступен.
     """
     user_id: Optional[int]
     name: str
@@ -23,8 +31,13 @@ class User:
     birthday: str
     status: str
     username: Optional[str] = None
-    interacted_with_bot: bool = False
-    
+    dm_state: DmState = DmState.UNKNOWN
+    subscribed: bool = True
+
+    @property
+    def is_active(self) -> bool:
+        return self.subscribed and self.dm_state == DmState.REACHABLE
+
     def get_first_name(self) -> str:
         """Возвращает первое слово из полного имени."""
         return self.name.split()[0]
@@ -44,18 +57,10 @@ class User:
         if self.user_id is None:
             return display_name
         return f'<a href="tg://user?id={self.user_id}">{display_name}</a>'
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> 'User':
-        """
-        Создает объект User из словаря.
-        
-        Args:
-            data (dict): Словарь с данными пользователя
-            
-        Returns:
-            User: Объект пользователя
-        """
+        """Создает объект User из словаря (понимает старый и новый формат)."""
         raw_id = data.get("user_id", "")
         user_id: Optional[int]
         try:
@@ -63,12 +68,28 @@ class User:
         except (ValueError, TypeError):
             user_id = None
 
-
         username = data.get("username")
         if isinstance(username, str):
             username = username.lstrip("@")
         else:
             username = None
+
+        if "dm_state" in data or "subscribed" in data:
+            # Новый формат
+            try:
+                dm_state = DmState(data.get("dm_state", DmState.UNKNOWN.value))
+            except ValueError:
+                dm_state = DmState.UNKNOWN
+            subscribed = bool(data.get("subscribed", True))
+        elif "interacted_with_bot" in data:
+            # Старый формат: булев означал «подписан И доступен» сразу.
+            interacted = bool(data.get("interacted_with_bot"))
+            subscribed = interacted
+            dm_state = DmState.REACHABLE if interacted else DmState.UNKNOWN
+        else:
+            # Минимальная ручная запись {name, birthday}
+            dm_state = DmState.UNKNOWN
+            subscribed = True
 
         return cls(
             user_id=user_id,
@@ -77,23 +98,20 @@ class User:
             birthday=data["birthday"],
             status=data.get("status", ""),
             username=username,
-            interacted_with_bot=data.get("interacted_with_bot", False),
+            dm_state=dm_state,
+            subscribed=subscribed,
         )
-    
+
     def to_dict(self) -> dict:
-        """
-        Преобразует объект User в словарь.
-        
-        Returns:
-            dict: Словарь с данными пользователя
-        """
+        """Преобразует объект User в словарь (новый формат)."""
         data = {
             "user_id": self.user_id,
             "name": self.name,
             "last_name": self.last_name,
             "birthday": self.birthday,
             "status": self.status,
-            "interacted_with_bot": self.interacted_with_bot,
+            "dm_state": self.dm_state.value,
+            "subscribed": self.subscribed,
         }
         if self.username:
             data["username"] = self.username
