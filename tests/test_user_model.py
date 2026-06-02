@@ -26,18 +26,11 @@ def test_is_active_requires_reachable_and_subscribed():
     assert u.is_active is False
 
 
-def test_migration_old_true():
+def test_legacy_flag_ignored():
+    # Старый interacted_with_bot больше не читается — трактуется как минимальная запись.
     u = User.from_dict(_base(interacted_with_bot=True))
-    assert u.dm_state == DmState.REACHABLE
-    assert u.subscribed is True
-    assert u.is_active is True
-
-
-def test_migration_old_false_preserves_optout():
-    u = User.from_dict(_base(interacted_with_bot=False))
     assert u.dm_state == DmState.UNKNOWN
-    assert u.subscribed is False
-    assert u.is_active is False
+    assert u.subscribed is True
 
 
 def test_new_format_roundtrip_drops_legacy_flag():

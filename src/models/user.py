@@ -60,7 +60,7 @@ class User:
 
     @classmethod
     def from_dict(cls, data: dict) -> 'User':
-        """Создает объект User из словаря (понимает старый и новый формат)."""
+        """Создает объект User из словаря (формат dm_state/subscribed)."""
         raw_id = data.get("user_id", "")
         user_id: Optional[int]
         try:
@@ -75,19 +75,14 @@ class User:
             username = None
 
         if "dm_state" in data or "subscribed" in data:
-            # Новый формат
             try:
                 dm_state = DmState(data.get("dm_state", DmState.UNKNOWN.value))
             except ValueError:
                 dm_state = DmState.UNKNOWN
             subscribed = bool(data.get("subscribed", True))
-        elif "interacted_with_bot" in data:
-            # Старый формат: булев означал «подписан И доступен» сразу.
-            interacted = bool(data.get("interacted_with_bot"))
-            subscribed = interacted
-            dm_state = DmState.REACHABLE if interacted else DmState.UNKNOWN
         else:
-            # Минимальная ручная запись {name, birthday}
+            # Минимальная ручная запись {name, birthday} — флаги проставят
+            # пробер (dm_state) и взаимодействие пользователя (subscribed).
             dm_state = DmState.UNKNOWN
             subscribed = True
 
