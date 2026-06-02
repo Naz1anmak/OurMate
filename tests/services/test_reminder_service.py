@@ -15,10 +15,10 @@ def _rem(**kw):
 
 
 def test_humanize_today_tomorrow_and_dated():
-    assert rs.humanize_dt(datetime(2026, 6, 1, 19, 0, tzinfo=TZ), NOW) == "сегодня, 19:00"
-    assert rs.humanize_dt(datetime(2026, 6, 2, 10, 0, tzinfo=TZ), NOW) == "завтра, 10:00"
+    assert rs.humanize_dt(datetime(2026, 6, 1, 19, 0, tzinfo=TZ), NOW) == "Сегодня в 19:00"
+    assert rs.humanize_dt(datetime(2026, 6, 2, 10, 0, tzinfo=TZ), NOW) == "Завтра в 10:00"
     # остальные дни — с числом
-    assert rs.humanize_dt(datetime(2026, 6, 5, 15, 0, tzinfo=TZ), NOW) == "пт, 5 июн, 15:00"
+    assert rs.humanize_dt(datetime(2026, 6, 5, 15, 0, tzinfo=TZ), NOW) == "Пт, 5 июн в 15:00"
 
 
 def test_render_list_compact():
@@ -26,8 +26,8 @@ def test_render_list_compact():
              _rem(id=2, text="Сдать лабу", fire_at="2026-06-02T10:00:00+03:00")]
     out = rs.render_list(items, header="Напоминания беседы", now=NOW)
     assert "Напоминания беседы (2)" in out
-    assert "1. Созвон — сегодня, 19:00" in out
-    assert "2. Сдать лабу — завтра, 10:00" in out
+    assert "1. Созвон — Сегодня в 19:00" in out
+    assert "2. Сдать лабу — Завтра в 10:00" in out
 
 
 def test_render_list_empty():
@@ -64,14 +64,14 @@ def test_render_created_has_no_question():
     rem = _rem(text="Почистить зубы", fire_at="2026-06-01T15:23:00+03:00")
     out = rs.render_created(rem, NOW)
     assert "Почистить зубы" in out
-    assert "▎ сегодня, 15:23" in out
+    assert "▎ Сегодня в 15:23" in out
     assert "Создаём?" not in out          # подтверждённое состояние — без вопроса
 
 
 def test_render_confirm_pm_uses_bar_marker():
     rem = _rem(text="Созвон", fire_at="2026-06-01T19:00:00+03:00")
     out = rs.render_confirm_pm(rem, NOW)
-    assert "▎ сегодня, 19:00" in out       # время помечено ▎, без эмодзи-календаря
+    assert "▎ Сегодня в 19:00" in out       # время помечено ▎, без эмодзи-календаря
     assert "🗓" not in out
 
 

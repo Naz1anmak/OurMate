@@ -18,15 +18,15 @@ def parse_dt(fire_at: str) -> datetime:
 
 
 def humanize_dt(dt: datetime, now: datetime) -> str:
-    """Сегодня/завтра — словом; остальные — «пт, 5 июн». Время всегда HH:MM."""
+    """Сегодня/завтра — словом; остальные — «Пт, 5 июн». Время после «в»: «Сегодня в 18:15»."""
     d, today = dt.date(), now.date()
     delta = (d - today).days
     hm = f"{dt:%H:%M}"
     if delta == 0:
-        return f"сегодня, {hm}"
+        return f"Сегодня в {hm}"
     if delta == 1:
-        return f"завтра, {hm}"
-    return f"{_WD_SHORT[d.weekday()]}, {d.day} {_MONTHS[d.month - 1]}, {hm}"
+        return f"Завтра в {hm}"
+    return f"{_WD_SHORT[d.weekday()].capitalize()}, {d.day} {_MONTHS[d.month - 1]} в {hm}"
 
 
 def render_list(items: list[dict], *, header: str, now: datetime) -> str:
