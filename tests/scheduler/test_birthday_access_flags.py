@@ -32,9 +32,10 @@ async def test_classifies_each_outcome(patched, monkeypatch, caplog):
     users = [
         _user(1),  # успех -> reachable
         _user(2),  # blocked
-        _user(3),  # never_started
-        _user(4),  # deactivated
-        _user(5),  # network -> не трогаем
+        _user(3),  # never_started (403 can't initiate)
+        _user(4),  # never_started (400 chat not found — ЛС не открыта)
+        _user(5),  # deactivated (удалённый аккаунт)
+        _user(6),  # network -> не трогаем
     ]
     monkeypatch.setattr(birthday_service, "users", users)
 
@@ -44,6 +45,7 @@ async def test_classifies_each_outcome(patched, monkeypatch, caplog):
         TelegramForbiddenError(method=_M, message="Forbidden: bot was blocked by the user"),
         TelegramForbiddenError(method=_M, message="Forbidden: bot can't initiate conversation with a user"),
         TelegramBadRequest(method=_M, message="Bad Request: chat not found"),
+        TelegramForbiddenError(method=_M, message="Forbidden: user is deactivated"),
         ClientOSError("network"),
     ])
     sched = BirthdayScheduler(bot)
@@ -54,12 +56,13 @@ async def test_classifies_each_outcome(patched, monkeypatch, caplog):
     assert users[0].dm_state == DmState.REACHABLE
     assert users[1].dm_state == DmState.BLOCKED
     assert users[2].dm_state == DmState.NEVER_STARTED
-    assert users[3].dm_state == DmState.DEACTIVATED
-    assert users[4].dm_state == DmState.UNKNOWN  # сеть — не трогаем
+    assert users[3].dm_state == DmState.NEVER_STARTED  # chat not found = ЛС не открыта
+    assert users[4].dm_state == DmState.DEACTIVATED
+    assert users[5].dm_state == DmState.UNKNOWN  # сеть — не трогаем
     log = "\n".join(r.message for r in caplog.records)
     assert "забанили: 1" in log
-    assert "не начали диалог: 1" in log
-    assert "удалён/нет чата: 1" in log
+    assert "не начали диалог: 2" in log
+    assert "удалён: 1" in log
     assert "сетевых: 1" in log
 
 

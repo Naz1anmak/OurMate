@@ -216,7 +216,7 @@ class BirthdayScheduler:
         """Обновляет usernames при старте бота, где доступно по user_id."""
         updated_users: list[str] = []
         checked = 0
-        failures = 0
+        unreachable = 0
         for user in birthday_service.users:
             if user.user_id is None:
                 continue
@@ -226,7 +226,8 @@ class BirthdayScheduler:
                     lambda uid=user.user_id: self.bot.get_chat(uid)
                 )
             except Exception as exc:  # noqa: BLE001
-                failures += 1
+                # get_chat недоступен для тех, у кого нет диалога с ботом (ЛС не открыта).
+                unreachable += 1
                 continue
             username = getattr(chat, "username", None)
             if username and username != user.username:
@@ -240,12 +241,12 @@ class BirthdayScheduler:
         total = len(birthday_service.users)  # учитываем всех, даже без user_id
         details = f" ({' | '.join(updated_users)})" if updated_users else ""
         logger.info(
-            "Обновлены логины: %s/%s/%s%s; ошибки: %s",
+            "Обновлены логины: %s/%s/%s%s; недостижимо: %s",
             len(updated_users),
             filled,
             total,
             details,
-            failures,
+            unreachable,
         )
 
     async def _refresh_access_flags(self) -> None:
@@ -272,6 +273,9 @@ class BirthdayScheduler:
                 if "blocked" in msg:
                     user.dm_state = DmState.BLOCKED
                     n_blocked += 1
+                elif "deactivated" in msg or "deleted" in msg:
+                    user.dm_state = DmState.DEACTIVATED
+                    n_deactivated += 1
                 elif "initiate" in msg:
                     user.dm_state = DmState.NEVER_STARTED
                     n_never += 1
@@ -280,7 +284,11 @@ class BirthdayScheduler:
                     logger.debug("Неклассифицированный 403 для %s: %s", user.user_id, exc.message)
             except TelegramBadRequest as exc:
                 msg = (exc.message or "").lower()
-                if "chat not found" in msg or "deactivated" in msg:
+                if "chat not found" in msg or "initiate" in msg:
+                    # У бота нет диалога с пользователем — ЛС не открыта.
+                    user.dm_state = DmState.NEVER_STARTED
+                    n_never += 1
+                elif "deactivated" in msg or "deleted" in msg:
                     user.dm_state = DmState.DEACTIVATED
                     n_deactivated += 1
                 else:
@@ -331,7 +339,7 @@ class BirthdayScheduler:
         changes = f" ({' | '.join(delta_parts)})" if delta_parts else ""
         logger.info(
             "Подписаны на поздравления: %s/%s%s; забанили: %s; не начали диалог: %s; "
-            "удалён/нет чата: %s; сетевых: %s; прочих: %s",
+            "удалён: %s; сетевых: %s; прочих: %s",
             active_count,
             total_users,
             changes,
