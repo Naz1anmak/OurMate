@@ -16,7 +16,7 @@ from src.bot.scheduler.birthday_scheduler import start_birthday_scheduler
 from src.bot.scheduler.schedule_scheduler import start_schedule_scheduler
 from src.bot.scheduler.pinned_schedule_scheduler import start_pinned_schedule_scheduler
 from src.bot.scheduler.schedule_auto_refresh_scheduler import start_schedule_auto_refresh_scheduler
-from src.bot.services.ruz_client import RuzClient
+from src.bot.services.schedule_client import ScheduleClient
 from src.bot.services.schedule_refresher import ScheduleRefresher
 from src.bot.services.schedule_service import schedule_service
 from src.bot.handlers import chat_commands as chat_commands_module
@@ -27,8 +27,8 @@ from src.bot.scheduler.reminder_scheduler import start_reminder_scheduler
 from src.bot.services.reminder_tools import build_reminder_registry
 from src.bot.handlers import reminder_callbacks as reminder_callbacks_module
 from src.config.settings import (
-    RUZ_BASE_URL, RUZ_FACULTY_ID, RUZ_HTTP_TIMEOUT,
-    RUZ_WEEKS_AHEAD, RUZ_LAZY_TTL_MIN, RUZ_GROUP_IDS,
+    SCHEDULE_API_BASE_URL, SCHEDULE_API_FACULTY_ID, SCHEDULE_API_HTTP_TIMEOUT,
+    SCHEDULE_API_WEEKS_AHEAD, SCHEDULE_API_LAZY_TTL_MIN, SCHEDULE_API_GROUP_IDS,
     SCHEDULE_AUTO_UPDATE_ENABLED,
 )
 
@@ -56,17 +56,17 @@ async def main() -> None:
 
         refresher = None
         if SCHEDULE_AUTO_UPDATE_ENABLED:
-            ruz_client = RuzClient(
-                base_url=RUZ_BASE_URL,
-                faculty_id=RUZ_FACULTY_ID,
-                timeout=RUZ_HTTP_TIMEOUT,
+            schedule_client = ScheduleClient(
+                base_url=SCHEDULE_API_BASE_URL,
+                faculty_id=SCHEDULE_API_FACULTY_ID,
+                timeout=SCHEDULE_API_HTTP_TIMEOUT,
             )
             refresher = ScheduleRefresher(
-                client=ruz_client,
+                client=schedule_client,
                 schedule_service=schedule_service,
-                group_ids=RUZ_GROUP_IDS,
-                weeks_ahead=RUZ_WEEKS_AHEAD,
-                lazy_ttl_min=RUZ_LAZY_TTL_MIN,
+                group_ids=SCHEDULE_API_GROUP_IDS,
+                weeks_ahead=SCHEDULE_API_WEEKS_AHEAD,
+                lazy_ttl_min=SCHEDULE_API_LAZY_TTL_MIN,
             )
             schedule_scheduler_instance.refresher = refresher
             pinned_scheduler_instance.refresher = refresher
@@ -74,7 +74,7 @@ async def main() -> None:
             auto_refresh_instance.pinned_scheduler = pinned_scheduler_instance
             chat_commands_module.schedule_refresher = refresher
             chat_commands_module.pinned_scheduler = pinned_scheduler_instance
-            logger.info("Автообновление расписания включено, группы: %s", list(RUZ_GROUP_IDS))
+            logger.info("Автообновление расписания включено, группы: %s", list(SCHEDULE_API_GROUP_IDS))
         else:
             logger.info("Автообновление расписания выключено (SCHEDULE_AUTO_UPDATE_ENABLED=false)")
 

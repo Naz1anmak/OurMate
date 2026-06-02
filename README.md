@@ -157,7 +157,7 @@ OurMate_bot/
 │   │   │   ├── web_search_tool.py           # Тул web_search через сторонний Tavily
 │   │   │   ├── reminder_tools.py            # Тулы напоминаний (create/list/update/cancel)
 │   │   │   ├── reminder_service.py / reminder_store.py  # Бизнес-логика и SQLite-хранилище
-│   │   │   ├── schedule_*.py                # Пайплайн расписания: ruz_client/ruz_parser/diff/refresher/service
+│   │   │   ├── schedule_*.py                # Пайплайн расписания: schedule_client/schedule_parser/diff/refresher/service
 │   │   │   └── *_service.py                 # birthday / context / system
 │   │   └── scheduler/                       # Cron-задачи: поздравления, рассылка/закреп/автообновление расписания, напоминания
 │   ├── core/                                # Доменное ядро (emoji.py — класс E: unicode + premium_id)
@@ -276,27 +276,27 @@ make tail      # хвост логов с follow (Ctrl+C — выйти)
 
 Бот сам тянет расписание из публичного JSON-API портала расписания — никаких ручных `.ics` не нужно. Подключение групп:
 
-1. В `.env` указать `RUZ_BASE_URL` (домен портала расписания твоего вуза, со схемой `https://`) и `RUZ_FACULTY_ID` (числовой ID факультета из URL).
-2. Для каждой группы добавить `RUZ_GROUP_<CODE>=<group_id>`, где `<CODE>` — твой код подпапки (любой удобный, латиница/цифры), а `<group_id>` — числовой ID из URL страницы группы (между `/groups/` и `?date=`).
+1. В `.env` указать `SCHEDULE_API_BASE_URL` (домен портала расписания твоего вуза, со схемой `https://`) и `SCHEDULE_API_FACULTY_ID` (числовой ID факультета из URL).
+2. Для каждой группы добавить `SCHEDULE_API_GROUP_<CODE>=<group_id>`, где `<CODE>` — твой код подпапки (любой удобный, латиница/цифры), а `<group_id>` — числовой ID из URL страницы группы (между `/groups/` и `?date=`).
 3. Запустить бот — подпапка `data/<CODE>/` создастся при первом обновлении и наполнится `schedule.json`.
 
 Пример `.env`:
 
 ```env
 SCHEDULE_AUTO_UPDATE_ENABLED=true
-RUZ_BASE_URL=https://<домен-портала-расписания>
-RUZ_FACULTY_ID=125
-RUZ_GROUP_<CODE1>=<ID1>
-RUZ_GROUP_<CODE2>=<ID2>
-RUZ_WEEKS_AHEAD=3              # текущая + 3 будущих недели
-RUZ_HTTP_TIMEOUT=15            # секунд
-RUZ_LAZY_TTL_MIN=60            # TTL для lazy-refresh в командах
+SCHEDULE_API_BASE_URL=https://<домен-портала-расписания>
+SCHEDULE_API_FACULTY_ID=125
+SCHEDULE_API_GROUP_<CODE1>=<ID1>
+SCHEDULE_API_GROUP_<CODE2>=<ID2>
+SCHEDULE_API_WEEKS_AHEAD=3              # текущая + 3 будущих недели
+SCHEDULE_API_HTTP_TIMEOUT=15            # секунд
+SCHEDULE_API_LAZY_TTL_MIN=60            # TTL для lazy-refresh в командах
 ```
 
 **Когда обновляется.**
 - Перед рассылкой (`SCHEDULE_SEND_HOUR:MM`) — `force_refresh` + при изменениях шлёт diff, затем пары на актуальный день: «Пары на сегодня», а если все сегодняшние пары уже прошли (напр. вечерняя рассылка) — «Пары на завтра» (как `/пары` и закреп). Если в актуальный день пар нет — рассылка молчит.
 - Перед обновлением закрепа (`PINNED_SCHEDULE_UPDATE_HOUR:MM`) — `force_refresh` + diff, затем рендер закрепа.
-- В командах «пары» / «пары завтра» — `ensure_fresh` с TTL: если последний снимок свежее `RUZ_LAZY_TTL_MIN`, не дёргаем API.
+- В командах «пары» / «пары завтра» — `ensure_fresh` с TTL: если последний снимок свежее `SCHEDULE_API_LAZY_TTL_MIN`, не дёргаем API.
 - По команде «обнови расписание» — принудительный `force_refresh` + обновление закрепа.
 
 **Что в diff.** Сообщение «🗓️ Расписание обновилось» содержит блоки по датам (содержимое блока обёрнуто в `<blockquote>`, как в `/пары` и закрепе). Формат строки пары — `<emoji> HH:MM–HH:MM · Тип`, на следующей строке предмет жирным. Эмодзи:

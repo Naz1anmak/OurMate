@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from freezegun import freeze_time
 
-from src.bot.services.ruz_parser import save_schedule
-from src.bot.services.ruz_client import RuzError
+from src.bot.services.schedule_parser import save_schedule
+from src.bot.services.schedule_client import ScheduleError
 from src.bot.services.schedule_refresher import ScheduleRefresher
 from src.bot.services.schedule_service import ScheduleEvent
 from zoneinfo import ZoneInfo
@@ -26,7 +26,7 @@ FIXTURE_RAW = [
 def isolated_data(tmp_path, monkeypatch):
     # SCHEDULE_GROUPS_DIR в refresher НЕ патчим — он там больше не импортируется
     # (источник правды для списка групп = env-конфиг self.group_ids, не диск).
-    monkeypatch.setattr("src.bot.services.ruz_parser.SCHEDULE_GROUPS_DIR", tmp_path)
+    monkeypatch.setattr("src.bot.services.schedule_parser.SCHEDULE_GROUPS_DIR", tmp_path)
     monkeypatch.setattr("src.bot.services.schedule_service.SCHEDULE_GROUPS_DIR", tmp_path)
     return tmp_path
 
@@ -103,7 +103,7 @@ async def test_all_weeks_fail_does_not_overwrite_old_snapshot(isolated_data):
     save_schedule("40001", [], fetched_at=datetime(2026, 5, 25, 9, 0, tzinfo=TZ))
 
     client = AsyncMock()
-    client.fetch_week = AsyncMock(side_effect=RuzError("сеть"))
+    client.fetch_week = AsyncMock(side_effect=ScheduleError("сеть"))
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
@@ -122,7 +122,7 @@ async def test_partial_failure_still_writes_what_we_have(isolated_data):
     (isolated_data / "40001").mkdir()
     client = AsyncMock()
     # 1-я неделя ок, остальные падают
-    client.fetch_week = AsyncMock(side_effect=[FIXTURE_RAW, RuzError("сеть"), RuzError("сеть"), RuzError("сеть")])
+    client.fetch_week = AsyncMock(side_effect=[FIXTURE_RAW, ScheduleError("сеть"), ScheduleError("сеть"), ScheduleError("сеть")])
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
@@ -162,7 +162,7 @@ async def test_extra_folders_on_disk_are_ignored(isolated_data):
 @freeze_time("2026-05-26 09:00:00", tz_offset=3)
 async def test_creates_missing_group_folder_on_first_refresh(isolated_data):
     """На чистой установке подпапки data/<CODE>/ ещё нет. Refresher должен пойти
-    в RUZ по коду из env и save_schedule создаст папку + schedule.json сам."""
+    в API расписания по коду из env и save_schedule создаст папку + schedule.json сам."""
     assert not (isolated_data / "40001").exists()
     client = AsyncMock()
     client.fetch_week = AsyncMock(return_value=FIXTURE_RAW)

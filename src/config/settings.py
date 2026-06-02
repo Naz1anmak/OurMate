@@ -141,15 +141,15 @@ SCHEDULE_AUTO_REFRESH_HOURS: list[int] = [
     for h in _get_env("SCHEDULE_AUTO_REFRESH_HOURS", "12,18", log_default=True).split(",")
     if h.strip().isdigit()
 ]
-RUZ_BASE_URL = _get_env("RUZ_BASE_URL", "", log_default=True)
-RUZ_FACULTY_ID = int(_get_env("RUZ_FACULTY_ID", 125, log_default=True))
-RUZ_WEEKS_AHEAD = int(_get_env("RUZ_WEEKS_AHEAD", 3, log_default=True))
-RUZ_HTTP_TIMEOUT = int(_get_env("RUZ_HTTP_TIMEOUT", 15, log_default=True))
-RUZ_LAZY_TTL_MIN = int(_get_env("RUZ_LAZY_TTL_MIN", 60, log_default=True))
+SCHEDULE_API_BASE_URL = _get_env("SCHEDULE_API_BASE_URL", "", log_default=True)
+SCHEDULE_API_FACULTY_ID = int(_get_env("SCHEDULE_API_FACULTY_ID", 125, log_default=True))
+SCHEDULE_API_WEEKS_AHEAD = int(_get_env("SCHEDULE_API_WEEKS_AHEAD", 3, log_default=True))
+SCHEDULE_API_HTTP_TIMEOUT = int(_get_env("SCHEDULE_API_HTTP_TIMEOUT", 15, log_default=True))
+SCHEDULE_API_LAZY_TTL_MIN = int(_get_env("SCHEDULE_API_LAZY_TTL_MIN", 60, log_default=True))
 
-# Сборка маппинга {code: group_id} по env-переменным RUZ_GROUP_<CODE>=<ID>.
-RUZ_GROUP_IDS: dict[str, int] = {
-    name[len("RUZ_GROUP_"):]: int(val)
+# Сборка маппинга {code: group_id} по env-переменным SCHEDULE_API_GROUP_<CODE>=<ID>.
+SCHEDULE_API_GROUP_IDS: dict[str, int] = {
+    name[len("SCHEDULE_API_GROUP_"):]: int(val)
     for name, val in os.environ.items()
-    if name.startswith("RUZ_GROUP_") and val.isdigit()
+    if name.startswith("SCHEDULE_API_GROUP_") and val.isdigit()
 }

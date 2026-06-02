@@ -6,7 +6,7 @@ from typing import Optional, Tuple, Union
 
 from src.bot.services.llm_tools import ToolRegistry, ToolSpec
 from src.bot.services.schedule_service import ScheduleEvent, schedule_service
-from src.config.settings import RUZ_WEEKS_AHEAD, TIMEZONE
+from src.config.settings import SCHEDULE_API_WEEKS_AHEAD, TIMEZONE
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ SUBJECT_STOPWORDS = frozenset({
     "по", "на", "в", "во", "о", "об", "обо", "про", "за", "для", "к", "ко", "с", "со", "у", "от", "из",
 })
 
-DEFAULT_MAX_DAYS = (RUZ_WEEKS_AHEAD + 1) * 7
+DEFAULT_MAX_DAYS = (SCHEDULE_API_WEEKS_AHEAD + 1) * 7
 
 
 def validate_date_range(
@@ -203,7 +203,7 @@ GET_SCHEDULE_SCHEMA = {
             "Даты передавай в ISO YYYY-MM-DD, относительные («суббота», «завтра») сам переведи "
             "в даты от сегодняшней. "
             "У каждого события: groups — наши группы, у кого пара; lesson_groups — весь состав "
-            "пары по RUZ (включая чужие параллели потока); teachers — преподаватели; webinar_url — "
+            "пары из API расписания (включая чужие параллели потока); teachers — преподаватели; webinar_url — "
             "ссылка на онлайн-трансляцию пары (есть не у всех пар; бывает и у зачётов/экзаменов). "
             "ВАЖНО: lesson_groups, teachers и webinar_url — справочный контекст, НЕ выводи их в "
             "обычный ответ. По умолчанию показывай только время, тип и предмет. Преподавателя называй "
@@ -233,7 +233,7 @@ FIND_CLASSES_BY_SUBJECT_SCHEMA = {
             "события нужного kind), а также «был ли уже зачёт/экзамен по X», «что было по X» (смотри события "
             "с past=true). Учти: зачёт и экзамен — разные kind; если зачёта нет, но есть экзамен (или "
             "наоборот) — так и скажи. subject — название предмета или его часть, можно несколько слов. "
-            "Также у события есть lesson_groups (весь состав пары по RUZ), teachers (преподаватели) и "
+            "Также у события есть lesson_groups (весь состав пары из API расписания), teachers (преподаватели) и "
             "webinar_url (ссылка на онлайн-трансляцию, есть не всегда) — это справочный контекст для "
             "вопросов «с кем», «кто ведёт», «где пара»/«дай ссылку». НЕ выводи эти поля в ответ по "
             "своей инициативе — только если спросили именно про это."

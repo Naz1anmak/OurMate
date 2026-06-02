@@ -236,7 +236,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
 
         if result is None or (not result.updated_groups and result.failed_groups):
             # полный провал
-            from src.bot.services.ruz_parser import load_schedule
+            from src.bot.services.schedule_parser import load_schedule
             link_code = sorted(schedule_refresher.group_ids.keys())[0] if schedule_refresher.group_ids else None
             link = "—"
             stamp = "—"

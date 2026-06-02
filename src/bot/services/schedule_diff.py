@@ -185,7 +185,7 @@ def render(summary: DiffSummary, *, known_groups: frozenset[str]) -> str | None:
 def _format_event_line(emoji: str, e: ScheduleEvent) -> str:
     """'✅ HH:MM–HH:MM · Тип\\n<b>Предмет</b>' (или без '· Тип', если kind пуст).
 
-    Предмет эскейпится через html.escape — на случай если RUZ вернёт `<`/`>`/`&`,
+    Предмет эскейпится через html.escape — на случай если API расписания вернёт `<`/`>`/`&`,
     которые сломали бы Telegram parse_mode=HTML.
     """
     time_range = f"{e.start:%H:%M}–{e.end:%H:%M}"

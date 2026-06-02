@@ -7,11 +7,11 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 
-class RuzError(Exception):
+class ScheduleError(Exception):
     """Ошибка обращения к API расписания (сеть, 5xx, невалидный JSON)."""
 
 
-class RuzClient:
+class ScheduleClient:
     def __init__(self, base_url: str, faculty_id: int, timeout: int):
         self.base_url = base_url.rstrip("/")
         self.faculty_id = faculty_id
@@ -27,24 +27,24 @@ class RuzClient:
                 async with aiohttp.ClientSession(timeout=self.timeout) as session:
                     async with session.get(url) as resp:
                         if resp.status >= 500:
-                            raise RuzError(f"HTTP {resp.status} от API расписания")
+                            raise ScheduleError(f"HTTP {resp.status} от API расписания")
                         if resp.status != 200:
-                            raise RuzError(f"HTTP {resp.status} от API расписания (без retry)")
+                            raise ScheduleError(f"HTTP {resp.status} от API расписания (без retry)")
                         data = await resp.json()
                         return self._flatten(data)
-            except RuzError as exc:
+            except ScheduleError as exc:
                 last_exc = exc
                 if attempt == 0:
                     logger.warning("API расписания %s упал (попытка %s): %s, повторяю", url, attempt + 1, exc)
                     continue
                 raise
             except (aiohttp.ClientError, TimeoutError) as exc:
-                last_exc = RuzError(f"сеть: {exc}")
+                last_exc = ScheduleError(f"сеть: {exc}")
                 if attempt == 0:
                     logger.warning("API расписания %s сеть (попытка %s): %s, повторяю", url, attempt + 1, exc)
                     continue
                 raise last_exc
-        raise last_exc or RuzError("неизвестная ошибка")
+        raise last_exc or ScheduleError("неизвестная ошибка")
 
     @staticmethod
     def _flatten(data: dict) -> list[dict]:

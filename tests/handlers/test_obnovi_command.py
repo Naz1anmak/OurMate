@@ -75,7 +75,7 @@ async def test_obnovi_replies_full_fail_with_link(monkeypatch, ctx_allowed):
         updated_groups=[], failed_groups=["40001"], diff_message=None,
     ))
     refresher.client = MagicMock()
-    refresher.client.public_url = MagicMock(return_value="https://ruz.example/faculty/125/groups/99000?date=2026-5-25")
+    refresher.client.public_url = MagicMock(return_value="https://schedule.example/faculty/125/groups/99000?date=2026-5-25")
     refresher.group_ids = {"40001": 99000}
     monkeypatch.setattr("src.bot.handlers.chat_commands.schedule_refresher", refresher)
 
@@ -84,4 +84,4 @@ async def test_obnovi_replies_full_fail_with_link(monkeypatch, ctx_allowed):
     edit_calls = m.bot.edit_message_text.call_args_list
     text = " ".join(str(c) for c in edit_calls)
     assert "недоступно" in text
-    assert "ruz.example" in text
+    assert "schedule.example" in text

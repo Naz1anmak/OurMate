@@ -10,34 +10,34 @@ def reload_settings(monkeypatch, **env):
     return importlib.reload(settings_mod)
 
 
-def test_ruz_base_url_default_empty(monkeypatch):
-    monkeypatch.delenv("RUZ_BASE_URL", raising=False)
+def test_schedule_base_url_default_empty(monkeypatch):
+    monkeypatch.delenv("SCHEDULE_API_BASE_URL", raising=False)
     s = reload_settings(monkeypatch)
-    assert s.RUZ_BASE_URL == ""
+    assert s.SCHEDULE_API_BASE_URL == ""
 
 
-def test_ruz_faculty_id_default(monkeypatch):
-    monkeypatch.delenv("RUZ_FACULTY_ID", raising=False)
+def test_schedule_faculty_id_default(monkeypatch):
+    monkeypatch.delenv("SCHEDULE_API_FACULTY_ID", raising=False)
     s = reload_settings(monkeypatch)
-    assert s.RUZ_FACULTY_ID == 125
+    assert s.SCHEDULE_API_FACULTY_ID == 125
 
 
-def test_ruz_weeks_ahead_default(monkeypatch):
-    monkeypatch.delenv("RUZ_WEEKS_AHEAD", raising=False)
+def test_schedule_weeks_ahead_default(monkeypatch):
+    monkeypatch.delenv("SCHEDULE_API_WEEKS_AHEAD", raising=False)
     s = reload_settings(monkeypatch)
-    assert s.RUZ_WEEKS_AHEAD == 3
+    assert s.SCHEDULE_API_WEEKS_AHEAD == 3
 
 
-def test_ruz_http_timeout_default(monkeypatch):
-    monkeypatch.delenv("RUZ_HTTP_TIMEOUT", raising=False)
+def test_schedule_http_timeout_default(monkeypatch):
+    monkeypatch.delenv("SCHEDULE_API_HTTP_TIMEOUT", raising=False)
     s = reload_settings(monkeypatch)
-    assert s.RUZ_HTTP_TIMEOUT == 15
+    assert s.SCHEDULE_API_HTTP_TIMEOUT == 15
 
 
-def test_ruz_lazy_ttl_min_default(monkeypatch):
-    monkeypatch.delenv("RUZ_LAZY_TTL_MIN", raising=False)
+def test_schedule_lazy_ttl_min_default(monkeypatch):
+    monkeypatch.delenv("SCHEDULE_API_LAZY_TTL_MIN", raising=False)
     s = reload_settings(monkeypatch)
-    assert s.RUZ_LAZY_TTL_MIN == 60
+    assert s.SCHEDULE_API_LAZY_TTL_MIN == 60
 
 
 def test_schedule_auto_update_enabled_default(monkeypatch):
@@ -46,16 +46,16 @@ def test_schedule_auto_update_enabled_default(monkeypatch):
     assert s.SCHEDULE_AUTO_UPDATE_ENABLED is True
 
 
-def test_ruz_group_codes_picked_up_per_code(monkeypatch):
-    monkeypatch.setenv("RUZ_GROUP_40001", "99000")
-    monkeypatch.setenv("RUZ_GROUP_40002", "99001")
+def test_schedule_group_codes_picked_up_per_code(monkeypatch):
+    monkeypatch.setenv("SCHEDULE_API_GROUP_40001", "99000")
+    monkeypatch.setenv("SCHEDULE_API_GROUP_40002", "99001")
     s = reload_settings(monkeypatch)
-    assert s.RUZ_GROUP_IDS == {"40001": 99000, "40002": 99001}
+    assert s.SCHEDULE_API_GROUP_IDS == {"40001": 99000, "40002": 99001}
 
 
-def test_ruz_group_ids_empty_when_none_set(monkeypatch):
+def test_schedule_group_ids_empty_when_none_set(monkeypatch):
     for k in list(os.environ):
-        if k.startswith("RUZ_GROUP_"):
+        if k.startswith("SCHEDULE_API_GROUP_"):
             monkeypatch.delenv(k, raising=False)
     s = reload_settings(monkeypatch)
-    assert s.RUZ_GROUP_IDS == {}
+    assert s.SCHEDULE_API_GROUP_IDS == {}

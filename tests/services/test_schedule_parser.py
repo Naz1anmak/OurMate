@@ -3,10 +3,10 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from src.bot.services.ruz_parser import parse_lessons, normalize_kind
+from src.bot.services.schedule_parser import parse_lessons, normalize_kind
 
 TZ = ZoneInfo("Europe/Moscow")
-FIXTURE = json.loads((Path(__file__).parent.parent / "fixtures" / "ruz_week_sample.json").read_text())
+FIXTURE = json.loads((Path(__file__).parent.parent / "fixtures" / "schedule_week_sample.json").read_text())
 
 
 def _flatten(payload):

@@ -4,8 +4,8 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from src.bot.services.ruz_client import RuzClient, RuzError
-from src.bot.services.ruz_parser import load_schedule, parse_lessons, save_schedule
+from src.bot.services.schedule_client import ScheduleClient, ScheduleError
+from src.bot.services.schedule_parser import load_schedule, parse_lessons, save_schedule
 from src.bot.services.schedule_diff import compute_diff, render
 from src.bot.services.schedule_service import ScheduleEvent, ScheduleService
 from src.config.settings import TIMEZONE
@@ -26,7 +26,7 @@ class ScheduleRefresher:
     def __init__(
         self,
         *,
-        client: RuzClient,
+        client: ScheduleClient,
         schedule_service: ScheduleService,
         group_ids: dict[str, int],
         weeks_ahead: int,
@@ -96,7 +96,7 @@ class ScheduleRefresher:
                     try:
                         raw = await self.client.fetch_week(self.group_ids[code], w)
                         new_events.extend(parse_lessons(raw))
-                    except RuzError as exc:
+                    except ScheduleError as exc:
                         errors += 1
                         logger.warning("refresh %s неделя %s упала: %s", code, w, exc)
 

@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.bot.services.ruz_parser import save_schedule
+from src.bot.services.schedule_parser import save_schedule
 from src.bot.services.schedule_service import ScheduleEvent, ScheduleService
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -11,7 +11,7 @@ TZ = ZoneInfo("Europe/Moscow")
 
 @pytest.fixture
 def tmp_groups_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr("src.bot.services.ruz_parser.SCHEDULE_GROUPS_DIR", tmp_path)
+    monkeypatch.setattr("src.bot.services.schedule_parser.SCHEDULE_GROUPS_DIR", tmp_path)
     monkeypatch.setattr("src.bot.services.schedule_service.SCHEDULE_GROUPS_DIR", tmp_path)
     return tmp_path
 
