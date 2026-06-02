@@ -10,6 +10,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from aiogram import Bot
 from aiogram.enums import ChatAction
+from aiogram.exceptions import (
+    TelegramForbiddenError,
+    TelegramBadRequest,
+    TelegramRetryAfter,
+)
 
 from src.config.settings import (
     TIMEZONE,
@@ -18,8 +23,10 @@ from src.config.settings import (
     CHAT_ID,
     OWNER_CHAT_ID,
     LAST_BIRTHDAY_GREETING_FILE,
+    BIRTHDAY_PROBE_DELAY_SEC,
 )
 from src.bot.services.birthday_service import birthday_service
+from src.models.user import DmState
 from src.utils.date_utils import today_mmdd
 
 logger = logging.getLogger(__name__)
@@ -76,7 +83,8 @@ class BirthdayScheduler:
             },
         )
         self.last_greeting_file = Path(LAST_BIRTHDAY_GREETING_FILE)
-    
+        self._probe_delay = BIRTHDAY_PROBE_DELAY_SEC
+
     def start(self):
         """
         Запускает планировщик и выполняет начальные задачи.
@@ -189,6 +197,21 @@ class BirthdayScheduler:
         # При запуске всегда отправляем информацию о следующем ДР
         await self._notify_next_birthday()
 
+    async def _throttled_call(self, make_call):
+        """Один Telegram-вызов с паузой и одним ретраем на TelegramRetryAfter.
+
+        make_call: callable без аргументов, возвращающий свежую корутину
+        (чтобы вызов можно было повторить). Результат возвращается; любые
+        исключения, кроме обработанного RetryAfter, пробрасываются наружу
+        для классификации вызывающим.
+        """
+        await asyncio.sleep(self._probe_delay)
+        try:
+            return await make_call()
+        except TelegramRetryAfter as exc:
+            await asyncio.sleep(exc.retry_after + 0.5)
+            return await make_call()
+
     async def _refresh_usernames(self) -> None:
         """Обновляет usernames при старте бота, где доступно по user_id."""
         updated_users: list[str] = []
@@ -199,7 +222,9 @@ class BirthdayScheduler:
                 continue
             checked += 1
             try:
-                chat = await self.bot.get_chat(user.user_id)
+                chat = await self._throttled_call(
+                    lambda uid=user.user_id: self.bot.get_chat(uid)
+                )
             except Exception as exc:  # noqa: BLE001
                 failures += 1
                 continue
