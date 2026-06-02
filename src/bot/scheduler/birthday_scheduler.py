@@ -55,7 +55,7 @@ def _save_active_snapshot(users: list) -> None:
         payload = [
             {"user_id": u.user_id, "username": u.username}
             for u in users
-            if u.user_id is not None and u.interacted_with_bot
+            if u.user_id is not None and u.is_active
         ]
         ACTIVE_USERS_CACHE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
@@ -249,45 +249,61 @@ class BirthdayScheduler:
         )
 
     async def _refresh_access_flags(self) -> None:
-        """Обновляет interacted_with_bot по факту доступности пользователя для бота."""
+        """Обновляет dm_state по факту доступности пользователя для бота."""
         import ssl
         from aiohttp import ClientOSError
-        from aiogram.exceptions import TelegramForbiddenError
         changed = False
-        deactivated = []
         total_users = 0
         snapshot_before = _load_active_snapshot()
-        network_errors = 0
-        other_errors = 0
+        n_blocked = n_never = n_deactivated = n_network = n_other = 0
+        deactivated_now = []
         for user in birthday_service.users:
             if user.user_id is None:
                 continue
             total_users += 1
+            old_state = user.dm_state
+            was_active = user.is_active
             try:
-                # Неблокирующий пинг: если бот заблокирован, получим исключение
-                await self.bot.send_chat_action(user.user_id, action=ChatAction.TYPING)
-            except TelegramForbiddenError:
-                # Только если Telegram явно вернул 403 Forbidden (бот заблокирован)
-                if user.interacted_with_bot:
-                    user.interacted_with_bot = False
-                    changed = True
-                    deactivated.append(user)
+                await self._throttled_call(
+                    lambda uid=user.user_id: self.bot.send_chat_action(uid, action=ChatAction.TYPING)
+                )
+            except TelegramForbiddenError as exc:
+                msg = (exc.message or "").lower()
+                if "blocked" in msg:
+                    user.dm_state = DmState.BLOCKED
+                    n_blocked += 1
+                elif "initiate" in msg:
+                    user.dm_state = DmState.NEVER_STARTED
+                    n_never += 1
+                else:
+                    n_other += 1
+                    logger.debug("Неклассифицированный 403 для %s: %s", user.user_id, exc.message)
+            except TelegramBadRequest as exc:
+                msg = (exc.message or "").lower()
+                if "chat not found" in msg or "deactivated" in msg:
+                    user.dm_state = DmState.DEACTIVATED
+                    n_deactivated += 1
+                else:
+                    n_other += 1
+                    logger.debug("Неклассифицированный BadRequest для %s: %s", user.user_id, exc.message)
             except (ClientOSError, ssl.SSLError):
-                network_errors += 1
-            except Exception:
-                other_errors += 1
+                n_network += 1
+            except Exception as exc:  # noqa: BLE001
+                n_other += 1
+                logger.debug("Прочая ошибка пинга %s: %r", user.user_id, exc)
             else:
-                # Не включаем обратно автоматически
-                pass
+                user.dm_state = DmState.REACHABLE
+            if user.dm_state != old_state:
+                changed = True
+            if was_active and not user.is_active:
+                deactivated_now.append(user)
         if changed:
             birthday_service.save_users()
-        active_users_now = [u for u in birthday_service.users if u.user_id is not None and u.interacted_with_bot]
+
+        active_users_now = [u for u in birthday_service.users if u.user_id is not None and u.is_active]
         active_count = len(active_users_now)
 
-        activated = []
-        for u in active_users_now:
-            if u.user_id not in snapshot_before:
-                activated.append(u)
+        activated = [u for u in active_users_now if u.user_id not in snapshot_before]
         deactivated_for_delta = []
         for uid, uname in snapshot_before.items():
             if all(u.user_id != uid for u in active_users_now):
@@ -296,7 +312,7 @@ class BirthdayScheduler:
         delta_parts: list[str] = []
         if activated:
             delta_parts.append(" | ".join("+" + _format_user(u) for u in activated))
-        if deactivated or deactivated_for_delta:
+        if deactivated_now or deactivated_for_delta:
             combined: list[str] = []
             seen: set[int] = set()
             for uid, uname in deactivated_for_delta:
@@ -304,7 +320,7 @@ class BirthdayScheduler:
                     continue
                 seen.add(uid)
                 combined.append("-" + _format_user_tuple(uid, uname))
-            for u in deactivated:
+            for u in deactivated_now:
                 if u.user_id in seen:
                     continue
                 seen.add(u.user_id)
@@ -314,12 +330,16 @@ class BirthdayScheduler:
 
         changes = f" ({' | '.join(delta_parts)})" if delta_parts else ""
         logger.info(
-            "Подписаны на поздравления: %s/%s%s; сетевых ошибок: %s; прочих ошибок: %s",
+            "Подписаны на поздравления: %s/%s%s; забанили: %s; не начали диалог: %s; "
+            "удалён/нет чата: %s; сетевых: %s; прочих: %s",
             active_count,
             total_users,
             changes,
-            network_errors,
-            other_errors,
+            n_blocked,
+            n_never,
+            n_deactivated,
+            n_network,
+            n_other,
         )
 
         _save_active_snapshot(active_users_now)
