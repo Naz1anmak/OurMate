@@ -33,6 +33,7 @@ def _ctx(*, is_owner=False, is_group_chat=False, is_group_main=False, is_whiteli
     ("пары", Audience.PUBLIC),
     ("пары завтра", Audience.PUBLIC),
     ("обнови расписание", Audience.GROUP_OR_OWNER),
+    ("пинг", Audience.GROUP_ONLY),
     ("logs", Audience.OWNER),
     ("full logs", Audience.OWNER),
     ("проверка ссылок", Audience.OWNER),
@@ -153,6 +154,28 @@ async def test_send_denial_sends_text_for_reason():
     sent_text = message.answer.await_args.args[0]
     assert "только избранным" in sent_text
     assert message.answer.await_args.kwargs["parse_mode"] == "HTML"
+
+
+def test_classify_ping():
+    assert classify("пинг") == Audience.GROUP_ONLY
+
+
+def test_ping_in_main_group_allowed():
+    assert resolve(Audience.GROUP_ONLY, _ctx(is_group_chat=True, is_group_main=True)) == Decision(True, None)
+
+
+def test_ping_owner_in_group_allowed():
+    assert resolve(Audience.GROUP_ONLY, _ctx(is_group_chat=True, is_owner=True)) == Decision(True, None)
+
+
+def test_ping_foreign_group_denied():
+    d = resolve(Audience.GROUP_ONLY, _ctx(is_group_chat=True))
+    assert d == Decision(False, DenialReason.FOREIGN_GROUP)
+
+
+def test_ping_in_pm_denied():
+    d = resolve(Audience.GROUP_ONLY, _ctx())
+    assert d == Decision(False, DenialReason.GROUP_ONLY)
 
 
 @pytest.mark.asyncio

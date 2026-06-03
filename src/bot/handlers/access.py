@@ -27,6 +27,7 @@ class Audience(Enum):
     UNSUBSCRIBE = auto()
     PUBLIC = auto()
     GROUP_OR_OWNER = auto()
+    GROUP_ONLY = auto()
     OWNER = auto()
 
 
@@ -80,6 +81,8 @@ def classify(normalized_text: str) -> Audience | None:
         return Audience.GROUP_OR_OWNER
     if is_public_command(normalized_text):
         return Audience.PUBLIC
+    if normalized_text == "пинг":
+        return Audience.GROUP_ONLY
     if normalized_text in OWNER_COMMANDS:
         return Audience.OWNER
     return None
@@ -109,6 +112,14 @@ def resolve(audience: Audience, ctx: dict) -> Decision:
         if ctx["is_owner"]:
             return _ALLOW
         return Decision(False, DenialReason.GROUP_ONLY)
+
+    if audience is Audience.GROUP_ONLY:
+        # Только в беседе; в основной беседе или владельцу. Чужая беседа — отказ.
+        if not ctx["is_group_chat"]:
+            return Decision(False, DenialReason.GROUP_ONLY)
+        if ctx["is_group_main"] or ctx["is_owner"]:
+            return _ALLOW
+        return Decision(False, DenialReason.FOREIGN_GROUP)
 
     # Audience.PUBLIC
     if ctx["is_group_chat"]:
