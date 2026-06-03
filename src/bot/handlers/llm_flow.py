@@ -324,7 +324,7 @@ async def run_schedule_aware_response(
     if result.suppress_text:
         await renderer.discard()
         await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
-        logger.info("%s; Бот (tool: %s) для %s: [тихо — сообщение отправил тул]",
+        logger.info("%s; Бот (tool: %s) для %s: [тихо — тул отправил сообщение сам]",
                     "GR" if is_group_chat else "PM",
                     ", ".join(result.called_tools) or "?", user_login or "?")
         return True
