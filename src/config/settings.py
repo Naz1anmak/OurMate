@@ -56,13 +56,18 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")  # None → тул web_search не 
 TAVILY_URL = _get_env("TAVILY_URL", "https://api.tavily.com/search", log_default=False)
 TAVILY_MAX_RESULTS = _get_env("TAVILY_MAX_RESULTS", 5, cast=int, log_default=True)
 TAVILY_SEARCH_DEPTH = _get_env("TAVILY_SEARCH_DEPTH", "basic", log_default=True)
-WEB_SEARCH_DAILY_CAP = _get_env("WEB_SEARCH_DAILY_CAP", 200, cast=int, log_default=True)
 
 # ===== Напоминания =====
 REMINDER_DB_PATH = _get_env("REMINDER_DB_PATH", "data/reminders.db", log_default=True)
 REMINDER_MISFIRE_HOURS = _get_env("REMINDER_MISFIRE_HOURS", 24, cast=int, log_default=True)
 # Срок хранения завершённых/отменённых/неподтверждённых записей (дни). Чистка — при старте.
 REMINDER_RETENTION_DAYS = _get_env("REMINDER_RETENTION_DAYS", 7, cast=int, log_default=True)
+
+# ===== ЛИМИТЫ ОБРАЩЕНИЙ К LLM (анти-абьюз) =====
+PM_DAILY_MSG_CAP = _get_env("PM_DAILY_MSG_CAP", 30, cast=int, log_default=True)
+CHAT_DAILY_MSG_CAP = _get_env("CHAT_DAILY_MSG_CAP", 30, cast=int, log_default=True)
+USAGE_DB_PATH = _get_env("USAGE_DB_PATH", "data/usage.db", log_default=True)
+USAGE_RETENTION_DAYS = _get_env("USAGE_RETENTION_DAYS", 30, cast=int, log_default=True)
 
 # ===== НАСТРОЙКИ ДНЕЙ РОЖДЕНИЯ =====
 # Путь к файлу с данными о днях рождения
