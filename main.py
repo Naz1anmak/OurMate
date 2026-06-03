@@ -26,6 +26,7 @@ from src.bot.services.schedule_tools import build_schedule_registry
 from src.bot.scheduler.reminder_scheduler import start_reminder_scheduler
 from src.bot.services.reminder_tools import build_reminder_registry
 from src.bot.handlers import reminder_callbacks as reminder_callbacks_module
+from src.bot.services.usage_limit_store import usage_limit_store
 from src.config.settings import (
     SCHEDULE_API_BASE_URL, SCHEDULE_API_FACULTY_ID, SCHEDULE_API_HTTP_TIMEOUT,
     SCHEDULE_API_WEEKS_AHEAD, SCHEDULE_API_LAZY_TTL_MIN, SCHEDULE_API_GROUP_IDS,
@@ -53,6 +54,10 @@ async def main() -> None:
         reminder_scheduler_instance = start_reminder_scheduler(bot)
         await reminder_scheduler_instance.start()
         reminder_callbacks_module.scheduler = reminder_scheduler_instance
+
+        await usage_limit_store.init()
+        removed = await usage_limit_store.cleanup_old()
+        logger.info("usage-лимиты: стор готов, подметено старых строк: %s", removed)
 
         refresher = None
         if SCHEDULE_AUTO_UPDATE_ENABLED:
