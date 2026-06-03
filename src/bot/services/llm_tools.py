@@ -139,8 +139,11 @@ async def run_tool_loop(
         # Тул сам отправил готовое сообщение (карточка/подтверждение) — второй вызов LLM не нужен:
         # незачем генерить подтверждающую фразу, которую мы всё равно подавим (и которая успевает
         # мелькнуть в стриме/драфте). Завершаемся сразу.
+        # deferred здесь гасим: _silent-тул сам владеет выводом в чат, а накопленный deferred —
+        # это служебный lookup (напр. list_reminders перед update/cancel), который иначе вывалит
+        # весь список рядом с карточкой правки (баг «второго срабатывания» при редактировании).
         if silent:
-            return ToolLoopResult(text="", deferred_messages=deferred,
+            return ToolLoopResult(text="", deferred_messages=[],
                                   called_tools=called, suppress_text=True,
                                   context_note=context_note)
 

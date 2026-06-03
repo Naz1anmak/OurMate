@@ -135,6 +135,37 @@ async def test_silent_flag_short_circuits_and_suppresses():
 
 
 @pytest.mark.asyncio
+async def test_silent_tool_drops_prior_deferred():
+    """list_reminders (deferred) перед update_reminder (_silent) → служебный список НЕ вываливается.
+
+    Регресс на баг «второго срабатывания» при редактировании: мутирующий тул сам шлёт карточку,
+    а deferred от lookup-тула не должен дублироваться рядом списком.
+    """
+    async def lookup(*, tool_context, **kw):
+        return {"count": 1, "_deferred": ["весь список напоминаний"]}
+
+    async def mutate(*, tool_context, **kw):
+        return {"ok": True, "_silent": True, "_context_note": "[предложена правка #1]"}
+
+    reg = ToolRegistry()
+    reg.register("list_reminders", ToolSpec(
+        schema={"type": "function", "function": {"name": "list_reminders"}}, func=lookup, gate=None))
+    reg.register("update_reminder", ToolSpec(
+        schema={"type": "function", "function": {"name": "update_reminder"}}, func=mutate, gate=None))
+
+    # Раунд 1 — lookup (не silent, идём дальше); раунд 2 — мутация (silent, короткозамыкание).
+    llm_call, calls = _fake_llm([
+        LLMReply(tool_calls=[_tool_call("list_reminders", {})]),
+        LLMReply(tool_calls=[_tool_call("update_reminder", {"reminder_id": 1}, tc_id="tc2")]),
+    ])
+    res = await run_tool_loop([{"role": "user", "content": "перенеси напоминание на 16:00"}],
+                              {}, registry=reg, llm_call=llm_call, max_tool_rounds=2)
+    assert res.suppress_text is True
+    assert res.deferred_messages == []     # список от list_reminders погашен, не дублируется
+    assert res.called_tools == ["list_reminders", "update_reminder"]
+
+
+@pytest.mark.asyncio
 async def test_run_tool_loop_calls_on_tool_start():
     seen = []
 
