@@ -72,3 +72,72 @@ async def test_different_day_resets():
         now=tomorrow, pm_cap=30, chat_cap=30)
     assert blocked is False
     assert store.data[("chat", -100, "2026-06-04")] == 1
+
+
+from src.bot.services.usage_limit import enforce_usage_limit
+from src.bot.handlers.usage_limit_variants import pick_limit_variant
+
+
+class _FakeChat:
+    def __init__(self, chat_type):
+        self.type = chat_type
+
+
+class FakeMessage:
+    def __init__(self, chat_type):
+        self.chat = _FakeChat(chat_type)
+        self.replied = None
+        self.answered = None
+
+    async def reply(self, text, **kwargs):
+        self.replied = text
+
+    async def answer(self, text, **kwargs):
+        self.answered = text
+
+
+@pytest.mark.asyncio
+async def test_enforce_blocks_with_reply_in_group(monkeypatch):
+    import src.bot.services.usage_limit as ul
+
+    async def _blocked(*a, **k):
+        return True
+    monkeypatch.setattr(ul, "check_and_consume", _blocked)
+
+    msg = FakeMessage("supergroup")
+    blocked = await enforce_usage_limit(
+        msg, {"is_owner": False, "is_group": True, "chat_id": -100, "user_id": 7})
+    assert blocked is True
+    assert msg.replied is not None   # в группе — reply
+    assert msg.answered is None
+
+
+@pytest.mark.asyncio
+async def test_enforce_blocks_with_answer_in_pm(monkeypatch):
+    import src.bot.services.usage_limit as ul
+
+    async def _blocked(*a, **k):
+        return True
+    monkeypatch.setattr(ul, "check_and_consume", _blocked)
+
+    msg = FakeMessage("private")
+    blocked = await enforce_usage_limit(
+        msg, {"is_owner": False, "is_group": False, "chat_id": 7, "user_id": 7})
+    assert blocked is True
+    assert msg.answered is not None  # в ЛС — answer
+    assert msg.replied is None
+
+
+@pytest.mark.asyncio
+async def test_enforce_allows_when_under_cap(monkeypatch):
+    import src.bot.services.usage_limit as ul
+
+    async def _ok(*a, **k):
+        return False
+    monkeypatch.setattr(ul, "check_and_consume", _ok)
+
+    msg = FakeMessage("private")
+    blocked = await enforce_usage_limit(
+        msg, {"is_owner": False, "is_group": False, "chat_id": 7, "user_id": 7})
+    assert blocked is False
+    assert msg.answered is None and msg.replied is None

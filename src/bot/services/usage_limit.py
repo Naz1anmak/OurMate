@@ -2,6 +2,10 @@
 import logging
 from datetime import datetime
 
+from src.config.settings import PM_DAILY_MSG_CAP, CHAT_DAILY_MSG_CAP, TIMEZONE
+from src.bot.services.usage_limit_store import usage_limit_store
+from src.bot.handlers.usage_limit_variants import pick_limit_variant
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,3 +28,28 @@ async def check_and_consume(
         return True
     await store.increment(scope, key, day)
     return False
+
+
+async def enforce_usage_limit(message, tool_context: dict) -> bool:
+    """True — обращение заблокировано (блок-сообщение уже отправлено), LLM трогать не нужно."""
+    blocked = await check_and_consume(
+        usage_limit_store,
+        is_owner=bool(tool_context.get("is_owner")),
+        is_group=bool(tool_context.get("is_group")),
+        chat_id=tool_context["chat_id"],
+        user_id=tool_context["user_id"],
+        now=datetime.now(TIMEZONE),
+        pm_cap=PM_DAILY_MSG_CAP,
+        chat_cap=CHAT_DAILY_MSG_CAP,
+    )
+    if not blocked:
+        return False
+    text = pick_limit_variant().text
+    try:
+        if message.chat.type in ("group", "supergroup"):
+            await message.reply(text, parse_mode="HTML")
+        else:
+            await message.answer(text, parse_mode="HTML")
+    except Exception as exc:  # noqa: BLE001 — недоставка блока не критична
+        logger.debug("Не удалось отправить блок-сообщение лимита: %s", exc)
+    return True
