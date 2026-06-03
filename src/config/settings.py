@@ -64,6 +64,12 @@ REMINDER_MISFIRE_HOURS = _get_env("REMINDER_MISFIRE_HOURS", 24, cast=int, log_de
 # Срок хранения завершённых/отменённых/неподтверждённых записей (дни). Чистка — при старте.
 REMINDER_RETENTION_DAYS = _get_env("REMINDER_RETENTION_DAYS", 7, cast=int, log_default=True)
 
+# ===== ЛИМИТЫ ОБРАЩЕНИЙ К LLM (анти-абьюз) =====
+PM_DAILY_MSG_CAP = _get_env("PM_DAILY_MSG_CAP", 30, cast=int, log_default=True)
+CHAT_DAILY_MSG_CAP = _get_env("CHAT_DAILY_MSG_CAP", 30, cast=int, log_default=True)
+USAGE_DB_PATH = _get_env("USAGE_DB_PATH", "data/usage.db", log_default=True)
+USAGE_RETENTION_DAYS = _get_env("USAGE_RETENTION_DAYS", 30, cast=int, log_default=True)
+
 # ===== НАСТРОЙКИ ДНЕЙ РОЖДЕНИЯ =====
 # Путь к файлу с данными о днях рождения
 # По умолчанию ищем файл birthdays.json в папке data относительно корня проекта
