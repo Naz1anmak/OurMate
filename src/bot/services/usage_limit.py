@@ -4,7 +4,6 @@ from datetime import datetime
 
 from src.config.settings import PM_DAILY_MSG_CAP, CHAT_DAILY_MSG_CAP, TIMEZONE
 from src.bot.services.usage_limit_store import usage_limit_store
-from src.bot.handlers.usage_limit_variants import pick_limit_variant
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +43,9 @@ async def enforce_usage_limit(message, tool_context: dict) -> bool:
     )
     if not blocked:
         return False
+    # Ленивый импорт — разрывает циклическую зависимость
+    # usage_limit → handlers/__init__ → chat_pm → llm_flow → usage_limit
+    from src.bot.handlers.usage_limit_variants import pick_limit_variant  # noqa: PLC0415
     text = pick_limit_variant().text
     try:
         if message.chat.type in ("group", "supergroup"):

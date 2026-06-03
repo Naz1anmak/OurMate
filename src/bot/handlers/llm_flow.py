@@ -10,6 +10,7 @@ from aiogram.methods import SendMessageDraft
 from src.bot.services.llm_service import LLMServiceError, stream_with_tools
 from src.bot.services.llm_tools import run_tool_loop, ToolLoopResult
 from src.bot.services.context_service import context_service
+from src.bot.services.usage_limit import enforce_usage_limit
 
 from src.bot.handlers.errors import notify_owner_error
 from src.utils.render_utils import render_html_with_code
@@ -272,6 +273,8 @@ async def run_schedule_aware_response(
     registry,
 ) -> bool:
     """Тул-флоу со стримом: фаза1 (стрим болтовни / детект tool_calls) → run_tool_loop → стрим финала + deferred."""
+    if await enforce_usage_limit(message, tool_context):
+        return True  # дневной лимит исчерпан — блок отправлен, LLM не трогаем
     is_group_chat = message.chat.type in ("group", "supergroup")
     messages = _inject_system_note(messages, SCHEDULE_PRESENTATION_NOTE)
     messages = _inject_system_note(messages, WEB_SEARCH_NOTE)
