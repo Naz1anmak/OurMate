@@ -7,6 +7,14 @@ from src.bot.handlers.llm_flow import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _disable_usage_limit(monkeypatch):
+    """Гейт лимита прозрачен: эти тесты про тул-флоу, не про лимиты (и чтобы не писать в data/usage.db)."""
+    async def _never_block(message, tool_context):
+        return False
+    monkeypatch.setattr("src.bot.handlers.llm_flow.enforce_usage_limit", _never_block)
+
+
 def test_inject_system_note_after_leading_system_messages():
     messages = [
         {"role": "system", "content": "персона"},
