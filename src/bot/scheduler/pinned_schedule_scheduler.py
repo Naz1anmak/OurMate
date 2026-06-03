@@ -26,6 +26,14 @@ from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
+# Telegram периодически отдаёт ложные "message to edit not found" / "message can't be
+# edited" на реально живое сообщение — особенно на свежей сессии сразу после старта
+# (первые API-вызовы по холодному соединению). Поэтому не пересоздаём закреп по первой
+# же ошибке: ретраим правку, и только если она не прошла за все попытки — шлём заново.
+# Иначе транзиент рушит валидный закреп и плодит дубли.
+_EDIT_RETRY_ATTEMPTS = 3
+_EDIT_RETRY_DELAY = 2.0
+
 
 class PinnedScheduleScheduler:
     def __init__(self, bot: Bot):
@@ -83,9 +91,9 @@ class PinnedScheduleScheduler:
             if pinned_id is not None:
                 try:
                     await self.bot.delete_message(CHAT_ID, pinned_id)
-                    logger.info("Закреп расписания удалён (нет будущих пар)")
+                    logger.info("Закреп расписания удалён (нет будущих пар, id=%s)", pinned_id)
                 except Exception as exc:
-                    logger.warning("Не удалось удалить закреп расписания: %s", exc)
+                    logger.warning("Не удалось удалить закреп расписания id=%s: %s", pinned_id, exc)
                 _clear_pinned_id(PINNED_SCHEDULE_MESSAGE_FILE)
             return
 
@@ -93,27 +101,59 @@ class PinnedScheduleScheduler:
             await self._send_and_pin(text)
             return
 
-        try:
-            await self.bot.edit_message_text(
-                text,
-                chat_id=CHAT_ID,
-                message_id=pinned_id,
-                parse_mode="HTML",
-                disable_web_page_preview=True,
-            )
-            logger.info("Закреп расписания обновлён")
-        except TelegramForbiddenError:
-            logger.warning("Нет прав на редактирование закрепа; пробуем отправить заново")
-            await self._send_and_pin(text)
-        except TelegramBadRequest as exc:
-            if "message is not modified" in str(exc):
-                logger.info("Закреп расписания: текст не изменился, пропускаем")
-                return
-            logger.warning("Не удалось отредактировать закреп расписания: %s; отправляем заново", exc)
-            await self._send_and_pin(text)
-        except Exception as exc:
-            logger.warning("Не удалось отредактировать закреп расписания: %s; отправляем заново", exc)
-            await self._send_and_pin(text)
+        if await self._try_edit_pinned(text, pinned_id):
+            return
+        # Все попытки правки исчерпаны (либо нет прав) — пересоздаём закреп.
+        await self._send_and_pin(text)
+
+    async def _try_edit_pinned(self, text: str, pinned_id: int) -> bool:
+        """Правит закреп с ретраями. True — успех (или текст не изменился);
+        False — все попытки исчерпаны / нет прав, нужно пересоздавать."""
+        for attempt in range(1, _EDIT_RETRY_ATTEMPTS + 1):
+            try:
+                await self.bot.edit_message_text(
+                    text,
+                    chat_id=CHAT_ID,
+                    message_id=pinned_id,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True,
+                )
+                logger.info("Закреп расписания обновлён (id=%s)", pinned_id)
+                return True
+            except TelegramForbiddenError as exc:
+                # Нет прав на правку — ретраи не помогут, сразу пересоздаём.
+                logger.warning("Нет прав на редактирование закрепа id=%s: %s; отправляем заново", pinned_id, exc)
+                return False
+            except TelegramBadRequest as exc:
+                if "message is not modified" in str(exc):
+                    logger.info("Закреп расписания: текст не изменился, пропускаем (id=%s)", pinned_id)
+                    return True
+                if attempt < _EDIT_RETRY_ATTEMPTS:
+                    logger.warning(
+                        "Правка закрепа id=%s не удалась (попытка %d/%d): %s; ретрай через %.0f c",
+                        pinned_id, attempt, _EDIT_RETRY_ATTEMPTS, exc, _EDIT_RETRY_DELAY,
+                    )
+                    await asyncio.sleep(_EDIT_RETRY_DELAY)
+                    continue
+                logger.warning(
+                    "Правка закрепа id=%s не удалась за %d попыток: %s; отправляем заново",
+                    pinned_id, _EDIT_RETRY_ATTEMPTS, exc,
+                )
+                return False
+            except Exception as exc:  # noqa: BLE001
+                if attempt < _EDIT_RETRY_ATTEMPTS:
+                    logger.warning(
+                        "Правка закрепа id=%s упала (попытка %d/%d): %s; ретрай через %.0f c",
+                        pinned_id, attempt, _EDIT_RETRY_ATTEMPTS, exc, _EDIT_RETRY_DELAY,
+                    )
+                    await asyncio.sleep(_EDIT_RETRY_DELAY)
+                    continue
+                logger.warning(
+                    "Правка закрепа id=%s упала за %d попыток: %s; отправляем заново",
+                    pinned_id, _EDIT_RETRY_ATTEMPTS, exc,
+                )
+                return False
+        return False
 
     async def _send_and_pin(self, text: str):
         try:
@@ -128,7 +168,7 @@ class PinnedScheduleScheduler:
             except Exception as exc:
                 logger.warning("Не удалось закрепить сообщение с расписанием: %s", exc)
             _save_pinned_id(PINNED_SCHEDULE_MESSAGE_FILE, msg.message_id)
-            logger.info("Закреп расписания отправлен и закреплён")
+            logger.info("Закреп расписания отправлен и закреплён (id=%s)", msg.message_id)
         except Exception as exc:
             logger.warning("Не удалось отправить закреп с расписанием: %s", exc)
 
