@@ -14,9 +14,12 @@ from src.bot.handlers.chat_commands import (
     handle_unsubscribe_command,
     handle_public_commands,
     handle_reminders_command,
+    handle_ping_command,
+    handle_ping_all,
 )
 from src.bot.handlers.owner_commands import handle_owner_command
 from src.bot.handlers import access
+from src.bot.services import ping_service
 from src.bot.handlers.chat_pm import handle_private_chat
 from src.bot.handlers.chat_group import handle_group_chat
 from src.utils.telegram_cache import (
@@ -64,6 +67,11 @@ async def on_mention_or_reply(message: Message):
     bot_username = cached_username or f"@{bot_info.username}"
     ctx = build_command_context(message, bot_username, bot_info.id) if message.text else None
 
+    # @all — особый путь до триггер-гейта: без упоминания бота, только основная беседа.
+    if message.text and ctx and ctx["is_group_main"] and ping_service.has_all_trigger(message.text):
+        await handle_ping_all(message)
+        return
+
     # В группе бот реагирует только на упоминание/реплай — единый триггер-гейт.
     if message.chat.type in ("group", "supergroup") and not access.detect_trigger(
         message, bot_username, bot_info.id
@@ -87,6 +95,8 @@ async def on_mention_or_reply(message: Message):
                 await handle_unsubscribe_command(message, ctx["normalized_text"])
             elif audience is access.Audience.OWNER:
                 await handle_owner_command(message)
+            elif audience is access.Audience.GROUP_ONLY:
+                await handle_ping_command(message)
             else:  # Audience.PUBLIC / GROUP_OR_OWNER → общий роутер команд
                 await handle_public_commands(message, ctx)
             return

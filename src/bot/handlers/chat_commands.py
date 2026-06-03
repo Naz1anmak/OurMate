@@ -10,6 +10,8 @@ from src.bot.services.reminder_store import reminder_store
 from src.bot.services import reminder_service as rs
 from src.utils.date_utils import format_birthday_date
 from src.core.emoji import E
+from src.bot.services.ping_store import ping_store
+from src.bot.services import ping_service
 
 if TYPE_CHECKING:
     from src.bot.services.schedule_refresher import ScheduleRefresher
@@ -294,3 +296,36 @@ async def handle_reminders_command(message: Message) -> bool:
     await message.answer(rs.render_list(items, header=header, now=now),
                          parse_mode="HTML", disable_web_page_preview=True)
     return True
+
+
+async def handle_ping_command(message: Message) -> None:
+    """Команда `пинг`: панель со счётчиком и кнопками вступления/выхода. Никого не зовёт."""
+    count = await ping_store.count(message.chat.id)
+    await message.answer(
+        ping_service.panel_text(count),
+        reply_markup=ping_service.panel_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+async def handle_ping_all(message: Message) -> None:
+    """Триггер `@all`: пинг всех участников пинг-листа этой беседы (с кулдауном)."""
+    chat_id = message.chat.id
+    members = await ping_store.list_members(chat_id)
+    if not members:
+        await message.answer(
+            f"{E.REMINDER} Список пуст. Наберите <code>пинг</code>, чтобы вступить.",
+            parse_mode="HTML",
+        )
+        return
+    remaining = ping_service.cooldown_remaining(chat_id)
+    if remaining > 0:
+        mins = int(remaining // 60) + 1
+        await message.answer(
+            f"{E.THINK_HOURGLASS} Недавно уже звали. Подождите ~{mins} мин.",
+            parse_mode="HTML",
+        )
+        return
+    for text in ping_service.build_ping_messages(members):
+        await message.answer(text, parse_mode="HTML")
+    ping_service.mark_fired(chat_id)
