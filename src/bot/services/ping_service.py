@@ -25,7 +25,7 @@ def has_all_trigger(text: str) -> bool:
 
 def panel_text(count: int) -> str:
     return (
-        f"{E.MEGAPHONE} <b>Список для уведомлений</b>\n\n"
+        f"{E.REMINDER} <b>Список для уведомлений</b>\n\n"
         f"Вступайте, чтобы вас звали по <code>@all</code>.\n"
         f"В списке: <b>{count}</b>"
     )
@@ -49,7 +49,7 @@ def build_ping_messages(members: list[dict]) -> list[str]:
     """Список текстов (батчи по MENTION_BATCH меншенов) для пинга. Первый — с шапкой."""
     mentions = [_mention(m["user_id"], m.get("first_name")) for m in members]
     batches = [mentions[i:i + MENTION_BATCH] for i in range(0, len(mentions), MENTION_BATCH)]
-    header = f"{E.MEGAPHONE} <b>Общий сбор!</b>\n\n"
+    header = f"{E.REMINDER} <b>Общий сбор!</b>\n\n"
     return [
         (header if idx == 0 else "") + " ".join(batch)
         for idx, batch in enumerate(batches)
