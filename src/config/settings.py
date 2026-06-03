@@ -69,6 +69,10 @@ CHAT_DAILY_MSG_CAP = _get_env("CHAT_DAILY_MSG_CAP", 30, cast=int, log_default=Tr
 USAGE_DB_PATH = _get_env("USAGE_DB_PATH", "data/usage.db", log_default=True)
 USAGE_RETENTION_DAYS = _get_env("USAGE_RETENTION_DAYS", 30, cast=int, log_default=True)
 
+# ===== Пинг-лист (список для уведомлений) =====
+PING_DB_PATH = _get_env("PING_DB_PATH", "data/ping.db", log_default=True)
+PING_COOLDOWN_SECONDS = _get_env("PING_COOLDOWN_SECONDS", 300, cast=int, log_default=True)
+
 # ===== НАСТРОЙКИ ДНЕЙ РОЖДЕНИЯ =====
 # Путь к файлу с данными о днях рождения
 # По умолчанию ищем файл birthdays.json в папке data относительно корня проекта
