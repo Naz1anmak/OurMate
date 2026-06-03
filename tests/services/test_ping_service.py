@@ -38,6 +38,8 @@ def test_build_ping_messages_mentions_and_escape():
     body = msgs[0]
     assert 'tg://user?id=1' in body and 'tg://user?id=2' in body
     assert "&lt;b&gt;Зло&lt;/b&gt;" in body
+    # меншены разделяются запятой с пробелом
+    assert "</a>, <a" in body
 
 
 def test_build_ping_messages_batches():

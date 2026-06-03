@@ -51,7 +51,7 @@ def build_ping_messages(members: list[dict]) -> list[str]:
     batches = [mentions[i:i + MENTION_BATCH] for i in range(0, len(mentions), MENTION_BATCH)]
     header = f"{E.REMINDER} <b>Общий сбор!</b>\n\n"
     return [
-        (header if idx == 0 else "") + " ".join(batch)
+        (header if idx == 0 else "") + ", ".join(batch)
         for idx, batch in enumerate(batches)
     ]
 

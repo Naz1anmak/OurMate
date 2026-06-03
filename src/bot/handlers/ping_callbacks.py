@@ -17,6 +17,7 @@ async def on_ping_callback(query: CallbackQuery) -> None:
     action = parts[1]
     chat_id = query.message.chat.id
     user = query.from_user
+    who = f"@{user.username}" if user.username else (user.first_name or str(user.id))
 
     if action == "join":
         await ping_store.join(
@@ -32,6 +33,7 @@ async def on_ping_callback(query: CallbackQuery) -> None:
         return
 
     count = await ping_store.count(chat_id)
+    logger.info("GR; От %s: пинг-лист '%s' (в списке: %d)", who, action, count)
     try:
         await query.message.edit_text(
             ping_service.panel_text(count),

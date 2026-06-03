@@ -300,9 +300,18 @@ async def handle_reminders_command(message: Message) -> bool:
     return True
 
 
+def _user_log_id(message: Message) -> str:
+    """Логин/имя автора для логов в стиле проекта."""
+    u = message.from_user
+    if u and u.username:
+        return f"@{u.username}"
+    return (u.full_name if u else None) or str(u.id if u else "?")
+
+
 async def handle_ping_command(message: Message) -> None:
     """Команда `пинг`: панель со счётчиком и кнопками вступления/выхода. Никого не зовёт."""
     count = await ping_store.count(message.chat.id)
+    logger.info("GR; От %s: команда 'пинг' (в списке: %d)", _user_log_id(message), count)
     await message.answer(
         ping_service.panel_text(count),
         reply_markup=ping_service.panel_keyboard(),
@@ -313,8 +322,10 @@ async def handle_ping_command(message: Message) -> None:
 async def handle_ping_all(message: Message) -> None:
     """Триггер `@all`: пинг всех участников пинг-листа этой беседы (с кулдауном)."""
     chat_id = message.chat.id
+    who = _user_log_id(message)
     members = await ping_store.list_members(chat_id)
     if not members:
+        logger.info("GR; От %s: @all — список пуст", who)
         await message.answer(
             f"{E.REMINDER} Список пуст. Наберите <code>пинг</code>, чтобы вступить.",
             parse_mode="HTML",
@@ -323,11 +334,13 @@ async def handle_ping_all(message: Message) -> None:
     remaining = ping_service.cooldown_remaining(chat_id)
     if remaining > 0:
         mins = int(remaining // 60) + 1
+        logger.info("GR; От %s: @all — кулдаун, осталось ~%d мин", who, mins)
         await message.answer(
             f"{E.THINK_HOURGLASS} Недавно уже звали. Подождите ~{mins} мин.",
             parse_mode="HTML",
         )
         return
+    logger.info("GR; От %s: @all → пинг %d участникам", who, len(members))
     for text in ping_service.build_ping_messages(members):
         await message.answer(text, parse_mode="HTML")
     ping_service.mark_fired(chat_id)
