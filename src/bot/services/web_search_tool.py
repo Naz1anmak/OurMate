@@ -1,8 +1,7 @@
 """Тул веб-поиска через Tavily Search API для tool use."""
 import logging
 import ssl
-from datetime import datetime
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable
 
 import aiohttp
 import certifi
@@ -10,13 +9,9 @@ import certifi
 from src.bot.services.llm_tools import ToolRegistry, ToolSpec
 from src.config.settings import (
     TAVILY_API_KEY, TAVILY_MAX_RESULTS, TAVILY_SEARCH_DEPTH, TAVILY_URL,
-    TIMEZONE, WEB_SEARCH_DAILY_CAP,
 )
 
 logger = logging.getLogger(__name__)
-
-# Дневной счётчик запросов (in-memory, без БД): сбрасывается при смене даты.
-_usage = {"date": None, "count": 0}
 
 
 async def _tavily_request(query: str, *, api_key: str = TAVILY_API_KEY,
@@ -59,21 +54,10 @@ async def web_search(
     *,
     tool_context: dict,
     search_fn: Callable[..., Awaitable[dict]] = _tavily_request,
-    now: Optional[datetime] = None,
-    daily_cap: int = WEB_SEARCH_DAILY_CAP,
 ) -> dict:
     """Ищет в интернете через Tavily. Возвращает {answer, results, error}."""
     if not query or not query.strip():
         return {"answer": None, "results": [], "error": "search_failed"}
-
-    today = (now or datetime.now(TIMEZONE)).date()
-    if _usage["date"] != today:
-        _usage["date"] = today
-        _usage["count"] = 0
-    if _usage["count"] >= daily_cap:
-        logger.info("web_search: дневной кап %s исчерпан", daily_cap)
-        return {"answer": None, "results": [], "error": "quota_exhausted"}
-    _usage["count"] += 1
 
     try:
         data = await search_fn(query)

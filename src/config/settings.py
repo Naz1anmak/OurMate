@@ -56,7 +56,6 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")  # None → тул web_search не 
 TAVILY_URL = _get_env("TAVILY_URL", "https://api.tavily.com/search", log_default=False)
 TAVILY_MAX_RESULTS = _get_env("TAVILY_MAX_RESULTS", 5, cast=int, log_default=True)
 TAVILY_SEARCH_DEPTH = _get_env("TAVILY_SEARCH_DEPTH", "basic", log_default=True)
-WEB_SEARCH_DAILY_CAP = _get_env("WEB_SEARCH_DAILY_CAP", 200, cast=int, log_default=True)
 
 # ===== Напоминания =====
 REMINDER_DB_PATH = _get_env("REMINDER_DB_PATH", "data/reminders.db", log_default=True)
