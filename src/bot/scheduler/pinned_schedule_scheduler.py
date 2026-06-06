@@ -194,7 +194,7 @@ def _build_pinned_text() -> Optional[str]:
         base_empty = schedule_service.get_no_pairs_message(day_label)
         next_date, next_events = schedule_service.get_next_classes_after(effective_date)
         if next_date and next_events:
-            next_block = schedule_service.format_next_classes_block(next_date, base_date=effective_date)
+            next_block = schedule_service.format_next_classes_block(next_date)
             used_next_date = next_date
             lines.append(f"{base_empty}\n\n{next_block}")
         else:

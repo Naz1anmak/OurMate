@@ -318,9 +318,18 @@ class ScheduleService:
         inner = "\n\n".join(blocks)
         return f"{header}\n<blockquote>{inner}</blockquote>"
 
-    def format_next_classes_block(self, day: date, base_date: date | None = None) -> str:
-        """Блок «следующие пары» — общий или per-group по логике format_day_block."""
-        if base_date and day == date.fromordinal(base_date.toordinal() + 1):
+    def format_next_classes_block(self, day: date, today: date | None = None) -> str:
+        """Блок «следующие пары» — общий или per-group по логике format_day_block.
+
+        Слово «завтра» якорится к РЕАЛЬНОМУ сегодня (`today`, по умолчанию now в TZ),
+        а не к дате, от которой искали ближайшие пары. Иначе после переката
+        effective_date на завтра (вечером, когда сегодняшние пары кончились)
+        послезавтрашний день подписывался «Пары завтра» — в противоречие строке
+        «Пар завтра нет» над ним. `today` оставлен параметром ради детерминизма в тестах.
+        """
+        if today is None:
+            today = datetime.now(self.timezone).date()
+        if day == date.fromordinal(today.toordinal() + 1):
             base_title = "Пары завтра"
         else:
             day_phrase = self.weekday_with_preposition(day)
