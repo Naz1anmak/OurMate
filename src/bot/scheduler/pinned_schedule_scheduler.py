@@ -89,11 +89,20 @@ class PinnedScheduleScheduler:
         if text is None:
             # Нет будущих пар — удаляем сообщение, если было
             if pinned_id is not None:
+                deleted = False
                 try:
                     await self.bot.delete_message(CHAT_ID, pinned_id)
                     logger.info("Закреп расписания удалён (нет будущих пар, id=%s)", pinned_id)
+                    deleted = True
                 except Exception as exc:
                     logger.warning("Не удалось удалить закреп расписания id=%s: %s", pinned_id, exc)
+                if not deleted:
+                    # Сообщение старше 48 ч — удалить нельзя, но открепить можно
+                    try:
+                        await self.bot.unpin_chat_message(CHAT_ID, message_id=pinned_id)
+                        logger.info("Закреп расписания откреплён (нет будущих пар, id=%s)", pinned_id)
+                    except Exception as exc:
+                        logger.warning("Не удалось открепить закреп расписания id=%s: %s", pinned_id, exc)
                 _clear_pinned_id(PINNED_SCHEDULE_MESSAGE_FILE)
             return
 
