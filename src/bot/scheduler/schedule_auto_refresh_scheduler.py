@@ -7,7 +7,12 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from src.config.settings import CHAT_ID, TIMEZONE, SCHEDULE_AUTO_REFRESH_HOURS
+from src.config.settings import (
+    CHAT_ID,
+    TIMEZONE,
+    SCHEDULE_AUTO_REFRESH_HOURS,
+    SCHEDULE_AUTO_UPDATE_ENABLED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +28,12 @@ class ScheduleAutoRefreshScheduler:
         )
 
     def start(self):
+        # Доп. проверки гоняют refresher; без автообновления (refresher = None)
+        # джобы были бы пустышками — не планируем и не врём в лог.
+        if not SCHEDULE_AUTO_UPDATE_ENABLED:
+            logger.debug("Доп. проверки расписания: автообновление выключено, не планируем")
+            return
+
         if not SCHEDULE_AUTO_REFRESH_HOURS:
             logger.info("Доп. проверки расписания: список часов пуст, отключено")
             return
