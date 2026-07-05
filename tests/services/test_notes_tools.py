@@ -191,6 +191,16 @@ async def test_remove_from_list_by_position(store):
 
 
 @pytest.mark.asyncio
+async def test_remove_from_list_by_tg_name(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=7, username=None, tg_name="Пойманный ID")
+    res = await nt.remove_from_list("Q", who="Пойманный ID",
+                                    tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert await store.is_member(nid, 7) is False
+
+
+@pytest.mark.asyncio
 async def test_remove_from_list_by_member_username(store):
     nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
     await store.add_member(nid, user_id=7, username="guest")  # нет в ростере
@@ -246,13 +256,14 @@ async def test_add_to_list_edits_existing_card(store):
 
 
 @pytest.mark.asyncio
-async def test_show_list_resends_and_deletes_old_card(store):
+async def test_show_list_edits_existing_card_in_place(store):
     nid = await store.create(chat_id=-100, title="Only", author_id=1, formal=False)
     await store.set_card_message(nid, 555)
     ctx = _ctx()
     res = await nt.show_list(tool_context=ctx, store=store)
     assert res["ok"] is True
-    assert ctx["bot"].deleted == [(-100, 555)] and ctx["bot"].sent  # старую убрали, новую прислали
+    # закреп не ломаем: правим на месте, ничего не удаляем и не пересылаем
+    assert ctx["bot"].edited and not ctx["bot"].sent and not ctx["bot"].deleted
 
 
 @pytest.mark.asyncio

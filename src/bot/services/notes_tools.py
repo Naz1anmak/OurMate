@@ -16,27 +16,22 @@ def _foreign(tool_context: dict) -> bool:
     return not (tool_context.get("is_group") and tool_context.get("is_group_main"))
 
 
-async def _refresh_card(tool_context: dict, store, note: dict, *, resend: bool = False) -> None:
-    """Показать актуальную карточку. По умолчанию редактируем существующую на месте
-    (чтобы не плодить дубли с кнопками); при resend=True (явный «покажи список») —
-    удаляем старую и шлём свежую вниз чата."""
+async def _refresh_card(tool_context: dict, store, note: dict) -> None:
+    """Показать актуальную карточку. Всегда редактируем существующую НА МЕСТЕ
+    (карточка может быть закреплена — пересылать нельзя); новую шлём только если
+    карточки ещё нет или её удалили из чата."""
     members = await store.members(note["id"])
     text = ns.render_card(note, members)
     kb = ns.card_keyboard(note["id"])
     bot, chat_id = tool_context["bot"], tool_context["chat_id"]
     card_id = note.get("card_message_id")
-    if card_id and not resend:
+    if card_id:
         try:
             await bot.edit_message_text(text, chat_id=chat_id, message_id=card_id,
                                         parse_mode="HTML", reply_markup=kb)
             return
         except Exception as exc:  # noqa: BLE001 — карточку удалили/слишком старая → шлём новую
             logger.debug("notes: edit карточки #%s не удался, шлём новую: %s", card_id, exc)
-    if card_id and resend:
-        try:
-            await bot.delete_message(chat_id, card_id)
-        except Exception:  # noqa: BLE001
-            pass
     msg = await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb)
     await store.set_card_message(note["id"], msg.message_id)
 
@@ -79,7 +74,7 @@ async def show_list(title: str = "", *, tool_context: dict, store=notes_store) -
         if len(notes) > 1:
             return {"ok": False, "error": "ambiguous", "titles": [n["title"] for n in notes]}
         note = notes[0]
-    await _refresh_card(tool_context, store, note, resend=True)
+    await _refresh_card(tool_context, store, note)
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[показана карточка списка «{note['title']}»]"}
 
@@ -248,11 +243,22 @@ def _resolve_member(who: str, tool_context: dict, members: list[dict], users) ->
         if 1 <= n <= len(members):  # номер позиции в карточке
             return {"user_id": members[n - 1]["user_id"]}
         return {"user_id": n}  # трактуем как сырой tg_id
-    # username прямо среди участников (в т.ч. неофициальных, кого нет в ростере)
+    # Сопоставляем с участниками списка: по username и по имени аккаунта (tg_name),
+    # т.к. в карточке показывается именно tg_name — по нему и просят убрать.
     handle = who.lstrip("@").lower()
+    who_l = who.lower()
+    hits = []
     for m in members:
-        if (m.get("username") or "").lower() == handle:
-            return {"user_id": m["user_id"]}
+        uname = (m.get("username") or "").lower()
+        tname = (m.get("tg_name") or "").lower()
+        if uname == handle or tname == who_l or (tname and who_l in tname):
+            hits.append(m["user_id"])
+    uniq = list(dict.fromkeys(hits))
+    if len(uniq) == 1:
+        return {"user_id": uniq[0]}
+    if len(uniq) > 1:
+        return {"error": "ambiguous",
+                "candidates": [str(u) for u in uniq]}
     # @ник / ФИО через ростер ДР
     if who.startswith("@") or " " not in who:
         uid = get_user_id_by_username(who, users)
