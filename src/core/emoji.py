@@ -79,6 +79,9 @@ class E:
     # ── 🔔 Напоминания / пинг-лист ─────────────────────────────
     REMINDER = Emoji("🔔", premium_id="5242628160297641831")
 
+    # ── Списки / очереди ───────────────────────────────────────
+    POINT_UP = Emoji("👆", premium_id="5172475985550902005")
+
 
 ALL_EMOJI: tuple[Emoji, ...] = tuple(
     v for v in vars(E).values() if isinstance(v, Emoji)

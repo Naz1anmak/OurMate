@@ -9,6 +9,7 @@ from aiogram import F
 from aiogram.types import ChatMemberUpdated, Message
 
 from src.bot.services.ping_store import ping_store
+from src.bot.services.notes_store import notes_store
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,10 @@ async def on_chat_member_update(event: ChatMemberUpdated) -> None:
         await ping_store.leave(event.chat.id, new.user.id)
         logger.info("ping: убрал user_id=%s из chat_id=%s (статус %s)",
                     new.user.id, event.chat.id, new.status)
+        removed = await notes_store.remove_member_everywhere(event.chat.id, new.user.id)
+        if removed:
+            logger.info("notes: убрал user_id=%s из %d списков chat_id=%s",
+                        new.user.id, removed, event.chat.id)
     # Точка расширения: ветка прибытия (status -> member) для будущего приветствия.
 
 
@@ -35,6 +40,7 @@ async def on_left_chat_member(message: Message) -> None:
     await ping_store.leave(message.chat.id, left.id)
     logger.info("ping: убрал user_id=%s из chat_id=%s (left_chat_member)",
                 left.id, message.chat.id)
+    await notes_store.remove_member_everywhere(message.chat.id, left.id)
 
 
 def register_chat_member_handlers(dp) -> None:

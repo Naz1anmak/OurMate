@@ -14,9 +14,11 @@ from src.bot.handlers.chat_commands import (
     handle_unsubscribe_command,
     handle_public_commands,
     handle_reminders_command,
+    handle_lists_command,
     handle_ping_command,
     handle_ping_all,
 )
+from src.bot.handlers.notes_reply import handle_notes_reply
 from src.bot.handlers.owner_commands import handle_owner_command
 from src.bot.handlers import access
 from src.bot.services import ping_service
@@ -72,6 +74,11 @@ async def on_mention_or_reply(message: Message):
         await handle_ping_all(message)
         return
 
+    # Реплай на карточку списка / запрос имени — детерминированно, до LLM и триггер-гейта.
+    if (message.text and ctx and ctx["is_group_main"]
+            and message.reply_to_message and await handle_notes_reply(message)):
+        return
+
     # В группе бот реагирует только на упоминание/реплай — единый триггер-гейт.
     if message.chat.type in ("group", "supergroup") and not access.detect_trigger(
         message, bot_username, bot_info.id
@@ -81,6 +88,10 @@ async def on_mention_or_reply(message: Message):
     if ctx:
         if ctx["normalized_text"] == "напоминания":
             await handle_reminders_command(message)
+            return
+
+        if ctx["normalized_text"] == "списки":
+            await handle_lists_command(message)
             return
 
         audience = access.classify(ctx["normalized_text"])

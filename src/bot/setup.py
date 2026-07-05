@@ -12,6 +12,7 @@ from src.bot.handlers.errors import global_error_handler
 from src.bot.middlewares.emoji import PremiumEmojiMiddleware
 from src.bot.handlers.reminder_callbacks import on_reminder_callback
 from src.bot.handlers.ping_callbacks import on_ping_callback
+from src.bot.handlers.notes_callbacks import on_notes_callback
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ def build_bot_and_dispatcher() -> tuple[Bot, Dispatcher]:
     register_handlers(dp)
     dp.callback_query.register(on_reminder_callback, F.data.startswith("rem:"))
     dp.callback_query.register(on_ping_callback, F.data.startswith("ping:"))
+    dp.callback_query.register(on_notes_callback, F.data.startswith("list:"))
     dp.errors.register(global_error_handler)
     logger.info("Обработчики зарегистрированы")
     return bot, dp
