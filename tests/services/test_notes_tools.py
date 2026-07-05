@@ -26,7 +26,8 @@ class _FakeBot:
     async def get_chat_member(self, chat_id, user_id):
         if self._member_status is None:
             raise RuntimeError("user not found")
-        return type("CM", (), {"status": self._member_status})()
+        user = type("U", (), {"id": user_id, "username": "byid", "full_name": "Пойманный ID"})()
+        return type("CM", (), {"status": self._member_status, "user": user})()
 
 
 @pytest.fixture
@@ -124,6 +125,8 @@ async def test_add_to_list_by_numeric_id_verified(store):
                                tool_context=ctx, store=store, users=ROSTER)
     assert res["ok"] is True
     assert await store.is_member(nid, 1800296940) is True
+    # имя/ник берём из getChatMember, а не оставляем цифры
+    assert (await store.members(nid))[0]["tg_name"] == "Пойманный ID"
 
 
 @pytest.mark.asyncio

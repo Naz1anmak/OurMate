@@ -155,14 +155,17 @@ def _resolve_target(who: str, tool_context: dict, users) -> dict:
     return {"error": "unresolved"}
 
 
-async def _verify_in_chat(tool_context: dict, user_id: int) -> bool:
-    """Проверка, что user_id — участник беседы (для добавления по сырому tg_id)."""
+async def _fetch_chat_user(tool_context: dict, user_id: int):
+    """Для добавления по сырому tg_id: вернуть объект user из getChatMember
+    (там есть full_name/username) или None, если человека нет в беседе."""
     try:
         m = await tool_context["bot"].get_chat_member(tool_context["chat_id"], user_id)
-        return getattr(m, "status", None) not in ("left", "kicked")
+        if getattr(m, "status", None) in ("left", "kicked"):
+            return None
+        return getattr(m, "user", None)
     except Exception as exc:  # noqa: BLE001
         logger.debug("notes: get_chat_member(%s) не удался: %s", user_id, exc)
-        return False
+        return None
 
 
 async def add_to_list(title: str, who: str = "", *, tool_context: dict,
@@ -187,9 +190,14 @@ async def add_to_list(title: str, who: str = "", *, tool_context: dict,
                 if target["error"] == "unresolved" else None)
         return {"ok": False, "error": target["error"],
                 "candidates": target.get("candidates"), "hint": hint}
-    if target.get("needs_verify") and not await _verify_in_chat(tool_context, target["user_id"]):
-        return {"ok": False, "error": "unresolved",
-                "hint": "Пользователь с таким id не найден в этой беседе."}
+    if target.get("needs_verify"):
+        u = await _fetch_chat_user(tool_context, target["user_id"])
+        if u is None:
+            return {"ok": False, "error": "unresolved",
+                    "hint": "Пользователь с таким id не найден в этой беседе."}
+        # Из getChatMember забираем ник и имя аккаунта — чтобы в карточке было имя, а не цифры.
+        target["username"] = getattr(u, "username", None)
+        target["name"] = getattr(u, "full_name", None)
     added = await store.add_member(note["id"], user_id=target["user_id"],
                                    username=target.get("username"),
                                    tg_name=target.get("name"))
