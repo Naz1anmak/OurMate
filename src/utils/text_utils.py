@@ -76,9 +76,15 @@ def find_users_by_fullname(query: str, users: List[User]) -> List[User]:
 
 
 def roster_full_name(user: User) -> str:
-    """«Фамилия Имя» для официального рендера. Если last_name пуст или уже входит в name — только name."""
+    """«Фамилия Имя» для официального рендера, без отчества.
+
+    - Есть отдельный last_name → «Фамилия» + первое слово из name (отчество отброшено).
+    - last_name пуст (или уже входит в name) → в name лежит всё ФИО, берём первые два
+      слова («Фамилия Имя»), отбрасывая возможное отчество третьим словом."""
     name = (user.name or "").strip()
+    parts = name.split()
     last = (user.last_name or "").strip()
     if last and last.lower() not in name.lower():
-        return f"{last} {name}".strip()
-    return name
+        first = parts[0] if parts else ""
+        return f"{last} {first}".strip()
+    return " ".join(parts[:2])

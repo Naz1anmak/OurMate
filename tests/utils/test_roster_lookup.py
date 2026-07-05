@@ -44,3 +44,6 @@ def test_roster_full_name():
     assert roster_full_name(_u(1, "Иван", "Иванов")) == "Иванов Иван"
     assert roster_full_name(_u(1, "Иванов Иван", "")) == "Иванов Иван"       # last пуст
     assert roster_full_name(_u(1, "Иванов Иван", "Иванов")) == "Иванов Иван"  # без дубля
+    # Отчество отбрасывается
+    assert roster_full_name(_u(1, "Иван Петрович", "Иванов")) == "Иванов Иван"   # отч. в name
+    assert roster_full_name(_u(1, "Иванов Иван Петрович", "")) == "Иванов Иван"  # всё ФИО в name
