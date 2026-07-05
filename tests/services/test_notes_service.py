@@ -68,3 +68,28 @@ def test_can_modify():
     assert ns.can_modify(note, user_id=42, is_owner=False) is True
     assert ns.can_modify(note, user_id=7, is_owner=True) is True
     assert ns.can_modify(note, user_id=7, is_owner=False) is False
+
+
+def _cbs(markup):
+    return [b.callback_data for row in markup.inline_keyboard for b in row]
+
+
+def _labels(markup):
+    return [b.text for row in markup.inline_keyboard for b in row]
+
+
+def test_format_keyboard():
+    kb = ns.format_keyboard(7)
+    assert set(_cbs(kb)) == {"list:fmt:1:7", "list:fmt:0:7"}
+
+
+def test_card_keyboard_no_emoji():
+    kb = ns.card_keyboard(7)
+    assert _cbs(kb) == ["list:join:7", "list:leave:7"]
+    # На кнопках только слова — без эмодзи-символов.
+    assert _labels(kb) == ["Записаться", "Выйти"]
+
+
+def test_confirm_delete_keyboard():
+    kb = ns.confirm_keyboard(7, "del", "keep")
+    assert _cbs(kb) == ["list:del:7", "list:keep:7"]

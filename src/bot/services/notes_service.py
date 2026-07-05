@@ -62,3 +62,30 @@ def render_overview(notes: list[dict]) -> str:
 
 def can_modify(note: dict, *, user_id: int, is_owner: bool) -> bool:
     return is_owner or note["author_id"] == user_id
+
+
+def format_keyboard(note_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Официальный",
+                             callback_data=f"list:fmt:1:{note_id}", style="primary"),
+        InlineKeyboardButton(text="Неофициальный",
+                             callback_data=f"list:fmt:0:{note_id}"),
+    ]])
+
+
+def card_keyboard(note_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Записаться",
+                             callback_data=f"list:join:{note_id}", style="success"),
+        InlineKeyboardButton(text="Выйти",
+                             callback_data=f"list:leave:{note_id}", style="danger"),
+    ]])
+
+
+def confirm_keyboard(note_id: int, ok_action: str, no_action: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=f"{E.CHECK} Да",
+                             callback_data=f"list:{ok_action}:{note_id}", style="success"),
+        InlineKeyboardButton(text=f"{E.CROSS} Отмена",
+                             callback_data=f"list:{no_action}:{note_id}", style="danger"),
+    ]])
