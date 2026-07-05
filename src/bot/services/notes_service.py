@@ -32,7 +32,8 @@ def resolve_display(member: dict, *, formal: bool, users=None) -> str:
     return _mention(uid, label)
 
 
-_HINT = "<i>записаться — кнопкой ниже; уточнение — ответь на это сообщение</i>"
+_HINT = ("<i>Записаться — кнопкой ниже; уточнение (например «1, 3») — ответь "
+         "на это сообщение; «-» убирает уточнение</i>")
 
 
 def render_card(note: dict, members: list[dict], *, users=None) -> str:
@@ -67,7 +68,7 @@ def can_modify(note: dict, *, user_id: int, is_owner: bool) -> bool:
 def format_keyboard(note_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="Официальный",
-                             callback_data=f"list:fmt:1:{note_id}", style="primary"),
+                             callback_data=f"list:fmt:1:{note_id}"),
         InlineKeyboardButton(text="Неофициальный",
                              callback_data=f"list:fmt:0:{note_id}"),
     ]])

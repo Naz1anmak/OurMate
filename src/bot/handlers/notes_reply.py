@@ -53,6 +53,8 @@ async def handle_notes_reply(message: Message) -> bool:
     if not await notes_store.is_member(note["id"], user_id):
         await message.reply("Сначала запишитесь кнопкой «Записаться» под списком.")
         return True
-    await notes_store.set_note(note["id"], user_id, text)
+    # «-»/«—»/«убрать» очищают уточнение; пустой рендер его просто не покажет.
+    note_text = "" if text in ("-", "—", "–", "убрать", "очистить") else text
+    await notes_store.set_note(note["id"], user_id, note_text)
     await _rerender_from_message(message, note["id"])
     return True

@@ -47,6 +47,17 @@ async def test_reply_sets_note_for_member(store):
 
 
 @pytest.mark.asyncio
+async def test_reply_dash_clears_note(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
+    await store.set_card_message(nid, 555)
+    await store.add_member(nid, user_id=7, username="u")
+    await store.set_note(nid, 7, "1, 3")
+    msg = _Msg("-", reply_to_id=555, uid=7)  # «-» убирает уточнение
+    assert await nr.handle_notes_reply(msg) is True
+    assert (await store.members(nid))[0]["note"] == ""
+
+
+@pytest.mark.asyncio
 async def test_reply_non_member_prompts_join(store):
     nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
     await store.set_card_message(nid, 555)
