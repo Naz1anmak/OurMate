@@ -48,7 +48,7 @@ def render_card(note: dict, members: list[dict], *, users=None) -> str:
         if m.get("note"):
             row += f" — {escape(m['note'])}"
         lines.append(row)
-    lines += ["", f"Всего: {len(members)}", "", _HINT]
+    lines += ["", _HINT]
     return "\n".join(lines)
 
 
