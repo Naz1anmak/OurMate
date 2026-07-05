@@ -16,6 +16,20 @@ def test_resolve_display_casual_uses_username_or_id():
     assert 'tg://user?id=1' in html and "vanya" in html
 
 
+def test_resolve_display_casual_prefers_tg_name():
+    html = ns.resolve_display(
+        {"user_id": 5, "username": "guest", "tg_name": "Александр", "name_override": None},
+        formal=False, users=ROSTER)
+    assert "Александр" in html and "guest" not in html and 'tg://user?id=5' in html
+
+
+def test_resolve_display_casual_falls_back_to_id():
+    html = ns.resolve_display(
+        {"user_id": 5, "username": None, "tg_name": None, "name_override": None},
+        formal=False, users=ROSTER)
+    assert ">5</a>" in html  # ни имени, ни логина — остаётся id
+
+
 def test_resolve_display_formal_uses_roster_fio():
     html = ns.resolve_display({"user_id": 1, "username": "vanya", "name_override": None},
                               formal=True, users=ROSTER)

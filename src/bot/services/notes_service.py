@@ -28,12 +28,13 @@ def resolve_display(member: dict, *, formal: bool, users=None) -> str:
         if member.get("name_override"):
             return _mention(uid, member["name_override"])
         return _mention(uid, "(имя не указано)")
-    label = member.get("username") or member.get("name_override") or str(uid)
+    label = (member.get("tg_name") or member.get("username")
+             or member.get("name_override") or str(uid))
     return _mention(uid, label)
 
 
-_HINT = ("<i>Записаться — кнопкой ниже; уточнение (например «1, 3») — ответь "
-         "на это сообщение; ответь «удали» или «-», чтобы убрать уточнение</i>")
+_HINT = ("<i>Уточнение (например «1, 3») — ответь на это сообщение; "
+         "ответь «удали» или «-», чтобы убрать уточнение</i>")
 
 
 def render_card(note: dict, members: list[dict], *, users=None) -> str:

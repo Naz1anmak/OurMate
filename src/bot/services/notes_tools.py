@@ -16,12 +16,28 @@ def _foreign(tool_context: dict) -> bool:
     return not (tool_context.get("is_group") and tool_context.get("is_group_main"))
 
 
-async def _send_card(tool_context: dict, store, note: dict) -> None:
-    """Отправить свежую карточку и запомнить её message_id (для реплай-уточнений)."""
+async def _refresh_card(tool_context: dict, store, note: dict, *, resend: bool = False) -> None:
+    """Показать актуальную карточку. По умолчанию редактируем существующую на месте
+    (чтобы не плодить дубли с кнопками); при resend=True (явный «покажи список») —
+    удаляем старую и шлём свежую вниз чата."""
     members = await store.members(note["id"])
-    msg = await tool_context["bot"].send_message(
-        tool_context["chat_id"], ns.render_card(note, members),
-        parse_mode="HTML", reply_markup=ns.card_keyboard(note["id"]))
+    text = ns.render_card(note, members)
+    kb = ns.card_keyboard(note["id"])
+    bot, chat_id = tool_context["bot"], tool_context["chat_id"]
+    card_id = note.get("card_message_id")
+    if card_id and not resend:
+        try:
+            await bot.edit_message_text(text, chat_id=chat_id, message_id=card_id,
+                                        parse_mode="HTML", reply_markup=kb)
+            return
+        except Exception as exc:  # noqa: BLE001 — карточку удалили/слишком старая → шлём новую
+            logger.debug("notes: edit карточки #%s не удался, шлём новую: %s", card_id, exc)
+    if card_id and resend:
+        try:
+            await bot.delete_message(chat_id, card_id)
+        except Exception:  # noqa: BLE001
+            pass
+    msg = await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb)
     await store.set_card_message(note["id"], msg.message_id)
 
 
@@ -63,7 +79,7 @@ async def show_list(title: str = "", *, tool_context: dict, store=notes_store) -
         if len(notes) > 1:
             return {"ok": False, "error": "ambiguous", "titles": [n["title"] for n in notes]}
         note = notes[0]
-    await _send_card(tool_context, store, note)
+    await _refresh_card(tool_context, store, note, resend=True)
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[показана карточка списка «{note['title']}»]"}
 
@@ -106,14 +122,17 @@ SHOW_SCHEMA = {
 
 
 def _resolve_target(who: str, tool_context: dict, users) -> dict:
-    """Возвращает {'user_id':..,'username':..} | {'error': 'ambiguous'/'unresolved', ...}."""
+    """Возвращает {'user_id':..,'username':..,'name':..} | {'error': 'ambiguous'/'unresolved', ...}.
+
+    'name' — имя аккаунта для неофициального рендера (может быть None)."""
     reply_user = tool_context.get("reply_user")
     if reply_user and reply_user.get("user_id"):
-        return {"user_id": reply_user["user_id"], "username": reply_user.get("username")}
+        return {"user_id": reply_user["user_id"], "username": reply_user.get("username"),
+                "name": reply_user.get("name")}
     mentioned = tool_context.get("mentioned_users") or []
     if mentioned:
         m = mentioned[0]
-        return {"user_id": m["user_id"], "username": m.get("username")}
+        return {"user_id": m["user_id"], "username": m.get("username"), "name": m.get("name")}
     who = (who or "").strip()
     # Числовой tg_id: принимаем, но пометим на проверку членства в беседе.
     digits = who.lstrip("@")
@@ -122,11 +141,14 @@ def _resolve_target(who: str, tool_context: dict, users) -> dict:
     if who.startswith("@") or (who and " " not in who):
         uid = get_user_id_by_username(who, users)
         if uid is not None:
-            return {"user_id": uid, "username": who.lstrip("@")}
+            u = next((x for x in users if x.user_id == uid), None)
+            return {"user_id": uid, "username": who.lstrip("@"),
+                    "name": u.name if u else None}
     if who:
         found = find_users_by_fullname(who, users)
         if len(found) == 1:
-            return {"user_id": found[0].user_id, "username": found[0].username}
+            return {"user_id": found[0].user_id, "username": found[0].username,
+                    "name": found[0].name}
         if len(found) > 1:
             return {"error": "ambiguous",
                     "candidates": [f"{u.last_name} {u.name}".strip() for u in found]}
@@ -160,8 +182,8 @@ async def add_to_list(title: str, who: str = "", *, tool_context: dict,
     if "error" in target:
         # @ник резолвится только через ростер ДР (Bot API не даёт username→id);
         # для остальных надёжный путь — реплай на сообщение человека.
-        hint = ("Скажи пользователю ответить (reply) на сообщение того человека "
-                "и повторить «добавь его в список» — так бот получит его id."
+        hint = ("Ответь (reply) на сообщение этого человека и повтори «добавь его в список», "
+                "либо пришли его числовой tg_id — так я смогу его добавить."
                 if target["error"] == "unresolved" else None)
         return {"ok": False, "error": target["error"],
                 "candidates": target.get("candidates"), "hint": hint}
@@ -169,8 +191,9 @@ async def add_to_list(title: str, who: str = "", *, tool_context: dict,
         return {"ok": False, "error": "unresolved",
                 "hint": "Пользователь с таким id не найден в этой беседе."}
     added = await store.add_member(note["id"], user_id=target["user_id"],
-                                   username=target.get("username"))
-    await _send_card(tool_context, store, note)
+                                   username=target.get("username"),
+                                   tg_name=target.get("name"))
+    await _refresh_card(tool_context, store, note)
     verb = "добавлен" if added else "уже в списке"
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[в список «{note['title']}»: пользователь {verb}]"}
@@ -257,7 +280,7 @@ async def remove_from_list(title: str, who: str = "", *, tool_context: dict,
     removed = await store.remove_member(note["id"], target["user_id"])
     if not removed:
         return {"ok": False, "error": "not_member"}
-    await _send_card(tool_context, store, note)
+    await _refresh_card(tool_context, store, note)
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[из списка «{note['title']}» убран участник]"}
 
@@ -281,6 +304,63 @@ REMOVE_SCHEMA = {
                                        "(можно пусто, если это reply)."},
             },
             "required": ["title"],
+        },
+    },
+}
+
+
+async def move_in_list(title: str, who: str = "", position: int = 0, *, tool_context: dict,
+                       store=notes_store, users=None) -> dict:
+    if _foreign(tool_context):
+        return {"ok": False, "error": "foreign_group"}
+    if users is None:
+        from src.bot.services.birthday_service import birthday_service
+        users = birthday_service.users
+    note = await store.get_by_title(tool_context["chat_id"], (title or "").strip())
+    if not note:
+        return {"ok": False, "error": "not_found"}
+    if not ns.can_modify(note, user_id=tool_context["user_id"],
+                         is_owner=tool_context["is_owner"]):
+        return {"ok": False, "error": "forbidden"}
+    members = await store.members(note["id"])
+    try:
+        pos = int(position)
+    except (TypeError, ValueError):
+        pos = 0
+    if pos < 1:
+        return {"ok": False, "error": "bad_position"}
+    target = _resolve_member(who, tool_context, members, users)
+    if "error" in target:
+        return {"ok": False, "error": target["error"],
+                "candidates": target.get("candidates")}
+    moved = await store.move_member(note["id"], target["user_id"], pos)
+    if not moved:
+        return {"ok": False, "error": "not_member"}
+    await _refresh_card(tool_context, store, note)
+    return {"ok": True, "id": note["id"], "_silent": True,
+            "_context_note": f"[в списке «{note['title']}» участник перемещён на позицию {pos}]"}
+
+
+MOVE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "move_in_list",
+        "description": (
+            "Переставить участника на другую позицию в списке (только автор списка или "
+            "владелец беседы). Кого — как в remove_from_list (reply / @ник / «Фамилия Имя» / "
+            "текущий номер позиции / tg_id); position — новая 1-based позиция "
+            "(«перемести третьего на первое место» → who=3, position=1). "
+            "Карточку бот перерисует сам — ответь кратко."),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Название списка."},
+                "who": {"type": "string",
+                        "description": "@ник, «Фамилия Имя», текущий номер позиции или tg_id "
+                                       "(можно пусто, если это reply)."},
+                "position": {"type": "integer", "description": "Новая позиция (с 1)."},
+            },
+            "required": ["title", "position"],
         },
     },
 }
@@ -359,6 +439,7 @@ def build_notes_registry() -> ToolRegistry:
     reg.register("add_to_list", ToolSpec(schema=ADD_SCHEMA, func=add_to_list, gate=None))
     reg.register("remove_from_list",
                  ToolSpec(schema=REMOVE_SCHEMA, func=remove_from_list, gate=None))
+    reg.register("move_in_list", ToolSpec(schema=MOVE_SCHEMA, func=move_in_list, gate=None))
     reg.register("delete_list", ToolSpec(schema=DELETE_SCHEMA, func=delete_list, gate=None))
     reg.register("clear_list", ToolSpec(schema=CLEAR_SCHEMA, func=clear_list, gate=None))
     return reg

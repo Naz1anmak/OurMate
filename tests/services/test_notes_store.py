@@ -95,6 +95,34 @@ async def test_remove_member(store):
 
 
 @pytest.mark.asyncio
+async def test_tg_name_stored_and_returned(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    await store.add_member(nid, user_id=5, username=None, tg_name="Александр")
+    await store.toggle_member(nid, user_id=6, username=None, tg_name="Мария П.")
+    by_id = {m["user_id"]: m for m in await store.members(nid)}
+    assert by_id[5]["tg_name"] == "Александр"
+    assert by_id[6]["tg_name"] == "Мария П."
+
+
+@pytest.mark.asyncio
+async def test_move_member_reorders(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    for uid in (1, 2, 3):
+        await store.add_member(nid, user_id=uid, username=f"u{uid}")
+    assert await store.move_member(nid, 3, 1) is True  # третьего — на первое место
+    assert [m["user_id"] for m in await store.members(nid)] == [3, 1, 2]
+    assert await store.move_member(nid, 3, 99) is True  # за пределы → в конец
+    assert [m["user_id"] for m in await store.members(nid)] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_move_member_absent(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    await store.add_member(nid, user_id=1, username="a")
+    assert await store.move_member(nid, 999, 1) is False
+
+
+@pytest.mark.asyncio
 async def test_card_message_roundtrip(store):
     nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
     assert await store.set_card_message(nid, 777) is True

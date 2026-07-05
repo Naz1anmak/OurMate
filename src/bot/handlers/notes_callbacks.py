@@ -72,7 +72,8 @@ async def on_notes_callback(query: CallbackQuery) -> None:
     note_id = int(parts[2])
 
     if action == "join":
-        await notes_store.toggle_member(note_id, user_id=user.id, username=user.username)
+        await notes_store.toggle_member(note_id, user_id=user.id, username=user.username,
+                                        tg_name=user.full_name)
         note = await notes_store.get(note_id)
         # Официальный список + нет в ростере + всё ещё записан → попросить настоящее имя.
         if (note and note["formal"] and await notes_store.is_member(note_id, user.id)

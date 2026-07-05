@@ -26,7 +26,8 @@ class _Query:
         self.data = data
         self.message = message or _Msg()
         self.from_user = type("U", (), {"id": uid, "username": username,
-                                        "first_name": first_name})()
+                                        "first_name": first_name,
+                                        "full_name": first_name})()
         self.toasts = []
 
     async def answer(self, text="", **kw):

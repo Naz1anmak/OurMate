@@ -98,11 +98,12 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int, ct
     if (message.reply_to_message and message.reply_to_message.from_user
             and message.reply_to_message.from_user.id != bot_id):
         ru = message.reply_to_message.from_user
-        reply_user = {"user_id": ru.id, "username": ru.username}
+        reply_user = {"user_id": ru.id, "username": ru.username, "name": ru.full_name}
     mentioned_users = []
     for ent in (message.entities or []):
         if ent.type == "text_mention" and ent.user:
-            mentioned_users.append({"user_id": ent.user.id, "username": ent.user.username})
+            mentioned_users.append({"user_id": ent.user.id, "username": ent.user.username,
+                                    "name": ent.user.full_name})
 
     tool_context = {
         "allow_refresh": True,

@@ -21,11 +21,19 @@ CREATE TABLE IF NOT EXISTS note_members (
     user_id       INTEGER NOT NULL,
     username      TEXT,
     name_override TEXT,
+    tg_name       TEXT,
     note          TEXT,
+    position      INTEGER NOT NULL DEFAULT 0,
     added_at      TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE(note_id, user_id)
 );
 """
+
+# Колонки, добавленные после первого релиза, — донакатываем на существующую БД.
+_MEMBER_MIGRATIONS = {
+    "tg_name": "ALTER TABLE note_members ADD COLUMN tg_name TEXT",
+    "position": "ALTER TABLE note_members ADD COLUMN position INTEGER NOT NULL DEFAULT 0",
+}
 
 
 class NotesStore:
@@ -42,7 +50,15 @@ class NotesStore:
         async with self._db() as db:
             await self._setup(db)
             await db.executescript(_SCHEMA)
+            await self._migrate(db)
             await db.commit()
+
+    async def _migrate(self, db: aiosqlite.Connection) -> None:
+        cur = await db.execute("PRAGMA table_info(note_members)")
+        cols = {r["name"] for r in await cur.fetchall()}
+        for col, ddl in _MEMBER_MIGRATIONS.items():
+            if col not in cols:
+                await db.execute(ddl)
 
     # ── Списки ────────────────────────────────────────────────────────────
     async def create(self, *, chat_id: int, title: str, author_id: int,
@@ -95,16 +111,23 @@ class NotesStore:
             await db.commit()
             return cur.rowcount > 0
 
-    # add_member нужна уже здесь (тест counts). Полный набор участников — Task 3.
-    async def add_member(self, note_id: int, *, user_id: int,
-                         username: str | None, name_override: str | None = None) -> bool:
+    async def _next_position(self, db: aiosqlite.Connection, note_id: int) -> int:
+        cur = await db.execute(
+            "SELECT COALESCE(MAX(position), 0) + 1 AS p FROM note_members WHERE note_id = ?",
+            (note_id,))
+        return int((await cur.fetchone())["p"])
+
+    async def add_member(self, note_id: int, *, user_id: int, username: str | None,
+                         name_override: str | None = None, tg_name: str | None = None) -> bool:
         async with self._db() as db:
             await self._setup(db)
             try:
+                pos = await self._next_position(db, note_id)
                 await db.execute(
-                    "INSERT INTO note_members (note_id, user_id, username, name_override) "
-                    "VALUES (?, ?, ?, ?)",
-                    (note_id, user_id, username, name_override))
+                    "INSERT INTO note_members "
+                    "(note_id, user_id, username, name_override, tg_name, position) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (note_id, user_id, username, name_override, tg_name, pos))
                 await db.commit()
                 return True
             except aiosqlite.IntegrityError:
@@ -115,8 +138,8 @@ class NotesStore:
         async with self._db() as db:
             await self._setup(db)
             cur = await db.execute(
-                "SELECT user_id, username, name_override, note FROM note_members "
-                "WHERE note_id = ? ORDER BY added_at, rowid",
+                "SELECT user_id, username, name_override, tg_name, note FROM note_members "
+                "WHERE note_id = ? ORDER BY position, added_at, rowid",
                 (note_id,))
             return [dict(r) for r in await cur.fetchall()]
 
@@ -136,8 +159,8 @@ class NotesStore:
                 (note_id, user_id))
             return await cur.fetchone() is not None
 
-    async def toggle_member(self, note_id: int, *, user_id: int,
-                            username: str | None, name_override: str | None = None) -> bool:
+    async def toggle_member(self, note_id: int, *, user_id: int, username: str | None,
+                            name_override: str | None = None, tg_name: str | None = None) -> bool:
         """True — записан после вызова, False — вышел. Идемпотентно. Уточнение не трогаем."""
         async with self._db() as db:
             await self._setup(db)
@@ -150,9 +173,12 @@ class NotesStore:
                     (note_id, user_id))
                 await db.commit()
                 return False
+            pos = await self._next_position(db, note_id)
             await db.execute(
-                "INSERT INTO note_members (note_id, user_id, username, name_override) "
-                "VALUES (?, ?, ?, ?)", (note_id, user_id, username, name_override))
+                "INSERT INTO note_members "
+                "(note_id, user_id, username, name_override, tg_name, position) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (note_id, user_id, username, name_override, tg_name, pos))
             await db.commit()
             return True
 
@@ -182,6 +208,27 @@ class NotesStore:
                 (note_id, user_id))
             await db.commit()
             return cur.rowcount > 0
+
+    async def move_member(self, note_id: int, user_id: int, new_index: int) -> bool:
+        """Переставить участника на 1-based позицию new_index; остальных сдвинуть.
+        Порядок целиком перенумеровывается 1..N. False — участника нет в списке."""
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "SELECT user_id FROM note_members WHERE note_id = ? "
+                "ORDER BY position, added_at, rowid", (note_id,))
+            ids = [r["user_id"] for r in await cur.fetchall()]
+            if user_id not in ids:
+                return False
+            ids.remove(user_id)
+            idx = max(0, min(new_index - 1, len(ids)))
+            ids.insert(idx, user_id)
+            for i, uid in enumerate(ids, 1):
+                await db.execute(
+                    "UPDATE note_members SET position = ? WHERE note_id = ? AND user_id = ?",
+                    (i, note_id, uid))
+            await db.commit()
+            return True
 
     async def set_card_message(self, note_id: int, message_id: int) -> bool:
         async with self._db() as db:

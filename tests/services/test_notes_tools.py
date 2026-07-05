@@ -6,6 +6,8 @@ from src.bot.services import notes_tools as nt
 class _FakeBot:
     def __init__(self, member_status="member"):
         self.sent = []
+        self.edited = []
+        self.deleted = []
         self._member_status = member_status  # для get_chat_member
 
     async def send_message(self, chat_id, text, **kw):
@@ -14,6 +16,12 @@ class _FakeBot:
         class _M:
             message_id = 555
         return _M()
+
+    async def edit_message_text(self, text, chat_id=None, message_id=None, **kw):
+        self.edited.append((chat_id, message_id, text))
+
+    async def delete_message(self, chat_id, message_id):
+        self.deleted.append((chat_id, message_id))
 
     async def get_chat_member(self, chat_id, user_id):
         if self._member_status is None:
@@ -222,6 +230,72 @@ async def test_remove_from_list_not_found(store):
     res = await nt.remove_from_list("Нет", who="1",
                                     tool_context=_ctx(), store=store, users=ROSTER)
     assert res["ok"] is False and res["error"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_add_to_list_edits_existing_card(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.set_card_message(nid, 555)  # карточка уже есть
+    ctx = _ctx(reply_user={"user_id": 7, "username": "guest"})
+    res = await nt.add_to_list("Q", who="", tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert ctx["bot"].edited and not ctx["bot"].sent  # правим на месте, дубль не шлём
+
+
+@pytest.mark.asyncio
+async def test_show_list_resends_and_deletes_old_card(store):
+    nid = await store.create(chat_id=-100, title="Only", author_id=1, formal=False)
+    await store.set_card_message(nid, 555)
+    ctx = _ctx()
+    res = await nt.show_list(tool_context=ctx, store=store)
+    assert res["ok"] is True
+    assert ctx["bot"].deleted == [(-100, 555)] and ctx["bot"].sent  # старую убрали, новую прислали
+
+
+@pytest.mark.asyncio
+async def test_add_to_list_captures_tg_name(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    ctx = _ctx(reply_user={"user_id": 7, "username": None, "name": "Александр"})
+    res = await nt.add_to_list("Q", who="", tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert (await store.members(nid))[0]["tg_name"] == "Александр"
+
+
+@pytest.mark.asyncio
+async def test_move_in_list_by_position(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    for uid in (1, 2, 3):
+        await store.add_member(nid, user_id=uid, username=f"u{uid}")
+    res = await nt.move_in_list("Q", who="3", position=1,
+                                tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert [m["user_id"] for m in await store.members(nid)] == [3, 1, 2]
+
+
+@pytest.mark.asyncio
+async def test_move_in_list_bad_position(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=1, username="a")
+    res = await nt.move_in_list("Q", who="1", position=0,
+                                tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] == "bad_position"
+
+
+@pytest.mark.asyncio
+async def test_move_in_list_forbidden(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)  # чужой автор
+    await store.add_member(nid, user_id=1, username="a")
+    ctx = _ctx(user_id=42, is_owner=False)
+    res = await nt.move_in_list("Q", who="1", position=1, tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] == "forbidden"
+
+
+@pytest.mark.asyncio
+async def test_move_in_list_not_member(store):
+    await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    res = await nt.move_in_list("Q", who="555", position=1,
+                                tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] == "not_member"
 
 
 @pytest.mark.asyncio
