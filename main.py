@@ -28,6 +28,8 @@ from src.bot.services.reminder_tools import build_reminder_registry
 from src.bot.handlers import reminder_callbacks as reminder_callbacks_module
 from src.bot.services.usage_limit_store import usage_limit_store
 from src.bot.services.ping_store import ping_store
+from src.bot.services.notes_store import notes_store
+from src.bot.services.notes_tools import build_notes_registry
 from src.config.settings import (
     SCHEDULE_API_BASE_URL, SCHEDULE_API_FACULTY_ID, SCHEDULE_API_HTTP_TIMEOUT,
     SCHEDULE_API_WEEKS_AHEAD, SCHEDULE_API_LAZY_TTL_MIN, SCHEDULE_API_GROUP_IDS,
@@ -62,6 +64,10 @@ async def main() -> None:
 
         await ping_store.init()
         logger.info("пинг-лист: стор готов")
+
+        await notes_store.init()
+        removed_notes = await notes_store.cleanup_old()
+        logger.info("списки: стор готов, подметено старых: %s", removed_notes)
 
         refresher = None
         if SCHEDULE_AUTO_UPDATE_ENABLED:
@@ -101,6 +107,9 @@ async def main() -> None:
         for name, spec in build_reminder_registry(scheduler=reminder_scheduler_instance).items():
             tool_registry.register(name, spec)
         logger.info("Тулы напоминаний подключены")
+        for name, spec in build_notes_registry().items():
+            tool_registry.register(name, spec)
+        logger.info("Тулы списков подключены")
         chat_group_module.tool_registry = tool_registry
         chat_pm_module.tool_registry = tool_registry
         logger.info("Реестр тулов подключён (refresh: %s)", "вкл" if refresher else "выкл")
