@@ -1,5 +1,6 @@
 """Тулы списков для tool use + JSON-схемы и реестр. Образец — reminder_tools."""
 import logging
+from html import escape
 
 from src.bot.services.llm_tools import ToolRegistry, ToolSpec
 from src.bot.services.notes_store import notes_store
@@ -39,7 +40,7 @@ async def create_list(title: str, *, tool_context: dict, store=notes_store) -> d
         return {"ok": False, "error": "exists"}
     # Сообщение-выбор формата; оно же станет карточкой после выбора (Task 11).
     msg = await tool_context["bot"].send_message(
-        chat_id, f"Список «{title}» — какой формат?",
+        chat_id, f"Список «{escape(title)}» — какой формат?",
         parse_mode="HTML", reply_markup=ns.format_keyboard(nid))
     await store.set_card_message(nid, msg.message_id)
     note = f"[создан список «{title}» #{nid}, ждёт выбора формата]"
@@ -194,7 +195,7 @@ async def delete_list(title: str, *, tool_context: dict, store=notes_store) -> d
         return err
     await tool_context["bot"].send_message(
         tool_context["chat_id"],
-        f"{E.CROSS} Удалить список «{note['title']}» целиком?",
+        f"{E.CROSS} Удалить список «{escape(note['title'])}» целиком?",
         parse_mode="HTML", reply_markup=ns.confirm_keyboard(note["id"], "del", "keep"))
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[предложено удаление списка «{note['title']}», ждёт подтверждения]"}
@@ -206,7 +207,7 @@ async def clear_list(title: str, *, tool_context: dict, store=notes_store) -> di
         return err
     await tool_context["bot"].send_message(
         tool_context["chat_id"],
-        f"{E.CROSS} Очистить список «{note['title']}» (убрать всех участников)?",
+        f"{E.CROSS} Очистить список «{escape(note['title'])}» (убрать всех участников)?",
         parse_mode="HTML", reply_markup=ns.confirm_keyboard(note["id"], "clr", "keepall"))
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[предложена очистка списка «{note['title']}», ждёт подтверждения]"}
