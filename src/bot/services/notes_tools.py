@@ -4,6 +4,7 @@ import logging
 from src.bot.services.llm_tools import ToolRegistry, ToolSpec
 from src.bot.services.notes_store import notes_store
 from src.bot.services import notes_service as ns
+from src.utils.text_utils import get_user_id_by_username, find_users_by_fullname
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +103,80 @@ SHOW_SCHEMA = {
 }
 
 
+def _resolve_target(who: str, tool_context: dict, users) -> dict:
+    """Возвращает {'user_id':..,'username':..} | {'error': 'ambiguous'/'unresolved', ...}."""
+    reply_user = tool_context.get("reply_user")
+    if reply_user and reply_user.get("user_id"):
+        return {"user_id": reply_user["user_id"], "username": reply_user.get("username")}
+    mentioned = tool_context.get("mentioned_users") or []
+    if mentioned:
+        m = mentioned[0]
+        return {"user_id": m["user_id"], "username": m.get("username")}
+    who = (who or "").strip()
+    if who.startswith("@") or (who and " " not in who):
+        uid = get_user_id_by_username(who, users)
+        if uid is not None:
+            return {"user_id": uid, "username": who.lstrip("@")}
+    if who:
+        found = find_users_by_fullname(who, users)
+        if len(found) == 1:
+            return {"user_id": found[0].user_id, "username": found[0].username}
+        if len(found) > 1:
+            return {"error": "ambiguous",
+                    "candidates": [f"{u.last_name} {u.name}".strip() for u in found]}
+    return {"error": "unresolved"}
+
+
+async def add_to_list(title: str, who: str = "", *, tool_context: dict,
+                      store=notes_store, users=None) -> dict:
+    if _foreign(tool_context):
+        return {"ok": False, "error": "foreign_group"}
+    if users is None:
+        from src.bot.services.birthday_service import birthday_service
+        users = birthday_service.users
+    note = await store.get_by_title(tool_context["chat_id"], (title or "").strip())
+    if not note:
+        return {"ok": False, "error": "not_found"}
+    if not ns.can_modify(note, user_id=tool_context["user_id"],
+                         is_owner=tool_context["is_owner"]):
+        return {"ok": False, "error": "forbidden"}
+    target = _resolve_target(who, tool_context, users)
+    if "error" in target:
+        return {"ok": False, "error": target["error"],
+                "candidates": target.get("candidates")}
+    added = await store.add_member(note["id"], user_id=target["user_id"],
+                                   username=target.get("username"))
+    await _send_card(tool_context, store, note)
+    verb = "добавлен" if added else "уже в списке"
+    return {"ok": True, "id": note["id"], "_silent": True,
+            "_context_note": f"[в список «{note['title']}»: пользователь {verb}]"}
+
+
+ADD_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "add_to_list",
+        "description": (
+            "Добавить ДРУГОГО человека в список (только автор списка или владелец беседы). "
+            "Укажи, кого: если запрос — ответ (reply) на сообщение человека, бот возьмёт его "
+            "автоматически; иначе передай @ник или «Фамилия Имя». Несколько совпадений → "
+            "ambiguous с кандидатами, переспроси. Карточку бот перерисует сам — ответь кратко."),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Название списка."},
+                "who": {"type": "string",
+                        "description": "@ник или «Фамилия Имя» (можно пусто, если это reply)."},
+            },
+            "required": ["title"],
+        },
+    },
+}
+
+
 def build_notes_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register("create_list", ToolSpec(schema=CREATE_SCHEMA, func=create_list, gate=None))
     reg.register("show_list", ToolSpec(schema=SHOW_SCHEMA, func=show_list, gate=None))
+    reg.register("add_to_list", ToolSpec(schema=ADD_SCHEMA, func=add_to_list, gate=None))
     return reg
