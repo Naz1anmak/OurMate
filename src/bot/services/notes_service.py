@@ -25,9 +25,9 @@ def resolve_display(member: dict, *, formal: bool, users=None) -> str:
         for u in users:
             if u.user_id == uid:
                 return _mention(uid, roster_full_name(u))
-        if member.get("name_override"):
-            return _mention(uid, member["name_override"])
-        return _mention(uid, "(имя не указано)")
+        # override (заданное вручную) → имя аккаунта → заглушка
+        label = member.get("name_override") or member.get("tg_name")
+        return _mention(uid, label or "(имя не указано)")
     label = (member.get("tg_name") or member.get("username")
              or member.get("name_override") or str(uid))
     return _mention(uid, label)

@@ -42,9 +42,18 @@ def test_resolve_display_formal_fallback_to_override():
     assert "Петров Пётр" in html
 
 
+def test_resolve_display_formal_falls_back_to_tg_name():
+    # Нет в ростере и без override, но есть имя аккаунта → показываем его, не заглушку.
+    html = ns.resolve_display(
+        {"user_id": 99, "username": None, "name_override": None, "tg_name": "Яна К."},
+        formal=True, users=ROSTER)
+    assert "Яна К." in html and "имя не указано" not in html
+
+
 def test_resolve_display_formal_missing_flags_placeholder():
-    html = ns.resolve_display({"user_id": 99, "username": None, "name_override": None},
-                              formal=True, users=ROSTER)
+    html = ns.resolve_display(
+        {"user_id": 99, "username": None, "name_override": None, "tg_name": None},
+        formal=True, users=ROSTER)
     assert "имя не указано" in html
 
 

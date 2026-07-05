@@ -289,6 +289,75 @@ async def test_move_in_list_by_position(store):
 
 
 @pytest.mark.asyncio
+async def test_add_to_list_self_without_author_rights(store):
+    # Чужой список, но добавляю СЕБЯ — прав автора не требуется.
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
+    ctx = _ctx(user_id=42, username="me", first_name="Алекс", is_owner=False)
+    res = await nt.add_to_list("Q", who="меня", tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert await store.is_member(nid, 42) is True
+
+
+@pytest.mark.asyncio
+async def test_add_to_list_with_note(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    res = await nt.add_to_list("Q", who="Петров Пётр", note_text="сдал деньги",
+                               tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert (await store.members(nid))[0]["note"] == "сдал деньги"
+
+
+@pytest.mark.asyncio
+async def test_set_member_name_self(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=True)
+    await store.add_member(nid, user_id=42, username=None)
+    ctx = _ctx(user_id=42, is_owner=False)  # не автор, но меняю СВОЁ имя
+    res = await nt.set_member_name("Q", who="", name="Иванов Иван",
+                                   tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert (await store.members(nid))[0]["name_override"] == "Иванов Иван"
+
+
+@pytest.mark.asyncio
+async def test_set_member_name_other_forbidden(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=True)
+    await store.add_member(nid, user_id=7, username="x")
+    ctx = _ctx(user_id=42, is_owner=False)  # не автор, чужое имя
+    res = await nt.set_member_name("Q", who="7", name="Кто-то",
+                                   tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] == "forbidden"
+
+
+@pytest.mark.asyncio
+async def test_set_member_name_by_author(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=True)
+    await store.add_member(nid, user_id=7, username="x")
+    res = await nt.set_member_name("Q", who="1", name="Яна",  # первый участник
+                                   tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert (await store.members(nid))[0]["name_override"] == "Яна"
+
+
+@pytest.mark.asyncio
+async def test_set_member_note_self_and_clear(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
+    await store.add_member(nid, user_id=42, username="me")
+    ctx = _ctx(user_id=42, is_owner=False)
+    await nt.set_member_note("Q", who="", note_text="1, 3", tool_context=ctx, store=store, users=ROSTER)
+    assert (await store.members(nid))[0]["note"] == "1, 3"
+    await nt.set_member_note("Q", who="", note_text="", tool_context=ctx, store=store, users=ROSTER)
+    assert (await store.members(nid))[0]["note"] == ""
+
+
+@pytest.mark.asyncio
+async def test_set_member_name_not_member(store):
+    await store.create(chat_id=-100, title="Q", author_id=42, formal=True)
+    res = await nt.set_member_name("Q", who="999", name="X",
+                                   tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] in ("not_member", "unresolved")
+
+
+@pytest.mark.asyncio
 async def test_add_to_list_with_position(store):
     nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
     await store.add_member(nid, user_id=1, username="a")

@@ -118,9 +118,11 @@ SHOW_SCHEMA = {
         "description": (
             "Показать список («пришли список X», «покажи очередь»). Бот сам укажет на "
             "уже существующую карточку коротким reply (или пришлёт её, если карточки нет) — "
-            "новую с кнопками не плодит. Если название не указано и список один — покажи его; "
-            "если несколько — вернётся ambiguous со списком названий, переспроси какой. "
-            "Ответь совсем кратко."),
+            "новую с кнопками не плодит. Только для ПОКАЗА: если просят ИЗМЕНИТЬ список "
+            "(имя/примечание/порядок/состав) — вызывай соответствующий тул, а не show_list; "
+            "если подходящего действия нет — честно скажи, что так не умеешь, не показывай "
+            "список вместо действия. Если название не указано и список один — покажи его; если "
+            "несколько — ambiguous со списком названий, переспроси. Ответь совсем кратко."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -131,10 +133,26 @@ SHOW_SCHEMA = {
 }
 
 
+_SELF_WORDS = {"я", "меня", "себя", "мне", "мой", "моё", "мое", "свой", "свои", "своё", "свое",
+               "me", "myself", "self"}
+
+
+def _is_self_word(who: str) -> bool:
+    """«меня/себя/моё…» — ссылка на самого отправителя."""
+    return (who or "").strip().lower().strip(".,!?;:") in _SELF_WORDS
+
+
+def _self_target(tool_context: dict) -> dict:
+    return {"user_id": tool_context["user_id"], "username": tool_context.get("username"),
+            "name": tool_context.get("first_name")}
+
+
 def _resolve_target(who: str, tool_context: dict, users) -> dict:
     """Возвращает {'user_id':..,'username':..,'name':..} | {'error': 'ambiguous'/'unresolved', ...}.
 
     'name' — имя аккаунта для неофициального рендера (может быть None)."""
+    if _is_self_word(who):
+        return _self_target(tool_context)
     reply_user = tool_context.get("reply_user")
     if reply_user and reply_user.get("user_id"):
         return {"user_id": reply_user["user_id"], "username": reply_user.get("username"),
@@ -178,8 +196,8 @@ async def _fetch_chat_user(tool_context: dict, user_id: int):
         return None
 
 
-async def add_to_list(title: str, who: str = "", position: int = 0, *, tool_context: dict,
-                      store=notes_store, users=None) -> dict:
+async def add_to_list(title: str, who: str = "", position: int = 0, note_text: str = "",
+                      *, tool_context: dict, store=notes_store, users=None) -> dict:
     if _foreign(tool_context):
         return {"ok": False, "error": "foreign_group"}
     if users is None:
@@ -188,9 +206,6 @@ async def add_to_list(title: str, who: str = "", position: int = 0, *, tool_cont
     note = await store.get_by_title(tool_context["chat_id"], (title or "").strip())
     if not note:
         return {"ok": False, "error": "not_found"}
-    if not ns.can_modify(note, user_id=tool_context["user_id"],
-                         is_owner=tool_context["is_owner"]):
-        return {"ok": False, "error": "forbidden"}
     target = _resolve_target(who, tool_context, users)
     if "error" in target:
         # @ник резолвится только через ростер ДР (Bot API не даёт username→id);
@@ -200,6 +215,11 @@ async def add_to_list(title: str, who: str = "", position: int = 0, *, tool_cont
                 if target["error"] == "unresolved" else None)
         return {"ok": False, "error": target["error"],
                 "candidates": target.get("candidates"), "hint": hint}
+    # Добавить СЕБЯ может кто угодно; другого — только автор/владелец.
+    is_self = target["user_id"] == tool_context["user_id"]
+    if not is_self and not ns.can_modify(note, user_id=tool_context["user_id"],
+                                         is_owner=tool_context["is_owner"]):
+        return {"ok": False, "error": "forbidden"}
     if target.get("needs_verify"):
         u = await _fetch_chat_user(tool_context, target["user_id"])
         if u is None:
@@ -217,6 +237,8 @@ async def add_to_list(title: str, who: str = "", position: int = 0, *, tool_cont
         pos = 0
     if pos >= 1:  # «добавь на N место» — сразу ставим на нужную позицию
         await store.move_member(note["id"], target["user_id"], pos)
+    if (note_text or "").strip():  # примечание сразу при добавлении
+        await store.set_note(note["id"], target["user_id"], note_text.strip())
     await _refresh_card(tool_context, store, note)
     verb = "добавлен" if added else "уже в списке"
     return {"ok": True, "id": note["id"], "_silent": True,
@@ -228,21 +250,24 @@ ADD_SCHEMA = {
     "function": {
         "name": "add_to_list",
         "description": (
-            "Добавить ДРУГОГО человека в список (только автор списка или владелец беседы). "
-            "Укажи, кого: если запрос — ответ (reply) на сообщение человека, бот возьмёт его "
-            "автоматически; иначе передай @ник, «Фамилия Имя» или числовой tg_id. Работает "
-            "независимо от формата списка (формат выбирать заранее НЕ нужно). Можно сразу "
-            "указать position — «добавь X на первое место» → position=1. Несколько совпадений → "
-            "ambiguous с кандидатами, переспроси. Карточку бот перерисует сам — ответь кратко."),
+            "Добавить человека в список. СЕБЯ («добавь меня», who=«меня») может добавить любой; "
+            "ДРУГОГО — только автор списка или владелец. Кого: reply на сообщение человека → "
+            "бот возьмёт сам; иначе @ник, «Фамилия Имя» или числовой tg_id. Работает независимо "
+            "от формата (формат заранее выбирать НЕ нужно). Можно сразу задать position («добавь "
+            "X на первое место» → position=1) и note_text — примечание рядом с именем («добавь "
+            "Машу, сдала деньги» → who=«Маша», note_text=«сдала деньги»). Несколько совпадений → "
+            "ambiguous, переспроси. Карточку бот перерисует сам — ответь кратко."),
         "parameters": {
             "type": "object",
             "properties": {
                 "title": {"type": "string", "description": "Название списка."},
                 "who": {"type": "string",
-                        "description": "@ник, «Фамилия Имя» или числовой tg_id "
-                                       "(можно пусто, если это reply)."},
+                        "description": "@ник, «Фамилия Имя», tg_id или «меня» (себя). "
+                                       "Пусто — если это reply."},
                 "position": {"type": "integer",
                              "description": "Куда поставить (1-based). 0/пропуск — в конец."},
+                "note_text": {"type": "string",
+                              "description": "Примечание рядом с именем (опц.), напр. «сдал»."},
             },
             "required": ["title"],
         },
@@ -253,6 +278,8 @@ ADD_SCHEMA = {
 def _resolve_member(who: str, tool_context: dict, members: list[dict], users) -> dict:
     """Кого убрать из списка. В отличие от _resolve_target — ищем среди участников:
     по reply/меншену, номеру позиции, username участника, а также @нику/ФИО из ростера."""
+    if _is_self_word(who):
+        return {"user_id": tool_context["user_id"]}
     reply_user = tool_context.get("reply_user")
     if reply_user and reply_user.get("user_id"):
         return {"user_id": reply_user["user_id"]}
@@ -454,6 +481,107 @@ SWAP_SCHEMA = {
 }
 
 
+async def _member_prep(title, who, tool_context, store, users):
+    """Гейт для операций над участником (имя/примечание): вернуть (note, user_id, None)
+    или (None, None, err). СВОИ данные меняет любой; чужие — автор списка/владелец."""
+    if _foreign(tool_context):
+        return None, None, {"ok": False, "error": "foreign_group"}
+    if users is None:
+        from src.bot.services.birthday_service import birthday_service
+        users = birthday_service.users
+    note = await store.get_by_title(tool_context["chat_id"], (title or "").strip())
+    if not note:
+        return None, None, {"ok": False, "error": "not_found"}
+    members = await store.members(note["id"])
+    # who пустой и не reply/mention → по умолчанию сам отправитель («измени моё имя»).
+    if not (who or "").strip() and not tool_context.get("reply_user") \
+            and not tool_context.get("mentioned_users"):
+        target = {"user_id": tool_context["user_id"]}
+    else:
+        target = _resolve_member(who, tool_context, members, users)
+    if "error" in target:
+        return None, None, {"ok": False, "error": target["error"],
+                            "candidates": target.get("candidates")}
+    uid = target["user_id"]
+    if not await store.is_member(note["id"], uid):
+        return None, None, {"ok": False, "error": "not_member"}
+    is_self = uid == tool_context["user_id"]
+    if not is_self and not ns.can_modify(note, user_id=tool_context["user_id"],
+                                         is_owner=tool_context["is_owner"]):
+        return None, None, {"ok": False, "error": "forbidden"}
+    return note, uid, None
+
+
+async def set_member_name(title: str, who: str = "", name: str = "", *, tool_context: dict,
+                          store=notes_store, users=None) -> dict:
+    name = (name or "").strip()
+    if not name:
+        return {"ok": False, "error": "empty_name"}
+    note, uid, err = await _member_prep(title, who, tool_context, store, users)
+    if err:
+        return err
+    await store.set_name(note["id"], uid, name)
+    await _refresh_card(tool_context, store, note)
+    return {"ok": True, "id": note["id"], "_silent": True,
+            "_context_note": f"[в списке «{note['title']}» задано имя участника]"}
+
+
+async def set_member_note(title: str, who: str = "", note_text: str = "", *, tool_context: dict,
+                          store=notes_store, users=None) -> dict:
+    note, uid, err = await _member_prep(title, who, tool_context, store, users)
+    if err:
+        return err
+    await store.set_note(note["id"], uid, (note_text or "").strip())
+    await _refresh_card(tool_context, store, note)
+    return {"ok": True, "id": note["id"], "_silent": True,
+            "_context_note": f"[в списке «{note['title']}» задано примечание участника]"}
+
+
+SET_NAME_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "set_member_name",
+        "description": (
+            "Задать/сменить отображаемое имя участника списка («поменяй моё имя на Иванов Иван», "
+            "«назови второго Яна»). СВОЁ имя меняет любой участник; чужое — автор списка или "
+            "владелец. who — @ник/«Фамилия Имя»/номер позиции/tg_id/«меня» (или пусто = сам). "
+            "Особенно нужно для официального списка, где иначе «(имя не указано)». "
+            "Карточку бот перерисует сам — ответь кратко."),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Название списка."},
+                "who": {"type": "string", "description": "Кому (или пусто = себе)."},
+                "name": {"type": "string", "description": "Новое имя, напр. «Иванов Иван»."},
+            },
+            "required": ["title", "name"],
+        },
+    },
+}
+
+SET_NOTE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "set_member_note",
+        "description": (
+            "Задать/сменить/убрать примечание рядом с именем участника («у Маши напиши сдала», "
+            "«убери моё примечание» → note_text пустой). СВОЁ примечание меняет любой; чужое — "
+            "автор списка или владелец. who — @ник/«Фамилия Имя»/номер/tg_id/«меня» (или пусто = "
+            "сам). Карточку бот перерисует сам — ответь кратко."),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Название списка."},
+                "who": {"type": "string", "description": "Кому (или пусто = себе)."},
+                "note_text": {"type": "string",
+                              "description": "Текст примечания; пусто — убрать."},
+            },
+            "required": ["title"],
+        },
+    },
+}
+
+
 async def _guarded(title, tool_context, store):
     """Общий гейт для delete/clear: вернуть (note, None) или (None, err_dict)."""
     if _foreign(tool_context):
@@ -529,6 +657,10 @@ def build_notes_registry() -> ToolRegistry:
                  ToolSpec(schema=REMOVE_SCHEMA, func=remove_from_list, gate=None))
     reg.register("move_in_list", ToolSpec(schema=MOVE_SCHEMA, func=move_in_list, gate=None))
     reg.register("swap_in_list", ToolSpec(schema=SWAP_SCHEMA, func=swap_in_list, gate=None))
+    reg.register("set_member_name",
+                 ToolSpec(schema=SET_NAME_SCHEMA, func=set_member_name, gate=None))
+    reg.register("set_member_note",
+                 ToolSpec(schema=SET_NOTE_SCHEMA, func=set_member_note, gate=None))
     reg.register("delete_list", ToolSpec(schema=DELETE_SCHEMA, func=delete_list, gate=None))
     reg.register("clear_list", ToolSpec(schema=CLEAR_SCHEMA, func=clear_list, gate=None))
     return reg
