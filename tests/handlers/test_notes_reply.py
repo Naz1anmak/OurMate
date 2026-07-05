@@ -58,14 +58,15 @@ async def test_reply_dash_clears_note(store):
 
 
 @pytest.mark.asyncio
-async def test_reply_phrase_clears_note(store):
+async def test_reply_phrase_is_kept_as_note(store):
+    # Глаголы-команды убраны: «удали …» — это обычный текст уточнения, не очистка.
     nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
     await store.set_card_message(nid, 555)
     await store.add_member(nid, user_id=7, username="u")
     await store.set_note(nid, 7, "1, 3")
     msg = _Msg("удали моё уточнение", reply_to_id=555, uid=7)
     assert await nr.handle_notes_reply(msg) is True
-    assert (await store.members(nid))[0]["note"] == ""
+    assert (await store.members(nid))[0]["note"] == "удали моё уточнение"
 
 
 @pytest.mark.asyncio

@@ -80,7 +80,8 @@ async def show_list(title: str = "", *, tool_context: dict, store=notes_store) -
     if card_id:
         try:
             await tool_context["bot"].send_message(
-                tool_context["chat_id"], "Вот", reply_to_message_id=card_id)
+                tool_context["chat_id"], f"{E.POINT_UP} Вот", parse_mode="HTML",
+                reply_to_message_id=card_id)
             return {"ok": True, "id": note["id"], "_silent": True,
                     "_context_note": f"[указал reply на карточку «{note['title']}»]"}
         except Exception as exc:  # noqa: BLE001 — карточку удалили → пришлём заново ниже

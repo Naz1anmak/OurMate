@@ -10,19 +10,11 @@ from src.bot.handlers.notes_callbacks import _pending_name
 logger = logging.getLogger(__name__)
 
 _CLEAR_TOKENS = {"-", "—", "–"}
-_CLEAR_VERBS = ("удали", "удалить", "убери", "убрать", "отчисти", "отчистить",
-                "очисти", "очистить", "сотри", "стереть", "снеси", "снести",
-                "delete", "remove", "del")
 
 
 def _is_clear_command(text: str) -> bool:
-    """Реплай-очистка уточнения: «-» или фраза с глаголом удаления в начале."""
-    t = text.strip().lower()
-    if t in _CLEAR_TOKENS:
-        return True
-    words = t.split()
-    first = words[0].strip(".,!?;:") if words else ""
-    return first in _CLEAR_VERBS
+    """Реплай-очистка уточнения — только «-» (или тире). Остальное считаем текстом."""
+    return text.strip() in _CLEAR_TOKENS
 
 
 async def _rerender_from_message(message: Message, note_id: int) -> None:
