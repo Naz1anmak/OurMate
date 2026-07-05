@@ -73,6 +73,9 @@ USAGE_RETENTION_DAYS = _get_env("USAGE_RETENTION_DAYS", 30, cast=int, log_defaul
 PING_DB_PATH = _get_env("PING_DB_PATH", "data/ping.db", log_default=True)
 PING_COOLDOWN_SECONDS = _get_env("PING_COOLDOWN_SECONDS", 300, cast=int, log_default=True)
 
+NOTES_DB_PATH = _get_env("NOTES_DB_PATH", "data/notes.db", log_default=True)
+NOTES_RETENTION_DAYS = _get_env("NOTES_RETENTION_DAYS", 30, cast=int, log_default=True)
+
 # ===== НАСТРОЙКИ ДНЕЙ РОЖДЕНИЯ =====
 # Путь к файлу с данными о днях рождения
 # По умолчанию ищем файл birthdays.json в папке data относительно корня проекта
