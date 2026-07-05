@@ -33,7 +33,7 @@ def resolve_display(member: dict, *, formal: bool, users=None) -> str:
     return _mention(uid, label)
 
 
-_HINT = ("<i>Уточнение (например «1, 3») — ответь на это сообщение; "
+_HINT = ("<i>Для уточнения у имени — ответь на это сообщение; "
          "ответь «удали» или «-», чтобы убрать уточнение</i>")
 
 

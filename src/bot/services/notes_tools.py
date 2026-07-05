@@ -74,6 +74,17 @@ async def show_list(title: str = "", *, tool_context: dict, store=notes_store) -
         if len(notes) > 1:
             return {"ok": False, "error": "ambiguous", "titles": [n["title"] for n in notes]}
         note = notes[0]
+    # Карточка уже есть в чате — не плодим новую с кнопками, просто указываем на неё
+    # коротким reply. Новую карточку шлём только если её нет/удалили.
+    card_id = note.get("card_message_id")
+    if card_id:
+        try:
+            await tool_context["bot"].send_message(
+                tool_context["chat_id"], "Вот", reply_to_message_id=card_id)
+            return {"ok": True, "id": note["id"], "_silent": True,
+                    "_context_note": f"[указал reply на карточку «{note['title']}»]"}
+        except Exception as exc:  # noqa: BLE001 — карточку удалили → пришлём заново ниже
+            logger.debug("notes: reply на карточку #%s не удался: %s", card_id, exc)
     await _refresh_card(tool_context, store, note)
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[показана карточка списка «{note['title']}»]"}
@@ -102,10 +113,11 @@ SHOW_SCHEMA = {
     "function": {
         "name": "show_list",
         "description": (
-            "Прислать карточку списка с кнопками «Записаться»/«Выйти» («пришли список X», "
-            "«покажи очередь»). Если название не указано и список один — покажи его; если "
-            "несколько — вернётся ambiguous со списком названий, переспроси какой. "
-            "Карточку бот отправит сам — ответь кратко."),
+            "Показать список («пришли список X», «покажи очередь»). Бот сам укажет на "
+            "уже существующую карточку коротким reply (или пришлёт её, если карточки нет) — "
+            "новую с кнопками не плодит. Если название не указано и список один — покажи его; "
+            "если несколько — вернётся ambiguous со списком названий, переспроси какой. "
+            "Ответь совсем кратко."),
         "parameters": {
             "type": "object",
             "properties": {

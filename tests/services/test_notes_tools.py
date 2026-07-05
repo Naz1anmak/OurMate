@@ -256,14 +256,16 @@ async def test_add_to_list_edits_existing_card(store):
 
 
 @pytest.mark.asyncio
-async def test_show_list_edits_existing_card_in_place(store):
+async def test_show_list_replies_to_existing_card(store):
     nid = await store.create(chat_id=-100, title="Only", author_id=1, formal=False)
     await store.set_card_message(nid, 555)
     ctx = _ctx()
     res = await nt.show_list(tool_context=ctx, store=store)
     assert res["ok"] is True
-    # закреп не ломаем: правим на месте, ничего не удаляем и не пересылаем
-    assert ctx["bot"].edited and not ctx["bot"].sent and not ctx["bot"].deleted
+    # карточку не трогаем: короткий reply на неё, без правки и без новой карточки
+    assert not ctx["bot"].edited
+    assert len(ctx["bot"].sent) == 1
+    assert ctx["bot"].sent[0][2].get("reply_to_message_id") == 555
 
 
 @pytest.mark.asyncio
