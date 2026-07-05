@@ -144,8 +144,13 @@ async def add_to_list(title: str, who: str = "", *, tool_context: dict,
         return {"ok": False, "error": "forbidden"}
     target = _resolve_target(who, tool_context, users)
     if "error" in target:
+        # @ник резолвится только через ростер ДР (Bot API не даёт username→id);
+        # для остальных надёжный путь — реплай на сообщение человека.
+        hint = ("Скажи пользователю ответить (reply) на сообщение того человека "
+                "и повторить «добавь его в список» — так бот получит его id."
+                if target["error"] == "unresolved" else None)
         return {"ok": False, "error": target["error"],
-                "candidates": target.get("candidates")}
+                "candidates": target.get("candidates"), "hint": hint}
     added = await store.add_member(note["id"], user_id=target["user_id"],
                                    username=target.get("username"))
     await _send_card(tool_context, store, note)
