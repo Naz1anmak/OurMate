@@ -247,6 +247,18 @@ REMINDER_NOTE = (
     "короткой фразой, не пересказывая детали и не выдумывая время."
 )
 
+NOTES_NOTE = (
+    "Любое действие со списком/очередью (создать, показать, добавить/убрать/переставить/поменять "
+    "местами участника, задать имя или примечание, удалить/очистить) выполняется ТОЛЬКО через "
+    "вызов соответствующего тула списков. НИКОГДА не пиши сам строку в квадратных скобках вида "
+    "«[… добавлен]», «[примечание добавлено]», «[создан список]» и не сообщай, что действие "
+    "выполнено, БЕЗ вызова тула — такие строки в истории это внутренние записи о прошлых вызовах, "
+    "а НЕ образец для твоего ответа; без вызова тула действие НЕ происходит, и это будет ложь. "
+    "Если в одном сообщении просят несколько действий (например добавить и сразу дать примечание) "
+    "— вызови нужные тулы по очереди, не ограничивайся текстом. Карточку бот перерисует сам; "
+    "ты отвечай одной короткой фразой."
+)
+
 
 def _flow_label(*, streamed: bool, called_tools: list[str]) -> str:
     """Метка для лога: ось доставки (LLM / LLM stream) + факт вызова тулов."""
@@ -284,6 +296,7 @@ async def run_schedule_aware_response(
     messages = _inject_system_note(messages, SCHEDULE_PRESENTATION_NOTE)
     messages = _inject_system_note(messages, WEB_SEARCH_NOTE)
     messages = _inject_system_note(messages, REMINDER_NOTE)
+    messages = _inject_system_note(messages, NOTES_NOTE)
     prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
     renderer = StreamRenderer(message, prefix=prefix)
     await renderer.start(pick_placeholder_variant().text)
