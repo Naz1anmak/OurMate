@@ -3,15 +3,32 @@ from src.bot.services.notes_store import NotesStore
 from src.bot.handlers import notes_callbacks as nc
 
 
+class _Bot:
+    def __init__(self):
+        self.edited = []      # (message_id, text)
+        self.deleted = []     # message_id
+
+    async def edit_message_text(self, text, chat_id=None, message_id=None, **kw):
+        self.edited.append((message_id, text))
+
+    async def delete_message(self, chat_id, message_id):
+        self.deleted.append(message_id)
+
+
 class _Msg:
-    def __init__(self, chat_id=-100, message_id=555):
+    def __init__(self, chat_id=-100, message_id=555, bot=None):
         self.chat = type("C", (), {"id": chat_id})()
         self.message_id = message_id
+        self.bot = bot or _Bot()
         self.edited = []
         self.answers = []
+        self.deleted = False
 
     async def edit_text(self, text, **kw):
         self.edited.append((text, kw))
+
+    async def delete(self):
+        self.deleted = True
 
     async def answer(self, text, **kw):
         self.answers.append((text, kw))
@@ -77,19 +94,27 @@ async def test_join_formal_missing_name_requests_forcereply(store, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_del_confirm_removes(store):
-    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
-    q = _Query(f"list:del:{nid}", uid=42)  # автор
+    nid = await store.create(chat_id=-100, title="Тест", author_id=42, formal=False)
+    await store.set_card_message(nid, 555)
+    q = _Query(f"list:del:{nid}", uid=42, message=_Msg(message_id=700))  # автор
     await nc.on_notes_callback(q)
     assert await store.get(nid) is None
+    # Саму карточку удалили, а сообщение-вопрос стало ответом с названием списка.
+    assert 555 in q.message.bot.deleted
+    assert q.message.edited and "Тест" in q.message.edited[0][0]
 
 
 @pytest.mark.asyncio
-async def test_clr_confirm_clears(store):
+async def test_clr_confirm_clears_and_updates_original_card(store):
     nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.set_card_message(nid, 555)
     await store.add_member(nid, user_id=1, username="a")
-    q = _Query(f"list:clr:{nid}", uid=42)  # автор
+    q = _Query(f"list:clr:{nid}", uid=42, message=_Msg(message_id=700))  # автор, вопрос ≠ карточка
     await nc.on_notes_callback(q)
     assert await store.count(nid) == 0
+    # Перерисована именно исходная карточка (#555), а не сообщение-вопрос (#700).
+    assert any(mid == 555 for mid, _ in q.message.bot.edited)
+    assert q.message.deleted  # сообщение-вопрос убрано, дубль не создан
 
 
 @pytest.mark.asyncio

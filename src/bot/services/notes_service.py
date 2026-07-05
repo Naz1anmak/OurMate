@@ -33,8 +33,8 @@ def resolve_display(member: dict, *, formal: bool, users=None) -> str:
     return _mention(uid, label)
 
 
-_HINT = ("<i>Для примечания — ответь на это сообщение; "
-         "ответь «-», чтобы убрать примечание</i>")
+_HINT = ("<i>Для добавления примечания — ответь на это сообщение своим текстом. "
+         "Чтобы убрать примечание — ответь «-»</i>")
 
 
 def render_card(note: dict, members: list[dict], *, users=None) -> str:

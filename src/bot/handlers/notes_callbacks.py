@@ -1,5 +1,6 @@
 """Колбэки списков (list:*): выбор формата, запись/выход, подтверждения удаления/очистки."""
 import logging
+from html import escape
 
 from aiogram.types import CallbackQuery, ForceReply
 
@@ -44,6 +45,26 @@ async def _rerender_card(message, note_id: int) -> None:
                                 reply_markup=ns.card_keyboard(note_id), parse_mode="HTML")
     except Exception as exc:  # noqa: BLE001
         logger.debug("notes: edit карточки не удался: %s", exc)
+
+
+async def _refresh_stored_card(bot, chat_id: int, note_id: int) -> None:
+    """Перерисовать карточку по её сохранённому message_id, а не по сообщению с кнопкой.
+
+    Кнопки подтверждения (clr/del) висят на ОТДЕЛЬНОМ сообщении-вопросе, а не на самой
+    карточке — правим карточку на месте (она может быть закреплена), вопрос трогаем отдельно."""
+    note = await notes_store.get(note_id)
+    if not note:
+        return
+    card_id = note.get("card_message_id")
+    if not card_id:
+        return
+    members = await notes_store.members(note_id)
+    try:
+        await bot.edit_message_text(ns.render_card(note, members), chat_id=chat_id,
+                                    message_id=card_id, reply_markup=ns.card_keyboard(note_id),
+                                    parse_mode="HTML")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("notes: перерисовка карточки #%s не удалась: %s", card_id, exc)
 
 
 async def on_notes_callback(query: CallbackQuery) -> None:
@@ -94,11 +115,19 @@ async def on_notes_callback(query: CallbackQuery) -> None:
         return
 
     if action == "del":
-        if await _require_can_modify(query, note_id, chat_id) is None:
+        note = await _require_can_modify(query, note_id, chat_id)
+        if note is None:
             return
+        title = note["title"]
+        card_id = note.get("card_message_id")
         await notes_store.delete(note_id)
+        if card_id:  # убираем саму карточку (закреплённую/старую удалить нельзя — молча пропускаем)
+            try:
+                await query.message.bot.delete_message(chat_id, card_id)
+            except Exception:  # noqa: BLE001
+                pass
         try:
-            await query.message.edit_text("Список удалён.")
+            await query.message.edit_text(f"Список «{escape(title)}» удалён.", parse_mode="HTML")
         except Exception:  # noqa: BLE001
             pass
         await query.answer("Удалено")
@@ -109,10 +138,16 @@ async def on_notes_callback(query: CallbackQuery) -> None:
         return
 
     if action == "clr":
-        if await _require_can_modify(query, note_id, chat_id) is None:
+        note = await _require_can_modify(query, note_id, chat_id)
+        if note is None:
             return
         await notes_store.clear(note_id)
-        await _rerender_card(query.message, note_id)
+        # Правим настоящую карточку на месте; сообщение-вопрос убираем, чтобы не плодить дубль.
+        await _refresh_stored_card(query.message.bot, chat_id, note_id)
+        try:
+            await query.message.delete()
+        except Exception:  # noqa: BLE001
+            pass
         await query.answer("Список очищен")
         return
 
