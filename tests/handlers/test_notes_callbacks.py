@@ -46,7 +46,7 @@ async def store(tmp_path, monkeypatch):
 async def test_fmt_turns_picker_into_card(store):
     nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
     await store.set_card_message(nid, 555)
-    q = _Query(f"list:fmt:1:{nid}", message=_Msg(message_id=555))
+    q = _Query(f"list:fmt:1:{nid}", uid=42, message=_Msg(message_id=555))
     await nc.on_notes_callback(q)
     assert (await store.get(nid))["formal"] == 1
     assert q.message.edited  # превратилось в карточку
@@ -77,7 +77,7 @@ async def test_join_formal_missing_name_requests_forcereply(store, monkeypatch):
 @pytest.mark.asyncio
 async def test_del_confirm_removes(store):
     nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
-    q = _Query(f"list:del:{nid}")
+    q = _Query(f"list:del:{nid}", uid=42)  # автор
     await nc.on_notes_callback(q)
     assert await store.get(nid) is None
 
@@ -86,6 +86,33 @@ async def test_del_confirm_removes(store):
 async def test_clr_confirm_clears(store):
     nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
     await store.add_member(nid, user_id=1, username="a")
-    q = _Query(f"list:clr:{nid}")
+    q = _Query(f"list:clr:{nid}", uid=42)  # автор
     await nc.on_notes_callback(q)
     assert await store.count(nid) == 0
+
+
+@pytest.mark.asyncio
+async def test_del_non_author_rejected(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    q = _Query(f"list:del:{nid}", uid=7)  # не автор и не владелец
+    await nc.on_notes_callback(q)
+    assert await store.get(nid) is not None  # список не тронут
+    assert q.toasts and "автор" in q.toasts[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_clr_non_author_rejected(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=1, username="a")
+    q = _Query(f"list:clr:{nid}", uid=7)  # не автор и не владелец
+    await nc.on_notes_callback(q)
+    assert await store.count(nid) == 1  # участники не тронуты
+
+
+@pytest.mark.asyncio
+async def test_fmt_non_author_rejected(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.set_card_message(nid, 555)
+    q = _Query(f"list:fmt:1:{nid}", uid=7, message=_Msg(message_id=555))
+    await nc.on_notes_callback(q)
+    assert (await store.get(nid))["formal"] == 0  # формат не изменён

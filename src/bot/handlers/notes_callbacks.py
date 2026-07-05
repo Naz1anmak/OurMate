@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, ForceReply
 from src.bot.services.notes_store import notes_store
 from src.bot.services import notes_service as ns
 from src.bot.services.birthday_service import birthday_service
+from src.config.settings import OWNER_CHAT_ID
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,21 @@ _pending_name: dict[tuple[int, int], tuple[int, int]] = {}
 
 def _in_roster(user_id: int) -> bool:
     return any(u.user_id == user_id for u in birthday_service.users)
+
+
+async def _require_can_modify(query: CallbackQuery, note_id: int, chat_id: int) -> dict | None:
+    """Гейт мутирующих колбэков (fmt/del/clr): вернуть note, если можно, иначе None + алерт.
+
+    Кнопки в группе видны всем, а callback_data подделываем — поэтому право на
+    изменение проверяем на сервере: автор списка или владелец беседы, та же беседа.
+    """
+    note = await notes_store.get(note_id)
+    is_owner = query.from_user.id == OWNER_CHAT_ID
+    if (not note or note["chat_id"] != chat_id
+            or not ns.can_modify(note, user_id=query.from_user.id, is_owner=is_owner)):
+        await query.answer("Только автор списка или владелец беседы", show_alert=True)
+        return None
+    return note
 
 
 async def _rerender_card(message, note_id: int) -> None:
@@ -40,8 +56,13 @@ async def on_notes_callback(query: CallbackQuery) -> None:
     user = query.from_user
 
     if action == "fmt":  # list:fmt:<0|1>:<id>
+        if parts[2] not in ("0", "1"):
+            await query.answer()
+            return
         formal = parts[2] == "1"
         note_id = int(parts[3])
+        if await _require_can_modify(query, note_id, chat_id) is None:
+            return
         await notes_store.set_formal(note_id, formal)
         await notes_store.set_card_message(note_id, query.message.message_id)
         await _rerender_card(query.message, note_id)
@@ -72,6 +93,8 @@ async def on_notes_callback(query: CallbackQuery) -> None:
         return
 
     if action == "del":
+        if await _require_can_modify(query, note_id, chat_id) is None:
+            return
         await notes_store.delete(note_id)
         try:
             await query.message.edit_text("Список удалён.")
@@ -85,6 +108,8 @@ async def on_notes_callback(query: CallbackQuery) -> None:
         return
 
     if action == "clr":
+        if await _require_can_modify(query, note_id, chat_id) is None:
+            return
         await notes_store.clear(note_id)
         await _rerender_card(query.message, note_id)
         await query.answer("Список очищен")
