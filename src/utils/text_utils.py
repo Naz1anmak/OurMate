@@ -49,3 +49,36 @@ def get_first_name_by_user_id(user_id: int, users: List[User]) -> Optional[str]:
         if user.user_id == user_id:
             return user.get_first_name()
     return None
+
+
+def get_user_id_by_username(username: str, users: List[User]) -> Optional[int]:
+    """user_id по @username из ростера (регистронезависимо, ведущий @ игнорируется)."""
+    key = (username or "").lstrip("@").lower()
+    if not key:
+        return None
+    for u in users:
+        if u.username and u.username.lstrip("@").lower() == key:
+            return u.user_id
+    return None
+
+
+def find_users_by_fullname(query: str, users: List[User]) -> List[User]:
+    """Кандидаты по ФИО: все слова запроса встречаются в 'last_name name' (регистронезависимо)."""
+    tokens = [t for t in (query or "").lower().split() if t]
+    if not tokens:
+        return []
+    out: List[User] = []
+    for u in users:
+        haystack = f"{u.last_name} {u.name}".lower()
+        if all(tok in haystack for tok in tokens):
+            out.append(u)
+    return out
+
+
+def roster_full_name(user: User) -> str:
+    """«Фамилия Имя» для официального рендера. Если last_name пуст или уже входит в name — только name."""
+    name = (user.name or "").strip()
+    last = (user.last_name or "").strip()
+    if last and last.lower() not in name.lower():
+        return f"{last} {name}".strip()
+    return name
