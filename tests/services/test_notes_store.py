@@ -41,3 +41,63 @@ async def test_set_formal(store):
     nid = await store.create(chat_id=-100, title="A", author_id=1, formal=False)
     assert await store.set_formal(nid, True) is True
     assert (await store.get(nid))["formal"] == 1
+
+
+@pytest.mark.asyncio
+async def test_members_order_is_queue(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    await store.add_member(nid, user_id=1, username="a")
+    await store.add_member(nid, user_id=2, username="b")
+    await store.add_member(nid, user_id=3, username="c")
+    order = [m["user_id"] for m in await store.members(nid)]
+    assert order == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_add_member_idempotent(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    assert await store.add_member(nid, user_id=1, username="a") is True
+    assert await store.add_member(nid, user_id=1, username="a2") is False
+    assert await store.count(nid) == 1
+
+
+@pytest.mark.asyncio
+async def test_toggle_member(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    assert await store.toggle_member(nid, user_id=9, username="x") is True   # записан
+    assert await store.is_member(nid, 9) is True
+    assert await store.toggle_member(nid, user_id=9, username="x") is False  # вышел
+    assert await store.is_member(nid, 9) is False
+
+
+@pytest.mark.asyncio
+async def test_set_note_and_name(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=True)
+    await store.add_member(nid, user_id=5, username="u")
+    assert await store.set_note(nid, 5, "1, 3") is True
+    assert await store.set_name(nid, 5, "Иванов Иван") is True
+    m = (await store.members(nid))[0]
+    assert m["note"] == "1, 3" and m["name_override"] == "Иванов Иван"
+
+
+@pytest.mark.asyncio
+async def test_set_note_non_member_fails(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    assert await store.set_note(nid, 5, "x") is False
+
+
+@pytest.mark.asyncio
+async def test_remove_member(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    await store.add_member(nid, user_id=5, username="u")
+    assert await store.remove_member(nid, 5) is True
+    assert await store.remove_member(nid, 5) is False
+
+
+@pytest.mark.asyncio
+async def test_card_message_roundtrip(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
+    assert await store.set_card_message(nid, 777) is True
+    found = await store.get_by_card_message(-100, 777)
+    assert found["id"] == nid
+    assert await store.get_by_card_message(-100, 999) is None

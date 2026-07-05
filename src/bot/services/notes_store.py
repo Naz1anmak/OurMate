@@ -110,5 +110,95 @@ class NotesStore:
             except aiosqlite.IntegrityError:
                 return False
 
+    # ── Участники ─────────────────────────────────────────────────────────
+    async def members(self, note_id: int) -> list[dict]:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "SELECT user_id, username, name_override, note FROM note_members "
+                "WHERE note_id = ? ORDER BY added_at, rowid",
+                (note_id,))
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def count(self, note_id: int) -> int:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "SELECT COUNT(*) AS n FROM note_members WHERE note_id = ?", (note_id,))
+            row = await cur.fetchone()
+            return int(row["n"])
+
+    async def is_member(self, note_id: int, user_id: int) -> bool:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "SELECT 1 FROM note_members WHERE note_id = ? AND user_id = ?",
+                (note_id, user_id))
+            return await cur.fetchone() is not None
+
+    async def toggle_member(self, note_id: int, *, user_id: int,
+                            username: str | None, name_override: str | None = None) -> bool:
+        """True — записан после вызова, False — вышел. Идемпотентно. Уточнение не трогаем."""
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "SELECT 1 FROM note_members WHERE note_id = ? AND user_id = ?",
+                (note_id, user_id))
+            if await cur.fetchone():
+                await db.execute(
+                    "DELETE FROM note_members WHERE note_id = ? AND user_id = ?",
+                    (note_id, user_id))
+                await db.commit()
+                return False
+            await db.execute(
+                "INSERT INTO note_members (note_id, user_id, username, name_override) "
+                "VALUES (?, ?, ?, ?)", (note_id, user_id, username, name_override))
+            await db.commit()
+            return True
+
+    async def set_note(self, note_id: int, user_id: int, note: str) -> bool:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "UPDATE note_members SET note = ? WHERE note_id = ? AND user_id = ?",
+                (note, note_id, user_id))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def set_name(self, note_id: int, user_id: int, name_override: str) -> bool:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "UPDATE note_members SET name_override = ? WHERE note_id = ? AND user_id = ?",
+                (name_override, note_id, user_id))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def remove_member(self, note_id: int, user_id: int) -> bool:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "DELETE FROM note_members WHERE note_id = ? AND user_id = ?",
+                (note_id, user_id))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def set_card_message(self, note_id: int, message_id: int) -> bool:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "UPDATE notes SET card_message_id = ? WHERE id = ?", (message_id, note_id))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def get_by_card_message(self, chat_id: int, message_id: int) -> dict | None:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "SELECT * FROM notes WHERE chat_id = ? AND card_message_id = ?",
+                (chat_id, message_id))
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
 
 notes_store = NotesStore()
