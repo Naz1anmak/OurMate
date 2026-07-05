@@ -230,6 +230,26 @@ class NotesStore:
             await db.commit()
             return True
 
+    async def swap_members(self, note_id: int, user_id_a: int, user_id_b: int) -> bool:
+        """Поменять местами двух участников. Порядок перенумеровывается 1..N.
+        False — кого-то из двоих нет в списке."""
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "SELECT user_id FROM note_members WHERE note_id = ? "
+                "ORDER BY position, added_at, rowid", (note_id,))
+            ids = [r["user_id"] for r in await cur.fetchall()]
+            if user_id_a not in ids or user_id_b not in ids or user_id_a == user_id_b:
+                return False
+            i, j = ids.index(user_id_a), ids.index(user_id_b)
+            ids[i], ids[j] = ids[j], ids[i]
+            for k, uid in enumerate(ids, 1):
+                await db.execute(
+                    "UPDATE note_members SET position = ? WHERE note_id = ? AND user_id = ?",
+                    (k, note_id, uid))
+            await db.commit()
+            return True
+
     async def set_card_message(self, note_id: int, message_id: int) -> bool:
         async with self._db() as db:
             await self._setup(db)

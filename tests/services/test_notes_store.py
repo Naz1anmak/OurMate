@@ -116,6 +116,17 @@ async def test_move_member_reorders(store):
 
 
 @pytest.mark.asyncio
+async def test_swap_members(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    for uid in (1, 2, 3):
+        await store.add_member(nid, user_id=uid, username=f"u{uid}")
+    assert await store.swap_members(nid, 1, 3) is True
+    assert [m["user_id"] for m in await store.members(nid)] == [3, 2, 1]
+    assert await store.swap_members(nid, 1, 999) is False  # второго нет
+    assert await store.swap_members(nid, 2, 2) is False     # сам с собой
+
+
+@pytest.mark.asyncio
 async def test_move_member_absent(store):
     nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
     await store.add_member(nid, user_id=1, username="a")

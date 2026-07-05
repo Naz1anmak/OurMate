@@ -176,7 +176,7 @@ async def _fetch_chat_user(tool_context: dict, user_id: int):
         return None
 
 
-async def add_to_list(title: str, who: str = "", *, tool_context: dict,
+async def add_to_list(title: str, who: str = "", position: int = 0, *, tool_context: dict,
                       store=notes_store, users=None) -> dict:
     if _foreign(tool_context):
         return {"ok": False, "error": "foreign_group"}
@@ -209,6 +209,12 @@ async def add_to_list(title: str, who: str = "", *, tool_context: dict,
     added = await store.add_member(note["id"], user_id=target["user_id"],
                                    username=target.get("username"),
                                    tg_name=target.get("name"))
+    try:
+        pos = int(position)
+    except (TypeError, ValueError):
+        pos = 0
+    if pos >= 1:  # «добавь на N место» — сразу ставим на нужную позицию
+        await store.move_member(note["id"], target["user_id"], pos)
     await _refresh_card(tool_context, store, note)
     verb = "добавлен" if added else "уже в списке"
     return {"ok": True, "id": note["id"], "_silent": True,
@@ -222,7 +228,9 @@ ADD_SCHEMA = {
         "description": (
             "Добавить ДРУГОГО человека в список (только автор списка или владелец беседы). "
             "Укажи, кого: если запрос — ответ (reply) на сообщение человека, бот возьмёт его "
-            "автоматически; иначе передай @ник или «Фамилия Имя». Несколько совпадений → "
+            "автоматически; иначе передай @ник, «Фамилия Имя» или числовой tg_id. Работает "
+            "независимо от формата списка (формат выбирать заранее НЕ нужно). Можно сразу "
+            "указать position — «добавь X на первое место» → position=1. Несколько совпадений → "
             "ambiguous с кандидатами, переспроси. Карточку бот перерисует сам — ответь кратко."),
         "parameters": {
             "type": "object",
@@ -231,6 +239,8 @@ ADD_SCHEMA = {
                 "who": {"type": "string",
                         "description": "@ник, «Фамилия Имя» или числовой tg_id "
                                        "(можно пусто, если это reply)."},
+                "position": {"type": "integer",
+                             "description": "Куда поставить (1-based). 0/пропуск — в конец."},
             },
             "required": ["title"],
         },
@@ -393,6 +403,55 @@ MOVE_SCHEMA = {
 }
 
 
+async def swap_in_list(title: str, a: str = "", b: str = "", *, tool_context: dict,
+                       store=notes_store, users=None) -> dict:
+    if _foreign(tool_context):
+        return {"ok": False, "error": "foreign_group"}
+    if users is None:
+        from src.bot.services.birthday_service import birthday_service
+        users = birthday_service.users
+    note = await store.get_by_title(tool_context["chat_id"], (title or "").strip())
+    if not note:
+        return {"ok": False, "error": "not_found"}
+    if not ns.can_modify(note, user_id=tool_context["user_id"],
+                         is_owner=tool_context["is_owner"]):
+        return {"ok": False, "error": "forbidden"}
+    members = await store.members(note["id"])
+    ta = _resolve_member(a, tool_context, members, users)
+    tb = _resolve_member(b, tool_context, members, users)
+    for t in (ta, tb):
+        if "error" in t:
+            return {"ok": False, "error": t["error"], "candidates": t.get("candidates")}
+    if not await store.swap_members(note["id"], ta["user_id"], tb["user_id"]):
+        return {"ok": False, "error": "not_member"}
+    await _refresh_card(tool_context, store, note)
+    return {"ok": True, "id": note["id"], "_silent": True,
+            "_context_note": f"[в списке «{note['title']}» двое поменяны местами]"}
+
+
+SWAP_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "swap_in_list",
+        "description": (
+            "Поменять местами ДВУХ участников списка («поменяй 1 и 3 местами», «поменяй "
+            "@ник и Иванова»; только автор списка или владелец). a и b — каждый как в "
+            "move_in_list (reply / @ник / «Фамилия Имя» / номер позиции / tg_id). Именно для "
+            "«поменять местами» используй этот тул, а НЕ move_in_list. Карточку бот перерисует "
+            "сам — ответь кратко."),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Название списка."},
+                "a": {"type": "string", "description": "Первый участник (ник/ФИО/номер/tg_id)."},
+                "b": {"type": "string", "description": "Второй участник (ник/ФИО/номер/tg_id)."},
+            },
+            "required": ["title", "a", "b"],
+        },
+    },
+}
+
+
 async def _guarded(title, tool_context, store):
     """Общий гейт для delete/clear: вернуть (note, None) или (None, err_dict)."""
     if _foreign(tool_context):
@@ -467,6 +526,7 @@ def build_notes_registry() -> ToolRegistry:
     reg.register("remove_from_list",
                  ToolSpec(schema=REMOVE_SCHEMA, func=remove_from_list, gate=None))
     reg.register("move_in_list", ToolSpec(schema=MOVE_SCHEMA, func=move_in_list, gate=None))
+    reg.register("swap_in_list", ToolSpec(schema=SWAP_SCHEMA, func=swap_in_list, gate=None))
     reg.register("delete_list", ToolSpec(schema=DELETE_SCHEMA, func=delete_list, gate=None))
     reg.register("clear_list", ToolSpec(schema=CLEAR_SCHEMA, func=clear_list, gate=None))
     return reg

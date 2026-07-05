@@ -289,6 +289,37 @@ async def test_move_in_list_by_position(store):
 
 
 @pytest.mark.asyncio
+async def test_add_to_list_with_position(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=1, username="a")
+    await store.add_member(nid, user_id=2, username="b")
+    ctx = _ctx(reply_user={"user_id": 9, "username": "new"})
+    res = await nt.add_to_list("Q", who="", position=1, tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert [m["user_id"] for m in await store.members(nid)] == [9, 1, 2]
+
+
+@pytest.mark.asyncio
+async def test_swap_in_list_by_positions(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    for uid in (1, 2, 3):
+        await store.add_member(nid, user_id=uid, username=f"u{uid}")
+    res = await nt.swap_in_list("Q", a="1", b="3", tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert [m["user_id"] for m in await store.members(nid)] == [3, 2, 1]
+
+
+@pytest.mark.asyncio
+async def test_swap_in_list_forbidden(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)  # чужой автор
+    for uid in (1, 2):
+        await store.add_member(nid, user_id=uid, username=f"u{uid}")
+    ctx = _ctx(user_id=42, is_owner=False)
+    res = await nt.swap_in_list("Q", a="1", b="2", tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] == "forbidden"
+
+
+@pytest.mark.asyncio
 async def test_move_in_list_bad_position(store):
     nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
     await store.add_member(nid, user_id=1, username="a")
