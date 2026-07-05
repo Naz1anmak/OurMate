@@ -33,7 +33,7 @@ def resolve_display(member: dict, *, formal: bool, users=None) -> str:
 
 
 _HINT = ("<i>Записаться — кнопкой ниже; уточнение (например «1, 3») — ответь "
-         "на это сообщение; «-» убирает уточнение</i>")
+         "на это сообщение; ответь «удали» или «-», чтобы убрать уточнение</i>")
 
 
 def render_card(note: dict, members: list[dict], *, users=None) -> str:

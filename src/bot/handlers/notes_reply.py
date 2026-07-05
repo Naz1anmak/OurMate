@@ -9,6 +9,21 @@ from src.bot.handlers.notes_callbacks import _pending_name
 
 logger = logging.getLogger(__name__)
 
+_CLEAR_TOKENS = {"-", "—", "–"}
+_CLEAR_VERBS = ("удали", "удалить", "убери", "убрать", "отчисти", "отчистить",
+                "очисти", "очистить", "сотри", "стереть", "снеси", "снести",
+                "delete", "remove", "del")
+
+
+def _is_clear_command(text: str) -> bool:
+    """Реплай-очистка уточнения: «-» или фраза с глаголом удаления в начале."""
+    t = text.strip().lower()
+    if t in _CLEAR_TOKENS:
+        return True
+    words = t.split()
+    first = words[0].strip(".,!?;:") if words else ""
+    return first in _CLEAR_VERBS
+
 
 async def _rerender_from_message(message: Message, note_id: int) -> None:
     """Перерисовать карточку по её сохранённому message_id."""
@@ -53,8 +68,8 @@ async def handle_notes_reply(message: Message) -> bool:
     if not await notes_store.is_member(note["id"], user_id):
         await message.reply("Сначала запишитесь кнопкой «Записаться» под списком.")
         return True
-    # «-»/«—»/«убрать» очищают уточнение; пустой рендер его просто не покажет.
-    note_text = "" if text in ("-", "—", "–", "убрать", "очистить") else text
+    # «-» или фраза «удали/убери/очисти …» очищают уточнение; пустой рендер его прячет.
+    note_text = "" if _is_clear_command(text) else text
     await notes_store.set_note(note["id"], user_id, note_text)
     await _rerender_from_message(message, note["id"])
     return True

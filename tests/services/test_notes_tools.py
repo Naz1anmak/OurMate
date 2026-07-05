@@ -4,8 +4,9 @@ from src.bot.services import notes_tools as nt
 
 
 class _FakeBot:
-    def __init__(self):
+    def __init__(self, member_status="member"):
         self.sent = []
+        self._member_status = member_status  # для get_chat_member
 
     async def send_message(self, chat_id, text, **kw):
         self.sent.append((chat_id, text, kw))
@@ -13,6 +14,11 @@ class _FakeBot:
         class _M:
             message_id = 555
         return _M()
+
+    async def get_chat_member(self, chat_id, user_id):
+        if self._member_status is None:
+            raise RuntimeError("user not found")
+        return type("CM", (), {"status": self._member_status})()
 
 
 @pytest.fixture
@@ -100,6 +106,24 @@ async def test_add_to_list_by_fullname(store):
                                tool_context=_ctx(), store=store, users=ROSTER)
     assert res["ok"] is True
     assert await store.is_member(nid, 2) is True
+
+
+@pytest.mark.asyncio
+async def test_add_to_list_by_numeric_id_verified(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    ctx = _ctx()  # _FakeBot по умолчанию отдаёт status="member"
+    res = await nt.add_to_list("Q", who="1800296940",
+                               tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert await store.is_member(nid, 1800296940) is True
+
+
+@pytest.mark.asyncio
+async def test_add_to_list_by_numeric_id_not_in_chat(store):
+    await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    ctx = _ctx(bot=_FakeBot(member_status="left"))
+    res = await nt.add_to_list("Q", who="999", tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] == "unresolved"
 
 
 @pytest.mark.asyncio

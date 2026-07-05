@@ -115,6 +115,10 @@ def _resolve_target(who: str, tool_context: dict, users) -> dict:
         m = mentioned[0]
         return {"user_id": m["user_id"], "username": m.get("username")}
     who = (who or "").strip()
+    # Числовой tg_id: принимаем, но пометим на проверку членства в беседе.
+    digits = who.lstrip("@")
+    if digits.isdigit():
+        return {"user_id": int(digits), "username": None, "needs_verify": True}
     if who.startswith("@") or (who and " " not in who):
         uid = get_user_id_by_username(who, users)
         if uid is not None:
@@ -127,6 +131,16 @@ def _resolve_target(who: str, tool_context: dict, users) -> dict:
             return {"error": "ambiguous",
                     "candidates": [f"{u.last_name} {u.name}".strip() for u in found]}
     return {"error": "unresolved"}
+
+
+async def _verify_in_chat(tool_context: dict, user_id: int) -> bool:
+    """Проверка, что user_id — участник беседы (для добавления по сырому tg_id)."""
+    try:
+        m = await tool_context["bot"].get_chat_member(tool_context["chat_id"], user_id)
+        return getattr(m, "status", None) not in ("left", "kicked")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("notes: get_chat_member(%s) не удался: %s", user_id, exc)
+        return False
 
 
 async def add_to_list(title: str, who: str = "", *, tool_context: dict,
@@ -151,6 +165,9 @@ async def add_to_list(title: str, who: str = "", *, tool_context: dict,
                 if target["error"] == "unresolved" else None)
         return {"ok": False, "error": target["error"],
                 "candidates": target.get("candidates"), "hint": hint}
+    if target.get("needs_verify") and not await _verify_in_chat(tool_context, target["user_id"]):
+        return {"ok": False, "error": "unresolved",
+                "hint": "Пользователь с таким id не найден в этой беседе."}
     added = await store.add_member(note["id"], user_id=target["user_id"],
                                    username=target.get("username"))
     await _send_card(tool_context, store, note)
@@ -173,7 +190,8 @@ ADD_SCHEMA = {
             "properties": {
                 "title": {"type": "string", "description": "Название списка."},
                 "who": {"type": "string",
-                        "description": "@ник или «Фамилия Имя» (можно пусто, если это reply)."},
+                        "description": "@ник, «Фамилия Имя» или числовой tg_id "
+                                       "(можно пусто, если это reply)."},
             },
             "required": ["title"],
         },
