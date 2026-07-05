@@ -5,6 +5,7 @@ from src.bot.services.llm_tools import ToolRegistry, ToolSpec
 from src.bot.services.notes_store import notes_store
 from src.bot.services import notes_service as ns
 from src.utils.text_utils import get_user_id_by_username, find_users_by_fullname
+from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
@@ -174,9 +175,77 @@ ADD_SCHEMA = {
 }
 
 
+async def _guarded(title, tool_context, store):
+    """Общий гейт для delete/clear: вернуть (note, None) или (None, err_dict)."""
+    if _foreign(tool_context):
+        return None, {"ok": False, "error": "foreign_group"}
+    note = await store.get_by_title(tool_context["chat_id"], (title or "").strip())
+    if not note:
+        return None, {"ok": False, "error": "not_found"}
+    if not ns.can_modify(note, user_id=tool_context["user_id"],
+                         is_owner=tool_context["is_owner"]):
+        return None, {"ok": False, "error": "forbidden"}
+    return note, None
+
+
+async def delete_list(title: str, *, tool_context: dict, store=notes_store) -> dict:
+    note, err = await _guarded(title, tool_context, store)
+    if err:
+        return err
+    await tool_context["bot"].send_message(
+        tool_context["chat_id"],
+        f"{E.CROSS} Удалить список «{note['title']}» целиком?",
+        parse_mode="HTML", reply_markup=ns.confirm_keyboard(note["id"], "del", "keep"))
+    return {"ok": True, "id": note["id"], "_silent": True,
+            "_context_note": f"[предложено удаление списка «{note['title']}», ждёт подтверждения]"}
+
+
+async def clear_list(title: str, *, tool_context: dict, store=notes_store) -> dict:
+    note, err = await _guarded(title, tool_context, store)
+    if err:
+        return err
+    await tool_context["bot"].send_message(
+        tool_context["chat_id"],
+        f"{E.CROSS} Очистить список «{note['title']}» (убрать всех участников)?",
+        parse_mode="HTML", reply_markup=ns.confirm_keyboard(note["id"], "clr", "keepall"))
+    return {"ok": True, "id": note["id"], "_silent": True,
+            "_context_note": f"[предложена очистка списка «{note['title']}», ждёт подтверждения]"}
+
+
+DELETE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "delete_list",
+        "description": ("Удалить список целиком (автор списка или владелец). Бот спросит "
+                        "подтверждение кнопками — ответь кратко."),
+        "parameters": {
+            "type": "object",
+            "properties": {"title": {"type": "string"}},
+            "required": ["title"],
+        },
+    },
+}
+
+CLEAR_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "clear_list",
+        "description": ("Очистить список — убрать всех участников, но оставить сам список "
+                        "(автор или владелец). Бот спросит подтверждение — ответь кратко."),
+        "parameters": {
+            "type": "object",
+            "properties": {"title": {"type": "string"}},
+            "required": ["title"],
+        },
+    },
+}
+
+
 def build_notes_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register("create_list", ToolSpec(schema=CREATE_SCHEMA, func=create_list, gate=None))
     reg.register("show_list", ToolSpec(schema=SHOW_SCHEMA, func=show_list, gate=None))
     reg.register("add_to_list", ToolSpec(schema=ADD_SCHEMA, func=add_to_list, gate=None))
+    reg.register("delete_list", ToolSpec(schema=DELETE_SCHEMA, func=delete_list, gate=None))
+    reg.register("clear_list", ToolSpec(schema=CLEAR_SCHEMA, func=clear_list, gate=None))
     return reg

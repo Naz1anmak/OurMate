@@ -132,3 +132,28 @@ async def test_add_to_list_not_found(store):
     res = await nt.add_to_list("Нет", who="Петров",
                                tool_context=_ctx(), store=store, users=ROSTER)
     assert res["ok"] is False and res["error"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_delete_list_asks_confirm(store):
+    await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    ctx = _ctx()
+    res = await nt.delete_list("Q", tool_context=ctx, store=store)
+    assert res["ok"] is True and res["_silent"] is True
+    assert ctx["bot"].sent  # спросил подтверждение
+    assert await store.get_by_title(-100, "Q") is not None  # ещё не удалён
+
+
+@pytest.mark.asyncio
+async def test_delete_list_forbidden(store):
+    await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
+    res = await nt.delete_list("Q", tool_context=_ctx(user_id=42), store=store)
+    assert res["ok"] is False and res["error"] == "forbidden"
+
+
+@pytest.mark.asyncio
+async def test_clear_list_asks_confirm(store):
+    await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    ctx = _ctx()
+    res = await nt.clear_list("Q", tool_context=ctx, store=store)
+    assert res["ok"] is True and ctx["bot"].sent
