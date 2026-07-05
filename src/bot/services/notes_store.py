@@ -200,5 +200,57 @@ class NotesStore:
             row = await cur.fetchone()
             return dict(row) if row else None
 
+    # ── Управление списком ────────────────────────────────────────────────
+    async def delete(self, note_id: int) -> bool:
+        async with self._db() as db:
+            await self._setup(db)
+            await db.execute("DELETE FROM note_members WHERE note_id = ?", (note_id,))
+            cur = await db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def clear(self, note_id: int) -> int:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute("DELETE FROM note_members WHERE note_id = ?", (note_id,))
+            await db.commit()
+            return cur.rowcount
+
+    async def rename(self, note_id: int, new_title: str) -> bool:
+        async with self._db() as db:
+            await self._setup(db)
+            try:
+                cur = await db.execute(
+                    "UPDATE notes SET title = ?, title_lower = ? WHERE id = ?",
+                    (new_title, new_title.lower(), note_id))
+                await db.commit()
+                return cur.rowcount > 0
+            except aiosqlite.IntegrityError:
+                return False
+
+    async def remove_member_everywhere(self, chat_id: int, user_id: int) -> int:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "DELETE FROM note_members WHERE user_id = ? AND note_id IN "
+                "(SELECT id FROM notes WHERE chat_id = ?)",
+                (user_id, chat_id))
+            await db.commit()
+            return cur.rowcount
+
+    async def cleanup_old(self, *, days: int = NOTES_RETENTION_DAYS) -> int:
+        """Удаляет списки старше N дней (по created_at) вместе с их участниками."""
+        async with self._db() as db:
+            await self._setup(db)
+            await db.execute(
+                "DELETE FROM note_members WHERE note_id IN "
+                "(SELECT id FROM notes WHERE created_at < datetime('now', ?))",
+                (f"-{days} days",))
+            cur = await db.execute(
+                "DELETE FROM notes WHERE created_at < datetime('now', ?)",
+                (f"-{days} days",))
+            await db.commit()
+            return cur.rowcount
+
 
 notes_store = NotesStore()

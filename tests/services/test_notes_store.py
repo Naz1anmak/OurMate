@@ -101,3 +101,60 @@ async def test_card_message_roundtrip(store):
     found = await store.get_by_card_message(-100, 777)
     assert found["id"] == nid
     assert await store.get_by_card_message(-100, 999) is None
+
+
+@pytest.mark.asyncio
+async def test_delete_cascades_members(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    await store.add_member(nid, user_id=5, username="u")
+    assert await store.delete(nid) is True
+    assert await store.get(nid) is None
+    assert await store.count(nid) == 0  # members вычищены
+
+
+@pytest.mark.asyncio
+async def test_clear_removes_all_members(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    await store.add_member(nid, user_id=1, username="a")
+    await store.add_member(nid, user_id=2, username="b")
+    assert await store.clear(nid) == 2
+    assert await store.count(nid) == 0
+
+
+@pytest.mark.asyncio
+async def test_rename_and_conflict(store):
+    a = await store.create(chat_id=-1, title="A", author_id=1, formal=False)
+    await store.create(chat_id=-1, title="B", author_id=1, formal=False)
+    assert await store.rename(a, "C") is True
+    assert (await store.get(a))["title"] == "C"
+    assert await store.rename(a, "B") is False  # конфликт UNIQUE
+
+
+@pytest.mark.asyncio
+async def test_remove_member_everywhere(store):
+    a = await store.create(chat_id=-100, title="A", author_id=1, formal=False)
+    b = await store.create(chat_id=-100, title="B", author_id=1, formal=False)
+    other = await store.create(chat_id=-200, title="A", author_id=1, formal=False)
+    for nid in (a, b, other):
+        await store.add_member(nid, user_id=5, username="u")
+    removed = await store.remove_member_everywhere(-100, 5)
+    assert removed == 2
+    assert await store.is_member(a, 5) is False
+    assert await store.is_member(other, 5) is True  # другая беседа не тронута
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old(store):
+    fresh = await store.create(chat_id=-1, title="fresh", author_id=1, formal=False)
+    old = await store.create(chat_id=-1, title="old", author_id=1, formal=False)
+    await store.add_member(old, user_id=5, username="u")
+    # Состарить запись напрямую в БД.
+    import aiosqlite
+    async with aiosqlite.connect(store.db_path) as db:
+        await db.execute("UPDATE notes SET created_at = datetime('now', '-40 days') WHERE id = ?", (old,))
+        await db.commit()
+    removed = await store.cleanup_old(days=30)
+    assert removed == 1
+    assert await store.get(old) is None
+    assert await store.count(old) == 0     # members старого вычищены
+    assert await store.get(fresh) is not None
