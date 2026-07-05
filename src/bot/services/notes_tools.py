@@ -199,6 +199,93 @@ ADD_SCHEMA = {
 }
 
 
+def _resolve_member(who: str, tool_context: dict, members: list[dict], users) -> dict:
+    """Кого убрать из списка. В отличие от _resolve_target — ищем среди участников:
+    по reply/меншену, номеру позиции, username участника, а также @нику/ФИО из ростера."""
+    reply_user = tool_context.get("reply_user")
+    if reply_user and reply_user.get("user_id"):
+        return {"user_id": reply_user["user_id"]}
+    mentioned = tool_context.get("mentioned_users") or []
+    if mentioned:
+        return {"user_id": mentioned[0]["user_id"]}
+    who = (who or "").strip()
+    if not who:
+        return {"error": "unresolved"}
+    digits = who.lstrip("@")
+    if digits.isdigit():
+        n = int(digits)
+        if 1 <= n <= len(members):  # номер позиции в карточке
+            return {"user_id": members[n - 1]["user_id"]}
+        return {"user_id": n}  # трактуем как сырой tg_id
+    # username прямо среди участников (в т.ч. неофициальных, кого нет в ростере)
+    handle = who.lstrip("@").lower()
+    for m in members:
+        if (m.get("username") or "").lower() == handle:
+            return {"user_id": m["user_id"]}
+    # @ник / ФИО через ростер ДР
+    if who.startswith("@") or " " not in who:
+        uid = get_user_id_by_username(who, users)
+        if uid is not None:
+            return {"user_id": uid}
+    found = find_users_by_fullname(who, users)
+    if len(found) == 1:
+        return {"user_id": found[0].user_id}
+    if len(found) > 1:
+        return {"error": "ambiguous",
+                "candidates": [f"{u.last_name} {u.name}".strip() for u in found]}
+    return {"error": "unresolved"}
+
+
+async def remove_from_list(title: str, who: str = "", *, tool_context: dict,
+                           store=notes_store, users=None) -> dict:
+    if _foreign(tool_context):
+        return {"ok": False, "error": "foreign_group"}
+    if users is None:
+        from src.bot.services.birthday_service import birthday_service
+        users = birthday_service.users
+    note = await store.get_by_title(tool_context["chat_id"], (title or "").strip())
+    if not note:
+        return {"ok": False, "error": "not_found"}
+    if not ns.can_modify(note, user_id=tool_context["user_id"],
+                         is_owner=tool_context["is_owner"]):
+        return {"ok": False, "error": "forbidden"}
+    members = await store.members(note["id"])
+    target = _resolve_member(who, tool_context, members, users)
+    if "error" in target:
+        return {"ok": False, "error": target["error"],
+                "candidates": target.get("candidates")}
+    removed = await store.remove_member(note["id"], target["user_id"])
+    if not removed:
+        return {"ok": False, "error": "not_member"}
+    await _send_card(tool_context, store, note)
+    return {"ok": True, "id": note["id"], "_silent": True,
+            "_context_note": f"[из списка «{note['title']}» убран участник]"}
+
+
+REMOVE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "remove_from_list",
+        "description": (
+            "Убрать ОДНОГО участника из списка (только автор списка или владелец беседы). "
+            "Кого: если запрос — ответ (reply) на сообщение человека, бот возьмёт его сам; "
+            "иначе @ник, «Фамилия Имя», номер позиции в списке (например «убери третьего» → 3) "
+            "или числовой tg_id. Несколько совпадений по ФИО → ambiguous, переспроси. "
+            "Карточку бот перерисует сам — ответь кратко. Не путать с clear_list (убрать всех)."),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Название списка."},
+                "who": {"type": "string",
+                        "description": "@ник, «Фамилия Имя», номер позиции или tg_id "
+                                       "(можно пусто, если это reply)."},
+            },
+            "required": ["title"],
+        },
+    },
+}
+
+
 async def _guarded(title, tool_context, store):
     """Общий гейт для delete/clear: вернуть (note, None) или (None, err_dict)."""
     if _foreign(tool_context):
@@ -270,6 +357,8 @@ def build_notes_registry() -> ToolRegistry:
     reg.register("create_list", ToolSpec(schema=CREATE_SCHEMA, func=create_list, gate=None))
     reg.register("show_list", ToolSpec(schema=SHOW_SCHEMA, func=show_list, gate=None))
     reg.register("add_to_list", ToolSpec(schema=ADD_SCHEMA, func=add_to_list, gate=None))
+    reg.register("remove_from_list",
+                 ToolSpec(schema=REMOVE_SCHEMA, func=remove_from_list, gate=None))
     reg.register("delete_list", ToolSpec(schema=DELETE_SCHEMA, func=delete_list, gate=None))
     reg.register("clear_list", ToolSpec(schema=CLEAR_SCHEMA, func=clear_list, gate=None))
     return reg

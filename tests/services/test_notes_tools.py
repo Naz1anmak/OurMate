@@ -159,6 +159,72 @@ async def test_add_to_list_not_found(store):
 
 
 @pytest.mark.asyncio
+async def test_remove_from_list_by_reply_user(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=7, username="guest")
+    ctx = _ctx(reply_user={"user_id": 7, "username": "guest"})
+    res = await nt.remove_from_list("Q", who="", tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert await store.is_member(nid, 7) is False
+
+
+@pytest.mark.asyncio
+async def test_remove_from_list_by_position(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=7, username="a")
+    await store.add_member(nid, user_id=8, username="b")
+    res = await nt.remove_from_list("Q", who="2", tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert await store.is_member(nid, 8) is False
+    assert await store.is_member(nid, 7) is True
+
+
+@pytest.mark.asyncio
+async def test_remove_from_list_by_member_username(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=7, username="guest")  # нет в ростере
+    res = await nt.remove_from_list("Q", who="@guest",
+                                    tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert await store.is_member(nid, 7) is False
+
+
+@pytest.mark.asyncio
+async def test_remove_from_list_by_fullname(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=2, username=None)  # Пётр Петров из ростера
+    res = await nt.remove_from_list("Q", who="Петров Пётр",
+                                    tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is True
+    assert await store.is_member(nid, 2) is False
+
+
+@pytest.mark.asyncio
+async def test_remove_from_list_not_member(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=7, username="a")
+    ctx = _ctx(reply_user={"user_id": 999, "username": "ghost"})
+    res = await nt.remove_from_list("Q", who="", tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] == "not_member"
+
+
+@pytest.mark.asyncio
+async def test_remove_from_list_forbidden(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)  # чужой автор
+    await store.add_member(nid, user_id=7, username="a")
+    ctx = _ctx(user_id=42, is_owner=False)
+    res = await nt.remove_from_list("Q", who="1", tool_context=ctx, store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] == "forbidden"
+
+
+@pytest.mark.asyncio
+async def test_remove_from_list_not_found(store):
+    res = await nt.remove_from_list("Нет", who="1",
+                                    tool_context=_ctx(), store=store, users=ROSTER)
+    assert res["ok"] is False and res["error"] == "not_found"
+
+
+@pytest.mark.asyncio
 async def test_delete_list_asks_confirm(store):
     await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
     ctx = _ctx()
