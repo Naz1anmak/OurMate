@@ -2,6 +2,7 @@
 import pytest
 
 from src.bot.services.ping_store import PingStore
+from src.bot.services.notes_store import NotesStore
 from src.bot.handlers import chat_member as cm
 
 
@@ -32,6 +33,9 @@ async def store(tmp_path, monkeypatch):
     s = PingStore(str(tmp_path / "ping.db"))
     await s.init()
     monkeypatch.setattr(cm, "ping_store", s)
+    notes = NotesStore(str(tmp_path / "notes.db"))
+    await notes.init()
+    monkeypatch.setattr(cm, "notes_store", notes)
     return s
 
 
