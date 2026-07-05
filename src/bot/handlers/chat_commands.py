@@ -12,6 +12,8 @@ from src.utils.date_utils import format_birthday_date
 from src.core.emoji import E
 from src.bot.services.ping_store import ping_store
 from src.bot.services import ping_service
+from src.bot.services.notes_store import notes_store
+from src.bot.services import notes_service
 
 if TYPE_CHECKING:
     from src.bot.services.schedule_refresher import ScheduleRefresher
@@ -298,6 +300,14 @@ async def handle_reminders_command(message: Message) -> bool:
     await message.answer(rs.render_list(items, header=header, now=now),
                          parse_mode="HTML", disable_web_page_preview=True)
     return True
+
+
+async def handle_lists_command(message: Message) -> None:
+    """Слово-команда «списки»: детерминированный обзор списков беседы (только основная беседа)."""
+    chat_id = message.chat.id
+    notes = await notes_store.list_for_chat(chat_id)
+    logger.info("GR; От %s: команда 'списки' (%d шт.)", _user_log_id(message), len(notes))
+    await message.answer(notes_service.render_overview(notes), parse_mode="HTML")
 
 
 def _user_log_id(message: Message) -> str:
