@@ -17,20 +17,28 @@ def _mention(user_id: int, text: str) -> str:
     return f'<a href="tg://user?id={user_id}">{escape(text)}</a>'
 
 
-def resolve_display(member: dict, *, formal: bool, users=None) -> str:
-    """HTML-меншен участника. casual — username/имя профиля; formal — ФИО из ростера/override."""
+def _display_label(member: dict, *, formal: bool, users=None) -> str:
+    """Сырая (неэкранированная) метка участника — общий расчёт для меншена и plain."""
     users = _roster() if users is None else users
     uid = member["user_id"]
     if formal:
         for u in users:
             if u.user_id == uid:
-                return _mention(uid, roster_full_name(u))
+                return roster_full_name(u)
         # override (заданное вручную) → имя аккаунта → заглушка
-        label = member.get("name_override") or member.get("tg_name")
-        return _mention(uid, label or "(имя не указано)")
-    label = (member.get("tg_name") or member.get("username")
-             or member.get("name_override") or str(uid))
-    return _mention(uid, label)
+        return member.get("name_override") or member.get("tg_name") or "(имя не указано)"
+    return (member.get("tg_name") or member.get("username")
+            or member.get("name_override") or str(uid))
+
+
+def resolve_display(member: dict, *, formal: bool, users=None) -> str:
+    """HTML-меншен участника. casual — username/имя профиля; formal — ФИО из ростера/override."""
+    return _mention(member["user_id"], _display_label(member, formal=formal, users=users))
+
+
+def plain_name(member: dict, *, formal: bool, users=None) -> str:
+    """Экранированное имя без меншен-ссылки — для реплик-подтверждений."""
+    return escape(_display_label(member, formal=formal, users=users))
 
 
 _HINT = ("<i>Для добавления примечания — ответь на это сообщение своим текстом. "

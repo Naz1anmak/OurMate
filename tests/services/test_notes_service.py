@@ -116,3 +116,18 @@ def test_card_keyboard_no_emoji():
 def test_confirm_delete_keyboard():
     kb = ns.confirm_keyboard(7, "del", "keep")
     assert _cbs(kb) == ["list:del:7", "list:keep:7"]
+
+
+def test_plain_name_casual_uses_tg_name_escaped():
+    m = {"user_id": 5, "tg_name": "A & B", "username": "u", "name_override": None, "note": None}
+    assert ns.plain_name(m, formal=False, users=[]) == "A &amp; B"
+
+
+def test_plain_name_casual_falls_back_to_username():
+    m = {"user_id": 5, "tg_name": None, "username": "nick", "name_override": None}
+    assert ns.plain_name(m, formal=False, users=[]) == "nick"
+
+
+def test_plain_name_formal_override_when_not_in_roster():
+    m = {"user_id": 5, "tg_name": None, "username": None, "name_override": "Иванов И."}
+    assert ns.plain_name(m, formal=True, users=[]) == "Иванов И."
