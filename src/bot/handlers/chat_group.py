@@ -111,6 +111,7 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int, ct
         "denial_text": access.DENIAL_TEXTS[access.DenialReason.FOREIGN_GROUP],
         "bot": message.bot,
         "chat_id": message.chat.id,
+        "command_message_id": message.message_id,
         "user_id": message.from_user.id,
         "first_name": first_name,
         "username": message.from_user.username,
