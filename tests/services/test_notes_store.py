@@ -216,3 +216,29 @@ async def test_migrate_adds_undo_json_to_legacy_db(tmp_path):
         cur = await db.execute("PRAGMA table_info(notes)")
         cols = {r[1] for r in await cur.fetchall()}
     assert "undo_json" in cols
+
+
+@pytest.mark.asyncio
+async def test_undo_snapshot_roundtrip(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    await store.add_member(nid, user_id=5, username="a")
+    members = await store.members(nid)
+
+    await store.set_undo(nid, action="remove", author_id=1, members=members)
+    snap = await store.get_undo(nid)
+    assert snap["action"] == "remove"
+    assert snap["author_id"] == 1
+    assert snap["reply_message_id"] is None
+    assert [m["user_id"] for m in snap["members"]] == [5]
+
+    await store.attach_undo_reply(nid, 777)
+    assert (await store.get_undo(nid))["reply_message_id"] == 777
+
+    await store.clear_undo(nid)
+    assert await store.get_undo(nid) is None
+
+
+@pytest.mark.asyncio
+async def test_get_undo_absent_returns_none(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    assert await store.get_undo(nid) is None

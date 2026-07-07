@@ -1,4 +1,6 @@
 """SQLite-слой списков/заметок (aiosqlite). Источник правды. Образцы — ping_store/reminder_store."""
+import json
+
 import aiosqlite
 
 from src.config.settings import NOTES_DB_PATH, NOTES_RETENTION_DAYS
@@ -143,6 +145,50 @@ class NotesStore:
                 return True
             except aiosqlite.IntegrityError:
                 return False
+
+    async def set_undo(self, note_id: int, *, action: str, author_id: int,
+                       members: list[dict], reply_message_id: int | None = None) -> None:
+        """Записать снапшот «до» последнего действия (перезаписывает прежний слот)."""
+        payload = json.dumps({
+            "action": action,
+            "author_id": author_id,
+            "reply_message_id": reply_message_id,
+            "members": members,
+        })
+        async with self._db() as db:
+            await self._setup(db)
+            await db.execute(
+                "UPDATE notes SET undo_json = ? WHERE id = ?", (payload, note_id))
+            await db.commit()
+
+    async def attach_undo_reply(self, note_id: int, reply_message_id: int) -> None:
+        """Дописать id реплики с кнопкой в уже сохранённый снапшот."""
+        snap = await self.get_undo(note_id)
+        if snap is None:
+            return
+        snap["reply_message_id"] = reply_message_id
+        async with self._db() as db:
+            await self._setup(db)
+            await db.execute(
+                "UPDATE notes SET undo_json = ? WHERE id = ?", (json.dumps(snap), note_id))
+            await db.commit()
+
+    async def get_undo(self, note_id: int) -> dict | None:
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "SELECT undo_json FROM notes WHERE id = ?", (note_id,))
+            row = await cur.fetchone()
+            if not row or not row["undo_json"]:
+                return None
+            return json.loads(row["undo_json"])
+
+    async def clear_undo(self, note_id: int) -> None:
+        async with self._db() as db:
+            await self._setup(db)
+            await db.execute(
+                "UPDATE notes SET undo_json = NULL WHERE id = ?", (note_id,))
+            await db.commit()
 
     # ── Участники ─────────────────────────────────────────────────────────
     async def members(self, note_id: int) -> list[dict]:
