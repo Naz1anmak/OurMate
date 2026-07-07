@@ -38,6 +38,14 @@ async def _refresh_card(tool_context: dict, store, note: dict) -> None:
     await store.set_card_message(note["id"], msg.message_id)
 
 
+def _member_by_id(members: list[dict], user_id: int) -> dict:
+    """Полный dict участника из уже загруженного списка (для имени в реплике)."""
+    for m in members:
+        if m["user_id"] == user_id:
+            return m
+    return {"user_id": user_id}
+
+
 def _undo_keyboard(note_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="Отменить", callback_data=f"list:undo:{note_id}")]])
@@ -383,7 +391,7 @@ async def remove_from_list(title: str, who: str = "", *, tool_context: dict,
     if not removed:
         return {"ok": False, "error": "not_member"}
     await _refresh_card(tool_context, store, note)
-    name = ns.plain_name(target, formal=bool(note.get("formal")))
+    name = ns.plain_name(_member_by_id(members, target["user_id"]), formal=bool(note.get("formal")))
     await _post_undo(tool_context, store, note, action="remove",
                      members_before=members, summary=f"Убран: {name}")
     return {"ok": True, "id": note["id"], "_silent": True,
@@ -442,7 +450,7 @@ async def move_in_list(title: str, who: str = "", position: int = 0, *, tool_con
     if not moved:
         return {"ok": False, "error": "not_member"}
     await _refresh_card(tool_context, store, note)
-    name = ns.plain_name(target, formal=bool(note.get("formal")))
+    name = ns.plain_name(_member_by_id(members, target["user_id"]), formal=bool(note.get("formal")))
     await _post_undo(tool_context, store, note, action="move",
                      members_before=members, summary=f"{name} → на {pos} место")
     return {"ok": True, "id": note["id"], "_silent": True,
@@ -496,8 +504,8 @@ async def swap_in_list(title: str, a: str = "", b: str = "", *, tool_context: di
     if not await store.swap_members(note["id"], ta["user_id"], tb["user_id"]):
         return {"ok": False, "error": "not_member"}
     await _refresh_card(tool_context, store, note)
-    na = ns.plain_name(ta, formal=bool(note.get("formal")))
-    nb = ns.plain_name(tb, formal=bool(note.get("formal")))
+    na = ns.plain_name(_member_by_id(members, ta["user_id"]), formal=bool(note.get("formal")))
+    nb = ns.plain_name(_member_by_id(members, tb["user_id"]), formal=bool(note.get("formal")))
     await _post_undo(tool_context, store, note, action="swap",
                      members_before=members, summary=f"Поменяны местами: {na} ↔ {nb}")
     return {"ok": True, "id": note["id"], "_silent": True,

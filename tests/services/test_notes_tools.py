@@ -459,7 +459,7 @@ async def test_remove_posts_undo_reply_and_snapshot(store):
     assert snap["reply_message_id"] == 555
 
     sent = ctx["bot"].sent
-    assert any("Убран" in text for _cid, text, _kw in sent)
+    assert any("Убран: Аня" in text for _cid, text, _kw in sent)
     kw = [kw for _cid, _t, kw in sent if kw.get("reply_markup")][-1]
     btn = kw["reply_markup"].inline_keyboard[0][0]
     assert btn.text == "Отменить" and btn.callback_data == f"list:undo:{nid}"
