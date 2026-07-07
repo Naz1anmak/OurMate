@@ -2,6 +2,8 @@
 import logging
 from html import escape
 
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from src.bot.services.llm_tools import ToolRegistry, ToolSpec
 from src.bot.services.notes_store import notes_store
 from src.bot.services import notes_service as ns
@@ -34,6 +36,39 @@ async def _refresh_card(tool_context: dict, store, note: dict) -> None:
             logger.debug("notes: edit карточки #%s не удался, шлём новую: %s", card_id, exc)
     msg = await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb)
     await store.set_card_message(note["id"], msg.message_id)
+
+
+def _undo_keyboard(note_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Отменить", callback_data=f"list:undo:{note_id}")]])
+
+
+async def _invalidate_undo(tool_context: dict, store, note_id: int) -> None:
+    """Погасить кнопку прошлого действия (снять клавиатуру с реплики) и очистить снапшот.
+    Вызывается перед любым новым изменением списка."""
+    snap = await store.get_undo(note_id)
+    if snap and snap.get("reply_message_id"):
+        try:
+            await tool_context["bot"].edit_message_reply_markup(
+                chat_id=tool_context["chat_id"], message_id=snap["reply_message_id"],
+                reply_markup=None)
+        except Exception as exc:  # noqa: BLE001 — реплику могли удалить/слишком старая
+            logger.debug("notes: гашение кнопки undo #%s не удалось: %s",
+                         snap["reply_message_id"], exc)
+    await store.clear_undo(note_id)
+
+
+async def _post_undo(tool_context: dict, store, note: dict, *, action: str,
+                     members_before: list[dict], summary: str) -> None:
+    """Снять снапшот, отправить реплику-подтверждение с кнопкой «Отменить»."""
+    await _invalidate_undo(tool_context, store, note["id"])  # гасим прежнюю кнопку
+    await store.set_undo(note["id"], action=action,
+                         author_id=tool_context["user_id"], members=members_before)
+    bot, chat_id = tool_context["bot"], tool_context["chat_id"]
+    msg = await bot.send_message(
+        chat_id, summary, parse_mode="HTML", reply_markup=_undo_keyboard(note["id"]),
+        reply_to_message_id=tool_context.get("command_message_id"))
+    await store.attach_undo_reply(note["id"], msg.message_id)
 
 
 async def create_list(title: str, *, tool_context: dict, store=notes_store) -> dict:
@@ -228,6 +263,7 @@ async def add_to_list(title: str, who: str = "", position: int = 0, note_text: s
         # Из getChatMember забираем ник и имя аккаунта — чтобы в карточке было имя, а не цифры.
         target["username"] = getattr(u, "username", None)
         target["name"] = getattr(u, "full_name", None)
+    await _invalidate_undo(tool_context, store, note["id"])  # гасим прежнюю кнопку
     added = await store.add_member(note["id"], user_id=target["user_id"],
                                    username=target.get("username"),
                                    tg_name=target.get("name"))
@@ -347,6 +383,9 @@ async def remove_from_list(title: str, who: str = "", *, tool_context: dict,
     if not removed:
         return {"ok": False, "error": "not_member"}
     await _refresh_card(tool_context, store, note)
+    name = ns.plain_name(target, formal=bool(note.get("formal")))
+    await _post_undo(tool_context, store, note, action="remove",
+                     members_before=members, summary=f"Убран: {name}")
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[из списка «{note['title']}» убран участник]"}
 
@@ -403,6 +442,9 @@ async def move_in_list(title: str, who: str = "", position: int = 0, *, tool_con
     if not moved:
         return {"ok": False, "error": "not_member"}
     await _refresh_card(tool_context, store, note)
+    name = ns.plain_name(target, formal=bool(note.get("formal")))
+    await _post_undo(tool_context, store, note, action="move",
+                     members_before=members, summary=f"{name} → на {pos} место")
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[в списке «{note['title']}» участник перемещён на позицию {pos}]"}
 
@@ -454,6 +496,10 @@ async def swap_in_list(title: str, a: str = "", b: str = "", *, tool_context: di
     if not await store.swap_members(note["id"], ta["user_id"], tb["user_id"]):
         return {"ok": False, "error": "not_member"}
     await _refresh_card(tool_context, store, note)
+    na = ns.plain_name(ta, formal=bool(note.get("formal")))
+    nb = ns.plain_name(tb, formal=bool(note.get("formal")))
+    await _post_undo(tool_context, store, note, action="swap",
+                     members_before=members, summary=f"Поменяны местами: {na} ↔ {nb}")
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[в списке «{note['title']}» двое поменяны местами]"}
 
@@ -599,6 +645,7 @@ async def delete_list(title: str, *, tool_context: dict, store=notes_store) -> d
     note, err = await _guarded(title, tool_context, store)
     if err:
         return err
+    await _invalidate_undo(tool_context, store, note["id"])  # гасим прежнюю кнопку undo
     await tool_context["bot"].send_message(
         tool_context["chat_id"],
         f"{E.CROSS} Удалить список «{escape(note['title'])}» целиком?",
@@ -611,6 +658,7 @@ async def clear_list(title: str, *, tool_context: dict, store=notes_store) -> di
     note, err = await _guarded(title, tool_context, store)
     if err:
         return err
+    await _invalidate_undo(tool_context, store, note["id"])  # гасим прежнюю кнопку undo
     await tool_context["bot"].send_message(
         tool_context["chat_id"],
         f"{E.CROSS} Очистить список «{escape(note['title'])}» (убрать всех участников)?",

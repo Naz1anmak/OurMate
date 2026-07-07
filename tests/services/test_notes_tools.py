@@ -20,6 +20,9 @@ class _FakeBot:
     async def edit_message_text(self, text, chat_id=None, message_id=None, **kw):
         self.edited.append((chat_id, message_id, text))
 
+    async def edit_message_reply_markup(self, chat_id=None, message_id=None, **kw):
+        self.edited.append(("markup", chat_id, message_id, kw.get("reply_markup")))
+
     async def delete_message(self, chat_id, message_id):
         self.deleted.append((chat_id, message_id))
 
@@ -437,3 +440,58 @@ async def test_clear_list_asks_confirm(store):
     ctx = _ctx()
     res = await nt.clear_list("Q", tool_context=ctx, store=store)
     assert res["ok"] is True and ctx["bot"].sent
+
+
+@pytest.mark.asyncio
+async def test_remove_posts_undo_reply_and_snapshot(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=1, username="a", tg_name="Аня")
+    await store.add_member(nid, user_id=2, username="b", tg_name="Боб")
+    await store.set_card_message(nid, 100)
+    ctx = _ctx(command_message_id=900)
+
+    res = await nt.remove_from_list("Q", who="1", tool_context=ctx, store=store)
+    assert res["ok"] is True
+
+    snap = await store.get_undo(nid)
+    assert snap is not None and snap["author_id"] == 42
+    assert [m["user_id"] for m in snap["members"]] == [1, 2]
+    assert snap["reply_message_id"] == 555
+
+    sent = ctx["bot"].sent
+    assert any("Убран" in text for _cid, text, _kw in sent)
+    kw = [kw for _cid, _t, kw in sent if kw.get("reply_markup")][-1]
+    btn = kw["reply_markup"].inline_keyboard[0][0]
+    assert btn.text == "Отменить" and btn.callback_data == f"list:undo:{nid}"
+
+
+@pytest.mark.asyncio
+async def test_second_action_invalidates_previous_button(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    for uid in (1, 2, 3):
+        await store.add_member(nid, user_id=uid, username=f"u{uid}")
+    await store.set_card_message(nid, 100)
+    ctx = _ctx(command_message_id=900)
+
+    await nt.remove_from_list("Q", who="3", tool_context=ctx, store=store)
+    await nt.move_in_list("Q", who="1", position=2, tool_context=ctx, store=store)
+
+    markup_edits = [e for e in ctx["bot"].edited if e[0] == "markup"]
+    assert any(mid == 555 and rm is None for _tag, _cid, mid, rm in markup_edits)
+    assert (await store.get_undo(nid))["action"] == "move"
+
+
+@pytest.mark.asyncio
+async def test_clear_invalidates_button_without_new_snapshot(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=1, username="a")
+    await store.set_card_message(nid, 100)
+    ctx = _ctx(command_message_id=900)
+
+    await nt.remove_from_list("Q", who="1", tool_context=ctx, store=store)
+    await store.add_member(nid, user_id=2, username="b")
+    await nt.clear_list("Q", tool_context=ctx, store=store)
+
+    markup_edits = [e for e in ctx["bot"].edited if e[0] == "markup"]
+    assert any(mid == 555 and rm is None for _tag, _cid, mid, rm in markup_edits)
+    assert await store.get_undo(nid) is None
