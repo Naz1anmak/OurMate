@@ -1,3 +1,4 @@
+import aiosqlite
 import pytest
 from src.bot.services.notes_store import NotesStore
 
@@ -197,3 +198,21 @@ async def test_cleanup_old(store):
     assert await store.get(old) is None
     assert await store.count(old) == 0     # members старого вычищены
     assert await store.get(fresh) is not None
+
+
+@pytest.mark.asyncio
+async def test_migrate_adds_undo_json_to_legacy_db(tmp_path):
+    # БД без колонки undo_json — эмулируем «старый» релиз.
+    path = str(tmp_path / "legacy.db")
+    async with aiosqlite.connect(path) as db:
+        await db.execute(
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, "
+            "title TEXT, title_lower TEXT, author_id INTEGER, formal INTEGER, "
+            "card_message_id INTEGER, created_at TEXT)")
+        await db.commit()
+    s = NotesStore(path)
+    await s.init()  # не должно упасть
+    async with aiosqlite.connect(path) as db:
+        cur = await db.execute("PRAGMA table_info(notes)")
+        cols = {r[1] for r in await cur.fetchall()}
+    assert "undo_json" in cols

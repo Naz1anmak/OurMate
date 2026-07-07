@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS notes (
     author_id       INTEGER NOT NULL,
     formal          INTEGER NOT NULL DEFAULT 0,
     card_message_id INTEGER,
+    undo_json       TEXT,
     created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE(chat_id, title_lower)
 );
@@ -33,6 +34,10 @@ CREATE TABLE IF NOT EXISTS note_members (
 _MEMBER_MIGRATIONS = {
     "tg_name": "ALTER TABLE note_members ADD COLUMN tg_name TEXT",
     "position": "ALTER TABLE note_members ADD COLUMN position INTEGER NOT NULL DEFAULT 0",
+}
+
+_NOTE_MIGRATIONS = {
+    "undo_json": "ALTER TABLE notes ADD COLUMN undo_json TEXT",
 }
 
 
@@ -58,6 +63,12 @@ class NotesStore:
         cols = {r["name"] for r in await cur.fetchall()}
         for col, ddl in _MEMBER_MIGRATIONS.items():
             if col not in cols:
+                await db.execute(ddl)
+
+        cur = await db.execute("PRAGMA table_info(notes)")
+        note_cols = {r["name"] for r in await cur.fetchall()}
+        for col, ddl in _NOTE_MIGRATIONS.items():
+            if col not in note_cols:
                 await db.execute(ddl)
 
     # ── Списки ────────────────────────────────────────────────────────────
