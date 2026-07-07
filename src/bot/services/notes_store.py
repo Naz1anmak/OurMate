@@ -257,6 +257,21 @@ class NotesStore:
             await db.commit()
             return cur.rowcount > 0
 
+    async def restore_members(self, note_id: int, members: list[dict]) -> None:
+        """Заменить всех участников на переданный список (в его порядке).
+        Сохраняет username / name_override / tg_name / note; позиции — 1..N."""
+        async with self._db() as db:
+            await self._setup(db)
+            await db.execute("DELETE FROM note_members WHERE note_id = ?", (note_id,))
+            for i, m in enumerate(members, 1):
+                await db.execute(
+                    "INSERT INTO note_members "
+                    "(note_id, user_id, username, name_override, tg_name, note, position) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (note_id, m["user_id"], m.get("username"), m.get("name_override"),
+                     m.get("tg_name"), m.get("note"), i))
+            await db.commit()
+
     async def remove_member(self, note_id: int, user_id: int) -> bool:
         async with self._db() as db:
             await self._setup(db)

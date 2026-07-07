@@ -242,3 +242,24 @@ async def test_undo_snapshot_roundtrip(store):
 async def test_get_undo_absent_returns_none(store):
     nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
     assert await store.get_undo(nid) is None
+
+
+@pytest.mark.asyncio
+async def test_restore_members_rewrites_order_and_notes(store):
+    nid = await store.create(chat_id=-1, title="Q", author_id=1, formal=False)
+    await store.add_member(nid, user_id=1, username="a")
+    await store.add_member(nid, user_id=2, username="b")
+    await store.add_member(nid, user_id=3, username="c")
+    await store.set_note(nid, 2, "примечание Б")
+    snapshot = await store.members(nid)  # [1, 2, 3], у 2 примечание
+
+    # Портим список: убираем 2, тасуем порядок.
+    await store.remove_member(nid, 2)
+    await store.move_member(nid, 3, 1)  # [3, 1]
+
+    await store.restore_members(nid, snapshot)
+    restored = await store.members(nid)
+    assert [m["user_id"] for m in restored] == [1, 2, 3]
+    got = {m["user_id"]: m["note"] for m in restored}
+    assert got[2] == "примечание Б"
+    assert got[1] is None
