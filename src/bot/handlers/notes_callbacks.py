@@ -155,4 +155,23 @@ async def on_notes_callback(query: CallbackQuery) -> None:
         await query.answer("Оставил как есть")
         return
 
+    if action == "undo":
+        snap = await notes_store.get_undo(note_id)
+        if not snap:
+            await query.answer("Отменять нечего", show_alert=True)
+            return
+        if user.id != snap["author_id"]:
+            await query.answer("Отменить может только тот, кто сделал изменение",
+                               show_alert=True)
+            return
+        await notes_store.restore_members(note_id, snap["members"])
+        await _refresh_stored_card(query.message.bot, chat_id, note_id)
+        await notes_store.clear_undo(note_id)
+        try:
+            await query.message.edit_text("Отменено")
+        except Exception as exc:  # noqa: BLE001 — реплику могли удалить
+            logger.debug("notes: правка реплики undo не удалась: %s", exc)
+        await query.answer("Отменено")
+        return
+
     await query.answer()

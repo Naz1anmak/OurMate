@@ -142,3 +142,47 @@ async def test_fmt_non_author_rejected(store):
     q = _Query(f"list:fmt:1:{nid}", uid=7, message=_Msg(message_id=555))
     await nc.on_notes_callback(q)
     assert (await store.get(nid))["formal"] == 0  # формат не изменён
+
+
+@pytest.mark.asyncio
+async def test_undo_by_author_restores_members(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    for uid in (1, 2, 3):
+        await store.add_member(nid, user_id=uid, username=f"u{uid}")
+    await store.set_card_message(nid, 100)
+    before = await store.members(nid)
+    await store.remove_member(nid, 2)
+    await store.set_undo(nid, action="remove", author_id=42, members=before)
+    await store.attach_undo_reply(nid, 555)
+
+    q = _Query(f"list:undo:{nid}", uid=42, message=_Msg(message_id=555))
+    await nc.on_notes_callback(q)
+
+    assert [m["user_id"] for m in await store.members(nid)] == [1, 2, 3]
+    assert await store.get_undo(nid) is None
+    assert q.message.edited and q.message.edited[0][0] == "Отменено"
+
+
+@pytest.mark.asyncio
+async def test_undo_by_non_author_refused(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    await store.add_member(nid, user_id=1, username="a")
+    before = await store.members(nid)
+    await store.remove_member(nid, 1)
+    await store.set_undo(nid, action="remove", author_id=42, members=before)
+    await store.attach_undo_reply(nid, 555)
+
+    q = _Query(f"list:undo:{nid}", uid=999, message=_Msg(message_id=555))
+    await nc.on_notes_callback(q)
+
+    assert await store.members(nid) == []          # не восстановлено
+    assert await store.get_undo(nid) is not None    # снапшот цел
+    assert q.toasts and "только" in q.toasts[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_undo_absent_snapshot(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    q = _Query(f"list:undo:{nid}", uid=42, message=_Msg(message_id=555))
+    await nc.on_notes_callback(q)
+    assert q.toasts and "отменять нечего" in q.toasts[0].lower()
