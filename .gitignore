@@ -1,5 +1,6 @@
 __pycache__/
 .env
+docker-compose.override.yml
 data/
 docs/
 CLAUDE.md

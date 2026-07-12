@@ -1,0 +1,18 @@
+# Локальный dev-оверрайд (шаблон). Скопируй в docker-compose.override.yml
+# (`make override` сделает это сам) — Compose подхватывает override автоматически
+# на всех локальных `docker compose` командах.
+#
+# Зачем: в проде `src/`/`tests/` пекутся в образ при сборке, поэтому свежий/новый
+# тест-файл контейнер не видит без пересборки («file or directory not found»).
+# Эти маунты кладут живое дерево поверх образа — код и тесты всегда актуальны,
+# `docker compose exec/run bot pytest tests/...` работает без `make restart`.
+#
+# ВАЖНО: файл `docker-compose.override.yml` в .gitignore и НЕ должен попадать на VPS
+# (иначе подменит запечённый прод-код смонтированным + риск readonly-краша от uid 1000).
+services:
+  bot:
+    volumes:
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./main.py:/app/main.py:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro

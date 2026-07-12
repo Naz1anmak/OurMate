@@ -1,4 +1,4 @@
-.PHONY: help up down restart build logs tail sh stop ps env test test-cov
+.PHONY: help up down restart build logs tail sh stop ps env override test test-cov
 
 SERVICE ?= bot
 
@@ -10,6 +10,13 @@ env: ## Создать .env из .env.example, если его нет
 		echo ".env уже существует — не трогаем"; \
 	else \
 		cp .env.example .env && echo "Создан .env — заполни значения"; \
+	fi
+
+override: ## Создать docker-compose.override.yml из примера, если его нет (dev-маунт src/tests)
+	@if [ -f docker-compose.override.yml ]; then \
+		echo "docker-compose.override.yml уже существует — не трогаем"; \
+	else \
+		cp docker-compose.override.yml.example docker-compose.override.yml && echo "Создан docker-compose.override.yml — dev-маунт src/tests активен"; \
 	fi
 
 up: ## Запустить контейнеры в фоне
@@ -39,11 +46,11 @@ ps: ## Список контейнеров compose
 sh: ## Зайти внутрь контейнера $(SERVICE)
 	docker compose exec $(SERVICE) sh
 
-# -v "$(PWD)":/app — монтируем живое дерево поверх образа, иначе pytest гоняет код,
-# зашитый при сборке (src/ и tests/ в образе), а не текущие правки. Зависимости берутся
-# из образа (они в site-packages, не в /app), код — с диска.
-test: ## Прогон тестов в контейнере (на текущем коде)
-	docker compose run --rm -v "$(PWD)":/app $(SERVICE) pytest tests/ -v
+# Живой код монтируется через docker-compose.override.yml (создаётся `make override`):
+# src/ и tests/ ложатся поверх образа, иначе pytest гоняет код, зашитый при сборке,
+# а не текущие правки. Зависимости берутся из образа (site-packages, не в /app).
+test: override ## Прогон тестов в контейнере (на текущем коде)
+	docker compose run --rm $(SERVICE) pytest tests/ -v
 
-test-cov: ## Прогон тестов с покрытием
-	docker compose run --rm -v "$(PWD)":/app $(SERVICE) pytest tests/ --cov=src --cov-report=term-missing -v
+test-cov: override ## Прогон тестов с покрытием
+	docker compose run --rm $(SERVICE) pytest tests/ --cov=src --cov-report=term-missing -v

@@ -47,8 +47,12 @@ async def test_persist_across_connections(store):
 
 @pytest.mark.asyncio
 async def test_cleanup_old_removes_stale_rows(store):
-    await store.increment("chat", -100, "2000-01-01")  # древняя строка
-    await store.increment("chat", -100, "2026-06-03")  # свежая (по date('now'))
+    from datetime import date, timedelta
+    old_day = (date.today() - timedelta(days=40)).isoformat()   # старше порога → под снос
+    fresh_day = (date.today() - timedelta(days=1)).isoformat()  # свежая → остаётся
+    await store.increment("chat", -100, old_day)
+    await store.increment("chat", -100, fresh_day)
     removed = await store.cleanup_old(days=30)
     assert removed == 1
-    assert await store.get("chat", -100, "2000-01-01") == 0
+    assert await store.get("chat", -100, old_day) == 0
+    assert await store.get("chat", -100, fresh_day) == 1

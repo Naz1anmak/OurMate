@@ -1,7 +1,26 @@
 import importlib
 import os
 
+import dotenv
+import pytest
+
 import src.config.settings as settings_mod
+
+
+@pytest.fixture(autouse=True)
+def _isolate_schedule_env(monkeypatch):
+    """Изоляция env между тестами настроек (независимо от порядка прогона).
+
+    `reload_settings` заново выполняет модуль, а тот на импорте зовёт `load_dotenv()`,
+    который до-инжектит переменные из смонтированного `.env` обратно в `os.environ`
+    (monkeypatch их не отслеживает → они протекают между тестами). Глушим чтение файла —
+    настройки берутся только из `os.environ`, управляемого тестом, — и чистим все
+    протёкшие `SCHEDULE_API_*`, чтобы дефолт-ассерты были честными.
+    """
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: None)
+    for k in list(os.environ):
+        if k.startswith("SCHEDULE_API_"):
+            monkeypatch.delenv(k, raising=False)
 
 
 def reload_settings(monkeypatch, **env):
