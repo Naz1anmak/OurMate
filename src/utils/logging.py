@@ -15,11 +15,38 @@ LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 LOG_FILE_BACKUP_COUNT = 5
 
 
-class _AiogramSleepFilter(logging.Filter):
-    """Глушит шумные сообщения aiogram про 'Sleep for ...' между апдейтами."""
+# Типы ошибок поллинга, которые aiogram переживает сам: он ретраит и
+# восстанавливает соединение. Каждую ночь их приносит окно техобслуживания
+# Telegram, поэтому на уровне ERROR они только маскируют настоящие проблемы.
+TRANSIENT_POLLING_ERRORS = (
+    "TelegramRetryAfter",
+    "TelegramServerError",
+    "TelegramNetworkError",
+)
+
+
+class _AiogramTransientFilter(logging.Filter):
+    """Глушит предсказуемый шум aiogram: 'Sleep for ...' между апдейтами и
+    транзиентные ошибки поллинга.
+
+    Транзиентные ошибки не выбрасываются насовсем, а понижаются до DEBUG:
+    при `LOG_LEVEL=INFO` (прод) они не видны, при `LOG_LEVEL=DEBUG` остаются
+    доступными для разбора инцидента. Всё остальное, включая
+    `TelegramUnauthorizedError`, проходит нетронутым.
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return "Sleep for" not in record.getMessage()
+        message = record.getMessage()
+        if "Sleep for" in message:
+            return False
+        if "Failed to fetch updates" in message and any(
+            err in message for err in TRANSIENT_POLLING_ERRORS
+        ):
+            if not logging.getLogger().isEnabledFor(logging.DEBUG):
+                return False
+            record.levelno = logging.DEBUG
+            record.levelname = "DEBUG"
+        return True
 
 
 def _build_formatter() -> logging.Formatter:
@@ -62,7 +89,7 @@ def configure_logging(level: str = "INFO") -> None:
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
     logging.getLogger("aiogram.event").setLevel(logging.WARNING)
-    logging.getLogger("aiogram.dispatcher").addFilter(_AiogramSleepFilter())
+    logging.getLogger("aiogram.dispatcher").addFilter(_AiogramTransientFilter())
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("aiohttp").setLevel(logging.WARNING)
