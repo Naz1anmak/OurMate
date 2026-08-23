@@ -275,8 +275,8 @@ make tail      # хвост логов с follow (Ctrl+C — выйти)
   "users": [
      {
         "user_id": 123456789,
-        "name": "Анастасия Ильинична",
-        "last_name": "Алленова",
+        "name": "Мария Сергеевна",
+        "last_name": "Сидорова",
         "birthday": "30.12",
         "status": "active",
         "interacted_with_bot": false,
