@@ -1,4 +1,4 @@
-"""Тесты авто-чистки пинг-листа при выходе/исключении участника."""
+"""Тесты реакции на выход/исключение (чистка пинг-листа) и на приход (приветствие)."""
 import pytest
 
 from src.bot.services.ping_store import PingStore
@@ -23,9 +23,23 @@ class _FakeMember:
 
 
 class _FakeEvent:
-    def __init__(self, chat_id, uid, status):
+    def __init__(self, chat_id, uid, status, old_status=None):
         self.chat = _FakeChat(chat_id)
         self.new_chat_member = _FakeMember(uid, status)
+        self.old_chat_member = _FakeMember(uid, old_status) if old_status else None
+        self.bot = object()
+
+
+@pytest.fixture
+def welcomed(monkeypatch):
+    """Перехватывает приветствия: список (chat_id, user_id) вместо отправки в Telegram."""
+    calls = []
+
+    async def _fake(bot, chat_id, user):
+        calls.append((chat_id, user.id))
+
+    monkeypatch.setattr(cm, "welcome_member", _fake)
+    return calls
 
 
 @pytest.fixture
@@ -48,7 +62,25 @@ async def test_gone_member_removed(store, status):
 
 
 @pytest.mark.asyncio
-async def test_member_still_present_kept(store):
+async def test_member_still_present_kept(store, welcomed):
     await store.join(chat_id=-100, user_id=7, first_name="A", username=None)
-    await cm.on_chat_member_update(_FakeEvent(-100, 7, "member"))
+    await cm.on_chat_member_update(_FakeEvent(-100, 7, "member", old_status="member"))
     assert await store.count(-100) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("old_status", ["left", "kicked"])
+async def test_arrival_welcomed(store, welcomed, old_status):
+    await cm.on_chat_member_update(_FakeEvent(-100, 7, "member", old_status=old_status))
+    assert welcomed == [(-100, 7)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("old_status", "new_status"),
+    [("member", "administrator"), ("administrator", "member"), ("member", "restricted")],
+)
+async def test_rights_change_not_welcomed(store, welcomed, old_status, new_status):
+    """Смена прав внутри беседы не приход — приветствия быть не должно."""
+    await cm.on_chat_member_update(_FakeEvent(-100, 7, new_status, old_status=old_status))
+    assert welcomed == []

@@ -82,6 +82,9 @@ class E:
     # ── Списки / очереди ───────────────────────────────────────
     POINT_UP = Emoji("👆", premium_id="5172475985550902005")
 
+    # ── 👋 Приветствие новых участников ────────────────────────
+    WAVE = Emoji("👋")
+
 
 ALL_EMOJI: tuple[Emoji, ...] = tuple(
     v for v in vars(E).values() if isinstance(v, Emoji)

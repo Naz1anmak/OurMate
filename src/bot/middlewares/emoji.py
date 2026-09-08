@@ -18,6 +18,7 @@ from aiogram.methods import (
     EditMessageCaption,
     EditMessageMedia,
     EditMessageText,
+    SendAnimation,
     SendMessage,
     SendPhoto,
     TelegramMethod,
@@ -61,7 +62,7 @@ class PremiumEmojiMiddleware(BaseRequestMiddleware):
 
     Покрытые методы:
       - SendMessage / EditMessageText    → text
-      - SendPhoto / EditMessageCaption  → caption
+      - SendPhoto / SendAnimation / EditMessageCaption → caption
       - EditMessageMedia (InputMedia)    → media.caption
     """
 
@@ -83,7 +84,7 @@ class PremiumEmojiMiddleware(BaseRequestMiddleware):
             if method.text:
                 method.text = _apply_to_text(method.text)
 
-        elif isinstance(method, (SendPhoto, EditMessageCaption)):
+        elif isinstance(method, (SendPhoto, SendAnimation, EditMessageCaption)):
             if method.caption:
                 method.caption = _apply_to_text(method.caption)
 

@@ -169,3 +169,10 @@ SCHEDULE_API_GROUP_IDS: dict[str, int] = {
     for name, val in os.environ.items()
     if name.startswith("SCHEDULE_API_GROUP_") and val.isdigit()
 }
+
+# ===== Приветствие новых участников беседы =====
+WELCOME_ENABLED = _get_env("WELCOME_ENABLED", "true", log_default=True).lower() == "true"
+# Гифка (mp4 без звука или .gif). Пустой путь / отсутствующий файл → шлём только текст.
+WELCOME_GIF_FILE = Path(
+    _get_env("WELCOME_GIF_FILE", Path.cwd() / "data" / "welcome.mp4", log_default=True)
+)
