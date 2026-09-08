@@ -83,7 +83,7 @@ class E:
     POINT_UP = Emoji("👆", premium_id="5172475985550902005")
 
     # ── 👋 Приветствие новых участников ────────────────────────
-    WAVE = Emoji("👋")
+    WAVE = Emoji("👋", premium_id="5472055112702629499")
 
 
 ALL_EMOJI: tuple[Emoji, ...] = tuple(
