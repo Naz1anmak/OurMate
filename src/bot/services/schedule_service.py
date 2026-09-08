@@ -260,31 +260,27 @@ class ScheduleService:
         base_title: str,
         *,
         icon_common: str = str(E.PIN),
-        empty_text: str = "",
     ) -> str:
         """Рендерит блок дня для multi-group / single-group.
 
-        - День общий → один блок: f"<b>{icon_common} {base_title}:</b>" + blockquote с парами.
+        - День общий (в т.ч. когда группа одна) → один блок:
+          f"<b>{icon_common} {base_title}:</b>" + blockquote с парами.
         - День различается → по одному блоку на группу:
           f"<b>❗️ {base_title} для {display_name}:</b>" + blockquote.
         - Если у группы пар нет — внутри blockquote строка "Пар нет".
-        - Если у всей единственной группы пар нет и empty_text задан — возвращает empty_text.
         """
         by_group = self._events_by_group_for_date(target_date)
-        all_empty = all(not evs for evs in by_group.values())
 
-        # Single-group: если пусто и есть empty_text — отдаём его (back-compat поведения).
-        if self.known_groups == frozenset({""}) and all_empty:
-            return empty_text
+        # Группы не сконфигурированы (нет подпапок в SCHEDULE_GROUPS_DIR) — рендерить нечего.
+        if self.known_groups == frozenset({""}) and all(not evs for evs in by_group.values()):
+            return ""
 
         if self._day_is_common(by_group):
             events = next(iter(by_group.values())) if by_group else []
-            if not events and empty_text:
-                return empty_text
             return self._render_single_block(
                 f"{icon_common} {base_title}",
                 events,
-                empty_fallback=empty_text or "Пар нет",
+                empty_fallback="Пар нет",
             )
 
         # Different day → per-group blocks
