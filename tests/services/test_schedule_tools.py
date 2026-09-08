@@ -240,14 +240,14 @@ def test_event_payload_includes_lesson_groups_and_teachers():
         summary="Subject A", location="101",
         start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
         end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
-        kind="Лекция", groups=frozenset({"40001"}),
+        kind="Лекция", groups=frozenset({"GRP_A"}),
         lesson_groups=frozenset({"Group B", "Group A"}),
         teachers=frozenset({"Иванов И.И."}),
     )
     payload = _event_payload(ev)
     assert payload["lesson_groups"] == ["Group A", "Group B"]
     assert payload["teachers"] == ["Иванов И.И."]
-    assert payload["groups"] == ["40001"]
+    assert payload["groups"] == ["GRP_A"]
 
 
 def test_event_payload_includes_webinar_url_only_when_present():

@@ -118,7 +118,7 @@ PROMPT_TEMPLATE_BIRTHDAY_FORMER = _get_env(
 SCHEDULE_GROUPS_DIR = Path(_get_env("SCHEDULE_GROUPS_DIR", Path.cwd() / "data", log_default=True))
 
 # Префикс отображаемого имени группы. Итоговое имя = prefix + код подпапки.
-# Пример: prefix="з5130903/", папка "40001" → отображается как "з5130903/40001".
+# Пример: prefix="<PREFIX>/", папка "GRP_A" → отображается как "<PREFIX>/GRP_A".
 SCHEDULE_GROUP_NAME_PREFIX = _get_env("SCHEDULE_GROUP_NAME_PREFIX", "", log_default=True)
 
 # Кэш для расписания (после парсинга ics)

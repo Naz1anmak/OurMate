@@ -36,7 +36,7 @@ def ctx_allowed():
 async def test_obnovi_calls_force_refresh_and_pinned_update_now(monkeypatch, ctx_allowed):
     refresher = AsyncMock()
     refresher.force_refresh = AsyncMock(return_value=MagicMock(
-        updated_groups=["40001"], failed_groups=[], diff_message=None,
+        updated_groups=["GRP_A"], failed_groups=[], diff_message=None,
     ))
     pinned = AsyncMock()
     pinned.update_now = AsyncMock()
@@ -55,7 +55,7 @@ async def test_obnovi_calls_force_refresh_and_pinned_update_now(monkeypatch, ctx
 async def test_obnovi_replies_no_change_when_no_diff(monkeypatch, ctx_allowed):
     refresher = AsyncMock()
     refresher.force_refresh = AsyncMock(return_value=MagicMock(
-        updated_groups=["40001"], failed_groups=[], diff_message=None,
+        updated_groups=["GRP_A"], failed_groups=[], diff_message=None,
     ))
     pinned = AsyncMock()
     monkeypatch.setattr("src.bot.handlers.chat_commands.schedule_refresher", refresher)
@@ -72,11 +72,11 @@ async def test_obnovi_replies_no_change_when_no_diff(monkeypatch, ctx_allowed):
 async def test_obnovi_replies_full_fail_with_link(monkeypatch, ctx_allowed):
     refresher = AsyncMock()
     refresher.force_refresh = AsyncMock(return_value=MagicMock(
-        updated_groups=[], failed_groups=["40001"], diff_message=None,
+        updated_groups=[], failed_groups=["GRP_A"], diff_message=None,
     ))
     refresher.client = MagicMock()
     refresher.client.public_url = MagicMock(return_value="https://schedule.example/faculty/125/groups/99000?date=2026-5-25")
-    refresher.group_ids = {"40001": 99000}
+    refresher.group_ids = {"GRP_A": 99000}
     monkeypatch.setattr("src.bot.handlers.chat_commands.schedule_refresher", refresher)
 
     m = _msg()

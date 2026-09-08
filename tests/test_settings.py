@@ -66,10 +66,10 @@ def test_schedule_auto_update_enabled_default(monkeypatch):
 
 
 def test_schedule_group_codes_picked_up_per_code(monkeypatch):
-    monkeypatch.setenv("SCHEDULE_API_GROUP_40001", "99000")
-    monkeypatch.setenv("SCHEDULE_API_GROUP_40002", "99001")
+    monkeypatch.setenv("SCHEDULE_API_GROUP_GRP_A", "99000")
+    monkeypatch.setenv("SCHEDULE_API_GROUP_GRP_B", "99001")
     s = reload_settings(monkeypatch)
-    assert s.SCHEDULE_API_GROUP_IDS == {"40001": 99000, "40002": 99001}
+    assert s.SCHEDULE_API_GROUP_IDS == {"GRP_A": 99000, "GRP_B": 99001}
 
 
 def test_schedule_group_ids_empty_when_none_set(monkeypatch):

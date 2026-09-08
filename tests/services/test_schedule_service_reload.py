@@ -13,6 +13,9 @@ TZ = ZoneInfo("Europe/Moscow")
 def tmp_groups_dir(tmp_path, monkeypatch):
     monkeypatch.setattr("src.bot.services.schedule_parser.SCHEDULE_GROUPS_DIR", tmp_path)
     monkeypatch.setattr("src.bot.services.schedule_service.SCHEDULE_GROUPS_DIR", tmp_path)
+    # Пустой whitelist: иначе _detect_group_codes отфильтрует тестовые коды по
+    # SCHEDULE_API_GROUP_* из реального .env, и тест начнёт зависеть от окружения.
+    monkeypatch.setattr("src.bot.services.schedule_service.SCHEDULE_API_GROUP_IDS", {})
     return tmp_path
 
 
@@ -33,9 +36,9 @@ def test_read_schedule_json_stamps_group_code_and_reads_lesson_groups(tmp_groups
         end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
         kind="Лекция", lesson_groups=frozenset({"Group A"}),
     )
-    save_schedule("40001", [ev], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
-    loaded = ScheduleService._read_schedule_json(tmp_groups_dir / "40001" / "schedule.json", "40001")
-    assert loaded[0].groups == frozenset({"40001"})
+    save_schedule("GRP_A", [ev], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
+    loaded = ScheduleService._read_schedule_json(tmp_groups_dir / "GRP_A" / "schedule.json", "GRP_A")
+    assert loaded[0].groups == frozenset({"GRP_A"})
     assert loaded[0].lesson_groups == frozenset({"Group A"})
 
 
@@ -44,7 +47,7 @@ def test_merge_duplicates_unions_lesson_groups_and_teachers():
         summary="Поток", location="DL",
         start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
         end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
-        groups=frozenset({"40001"}),
+        groups=frozenset({"GRP_A"}),
         lesson_groups=frozenset({"Group A", "Group B"}),
         teachers=frozenset({"Иванов И.И."}),
         webinar_url="",
@@ -53,39 +56,39 @@ def test_merge_duplicates_unions_lesson_groups_and_teachers():
         summary="Поток", location="DL",
         start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
         end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
-        groups=frozenset({"40002"}),
+        groups=frozenset({"GRP_B"}),
         lesson_groups=frozenset({"Group C"}),
         teachers=frozenset({"Петров П.П."}),
         webinar_url="https://example.com/webinar/a",
     )
     merged = ScheduleService._merge_duplicates([a, b])
     assert len(merged) == 1
-    assert merged[0].groups == frozenset({"40001", "40002"})
+    assert merged[0].groups == frozenset({"GRP_A", "GRP_B"})
     assert merged[0].lesson_groups == frozenset({"Group A", "Group B", "Group C"})
     assert merged[0].teachers == frozenset({"Иванов И.И.", "Петров П.П."})
     assert merged[0].webinar_url == "https://example.com/webinar/a"  # непустая побеждает
 
 
 def test_load_events_from_schedule_json_per_group(tmp_groups_dir):
-    save_schedule("40001", [_ev("40001", 10)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
-    save_schedule("40002", [_ev("40002", 12)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
+    save_schedule("GRP_A", [_ev("GRP_A", 10)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
+    save_schedule("GRP_B", [_ev("GRP_B", 12)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
     svc = ScheduleService()
     assert len(svc.events) == 2
-    assert svc.known_groups == frozenset({"40001", "40002"})
+    assert svc.known_groups == frozenset({"GRP_A", "GRP_B"})
 
 
 def test_reload_picks_up_new_data(tmp_groups_dir):
-    save_schedule("40001", [], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
+    save_schedule("GRP_A", [], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
     svc = ScheduleService()
     assert svc.events == []
 
-    save_schedule("40001", [_ev("40001", 10)], fetched_at=datetime(2026, 5, 26, 10, 0, tzinfo=TZ))
+    save_schedule("GRP_A", [_ev("GRP_A", 10)], fetched_at=datetime(2026, 5, 26, 10, 0, tzinfo=TZ))
     svc.reload()
     assert len(svc.events) == 1
 
 
 def test_load_skips_groups_without_schedule_json(tmp_groups_dir):
-    (tmp_groups_dir / "40001").mkdir()  # подпапка есть, но schedule.json нет
+    (tmp_groups_dir / "GRP_A").mkdir()  # подпапка есть, но schedule.json нет
     svc = ScheduleService()
     assert svc.events == []
-    assert svc.known_groups == frozenset({"40001"})
+    assert svc.known_groups == frozenset({"GRP_A"})

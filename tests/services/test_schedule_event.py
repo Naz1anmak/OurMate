@@ -50,7 +50,7 @@ def test_to_dict_from_dict_round_trip():
         teachers=frozenset({"Иванов И.И."}),
         webinar_url="https://example.com/webinar/a",
     )
-    restored = ScheduleEvent.from_dict(ev.to_dict(), group_code="40001")
+    restored = ScheduleEvent.from_dict(ev.to_dict(), group_code="GRP_A")
     assert restored.summary == "Subject A"
     assert restored.location == "101, B-1"
     assert restored.kind == "Лекция"
@@ -59,7 +59,7 @@ def test_to_dict_from_dict_round_trip():
     assert restored.lesson_groups == frozenset({"Group A", "Group B"})
     assert restored.teachers == frozenset({"Иванов И.И."})
     assert restored.webinar_url == "https://example.com/webinar/a"
-    assert restored.groups == frozenset({"40001"})
+    assert restored.groups == frozenset({"GRP_A"})
 
 
 def test_from_dict_defaults_for_legacy_json():
@@ -79,6 +79,6 @@ def test_to_dict_excludes_our_group_codes():
         summary="X", location="101",
         start=datetime(2026, 5, 26, 10, 0, tzinfo=TZ),
         end=datetime(2026, 5, 26, 11, 40, tzinfo=TZ),
-        groups=frozenset({"40001"}),
+        groups=frozenset({"GRP_A"}),
     )
     assert "groups" not in ev.to_dict()

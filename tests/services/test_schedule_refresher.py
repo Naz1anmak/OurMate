@@ -34,14 +34,14 @@ def isolated_data(tmp_path, monkeypatch):
 def _stub_service():
     svc = MagicMock()
     svc.reload = MagicMock(return_value=None)
-    svc.known_groups = frozenset({"40001"})
+    svc.known_groups = frozenset({"GRP_A"})
     return svc
 
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-26 09:00:00", tz_offset=3)
 async def test_force_refresh_calls_client_and_saves(isolated_data):
-    (isolated_data / "40001").mkdir()
+    (isolated_data / "GRP_A").mkdir()
     client = AsyncMock()
     client.fetch_week = AsyncMock(return_value=FIXTURE_RAW)
 
@@ -49,88 +49,88 @@ async def test_force_refresh_calls_client_and_saves(isolated_data):
     refresher = ScheduleRefresher(
         client=client,
         schedule_service=schedule_service,
-        group_ids={"40001": 99000},
+        group_ids={"GRP_A": 99000},
         weeks_ahead=3,
         lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
-    assert "40001" in result.updated_groups
+    assert "GRP_A" in result.updated_groups
     schedule_service.reload.assert_called_once()
-    assert (isolated_data / "40001" / "schedule.json").exists()
+    assert (isolated_data / "GRP_A" / "schedule.json").exists()
 
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-26 09:00:00", tz_offset=3)
 async def test_ensure_fresh_skips_when_within_ttl(isolated_data):
-    (isolated_data / "40001").mkdir()
+    (isolated_data / "GRP_A").mkdir()
     # Свежий snapshot: freeze_time(tz_offset=3) даёт datetime.now(TZ)=15:00 MSK;
     # сохраняем 14:50 MSK — разница 10 мин < TTL 60 мин → должны пропустить.
-    save_schedule("40001", [], fetched_at=datetime(2026, 5, 26, 14, 50, tzinfo=TZ))
+    save_schedule("GRP_A", [], fetched_at=datetime(2026, 5, 26, 14, 50, tzinfo=TZ))
 
     client = AsyncMock()
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 99000}, weeks_ahead=3, lazy_ttl_min=60,
+        group_ids={"GRP_A": 99000}, weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.ensure_fresh("test")
-    assert result.skipped_groups == ["40001"]
+    assert result.skipped_groups == ["GRP_A"]
     client.fetch_week.assert_not_called()
 
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-26 09:00:00", tz_offset=3)
 async def test_ensure_fresh_refreshes_when_ttl_expired(isolated_data):
-    (isolated_data / "40001").mkdir()
-    save_schedule("40001", [], fetched_at=datetime(2026, 5, 26, 7, 0, tzinfo=TZ))
+    (isolated_data / "GRP_A").mkdir()
+    save_schedule("GRP_A", [], fetched_at=datetime(2026, 5, 26, 7, 0, tzinfo=TZ))
 
     client = AsyncMock()
     client.fetch_week = AsyncMock(return_value=FIXTURE_RAW)
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 99000}, weeks_ahead=3, lazy_ttl_min=60,
+        group_ids={"GRP_A": 99000}, weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.ensure_fresh("test")
-    assert "40001" in result.updated_groups
+    assert "GRP_A" in result.updated_groups
     client.fetch_week.assert_called()
 
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-26 09:00:00", tz_offset=3)
 async def test_all_weeks_fail_does_not_overwrite_old_snapshot(isolated_data):
-    (isolated_data / "40001").mkdir()
-    save_schedule("40001", [], fetched_at=datetime(2026, 5, 25, 9, 0, tzinfo=TZ))
+    (isolated_data / "GRP_A").mkdir()
+    save_schedule("GRP_A", [], fetched_at=datetime(2026, 5, 25, 9, 0, tzinfo=TZ))
 
     client = AsyncMock()
     client.fetch_week = AsyncMock(side_effect=ScheduleError("сеть"))
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 99000}, weeks_ahead=3, lazy_ttl_min=60,
+        group_ids={"GRP_A": 99000}, weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
-    assert "40001" in result.failed_groups
+    assert "GRP_A" in result.failed_groups
     # fetched_at не двинулся
-    raw = json.loads((isolated_data / "40001" / "schedule.json").read_text())
+    raw = json.loads((isolated_data / "GRP_A" / "schedule.json").read_text())
     assert raw["fetched_at"].startswith("2026-05-25")
 
 
 @pytest.mark.asyncio
 @freeze_time("2026-05-26 09:00:00", tz_offset=3)
 async def test_partial_failure_still_writes_what_we_have(isolated_data):
-    (isolated_data / "40001").mkdir()
+    (isolated_data / "GRP_A").mkdir()
     client = AsyncMock()
     # 1-я неделя ок, остальные падают
     client.fetch_week = AsyncMock(side_effect=[FIXTURE_RAW, ScheduleError("сеть"), ScheduleError("сеть"), ScheduleError("сеть")])
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 99000}, weeks_ahead=3, lazy_ttl_min=60,
+        group_ids={"GRP_A": 99000}, weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
-    assert "40001" in result.updated_groups
-    raw = json.loads((isolated_data / "40001" / "schedule.json").read_text())
+    assert "GRP_A" in result.updated_groups
+    raw = json.loads((isolated_data / "GRP_A" / "schedule.json").read_text())
     assert len(raw["events"]) >= 1
 
 
@@ -139,7 +139,7 @@ async def test_partial_failure_still_writes_what_we_have(isolated_data):
 async def test_extra_folders_on_disk_are_ignored(isolated_data):
     """Источник правды для списка групп — env (self.group_ids), а не iterdir.
     Лишние подпапки на диске (logs, ручные, чужие группы) refresher не трогает."""
-    (isolated_data / "40001").mkdir()
+    (isolated_data / "GRP_A").mkdir()
     (isolated_data / "99999").mkdir()   # чужая группа на диске, нет в env
     (isolated_data / "logs").mkdir()    # системная папка (логи бота)
     client = AsyncMock()
@@ -147,11 +147,11 @@ async def test_extra_folders_on_disk_are_ignored(isolated_data):
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 99000},  # только 40001 в env
+        group_ids={"GRP_A": 99000},  # только GRP_A в env
         weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
-    assert result.updated_groups == ["40001"]
+    assert result.updated_groups == ["GRP_A"]
     for stray in ("99999", "logs"):
         assert stray not in result.updated_groups
         assert stray not in result.skipped_groups
@@ -163,18 +163,18 @@ async def test_extra_folders_on_disk_are_ignored(isolated_data):
 async def test_creates_missing_group_folder_on_first_refresh(isolated_data):
     """На чистой установке подпапки data/<CODE>/ ещё нет. Refresher должен пойти
     в API расписания по коду из env и save_schedule создаст папку + schedule.json сам."""
-    assert not (isolated_data / "40001").exists()
+    assert not (isolated_data / "GRP_A").exists()
     client = AsyncMock()
     client.fetch_week = AsyncMock(return_value=FIXTURE_RAW)
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(
         client=client, schedule_service=schedule_service,
-        group_ids={"40001": 99000},
+        group_ids={"GRP_A": 99000},
         weeks_ahead=3, lazy_ttl_min=60,
     )
     result = await refresher.force_refresh("test")
-    assert result.updated_groups == ["40001"]
-    assert (isolated_data / "40001" / "schedule.json").exists()
+    assert result.updated_groups == ["GRP_A"]
+    assert (isolated_data / "GRP_A" / "schedule.json").exists()
     client.fetch_week.assert_called()
 
 
@@ -182,7 +182,7 @@ async def test_creates_missing_group_folder_on_first_refresh(isolated_data):
 @freeze_time("2026-05-26 09:00:00", tz_offset=3)
 async def test_empty_group_ids_returns_nothing(isolated_data):
     """Без env-конфига refresher не должен пытаться никого обновлять."""
-    (isolated_data / "40001").mkdir()  # даже если папка есть — без env её нет в работе
+    (isolated_data / "GRP_A").mkdir()  # даже если папка есть — без env её нет в работе
     client = AsyncMock()
     schedule_service = _stub_service()
     refresher = ScheduleRefresher(

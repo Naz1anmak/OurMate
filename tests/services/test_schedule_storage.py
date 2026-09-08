@@ -28,9 +28,9 @@ def _ev(hh, summary="X", kind="Лекция"):
 def test_save_load_round_trip(tmp_groups_dir):
     events = [_ev(10), _ev(12, summary="Y", kind="Практика")]
     fetched = datetime(2026, 5, 26, 9, 0, tzinfo=TZ)
-    save_schedule("40001", events, fetched_at=fetched)
+    save_schedule("GRP_A", events, fetched_at=fetched)
 
-    loaded_fetched, loaded_events = load_schedule("40001")
+    loaded_fetched, loaded_events = load_schedule("GRP_A")
     assert loaded_fetched == fetched
     assert len(loaded_events) == 2
     assert loaded_events[0].summary == "X"
@@ -48,37 +48,37 @@ def test_round_trip_preserves_groups_and_teachers(tmp_groups_dir):
         teachers=frozenset({"Иванов И.И."}),
         webinar_url="https://example.com/webinar/a",
     )
-    save_schedule("40001", [ev], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
-    _fetched, loaded = load_schedule("40001")
+    save_schedule("GRP_A", [ev], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
+    _fetched, loaded = load_schedule("GRP_A")
     assert loaded[0].lesson_groups == frozenset({"Group A", "Group B"})
     assert loaded[0].teachers == frozenset({"Иванов И.И."})
     assert loaded[0].webinar_url == "https://example.com/webinar/a"
 
 
 def test_load_returns_none_and_empty_when_no_file(tmp_groups_dir):
-    fetched, events = load_schedule("40001")
+    fetched, events = load_schedule("GRP_A")
     assert fetched is None
     assert events == []
 
 
 def test_load_handles_corrupted_json(tmp_groups_dir, caplog):
-    group_dir = tmp_groups_dir / "40001"
+    group_dir = tmp_groups_dir / "GRP_A"
     group_dir.mkdir()
     (group_dir / "schedule.json").write_text("{not json")
     with caplog.at_level("WARNING"):
-        fetched, events = load_schedule("40001")
+        fetched, events = load_schedule("GRP_A")
     assert fetched is None
     assert events == []
 
 
 def test_save_atomic_uses_tmp_then_rename(tmp_groups_dir):
-    save_schedule("40001", [_ev(10)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
-    assert (tmp_groups_dir / "40001" / "schedule.json").exists()
-    assert not (tmp_groups_dir / "40001" / "schedule.json.tmp").exists()
+    save_schedule("GRP_A", [_ev(10)], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
+    assert (tmp_groups_dir / "GRP_A" / "schedule.json").exists()
+    assert not (tmp_groups_dir / "GRP_A" / "schedule.json.tmp").exists()
 
 
 def test_save_with_empty_events_writes_empty_list(tmp_groups_dir):
-    save_schedule("40001", [], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
-    fetched, events = load_schedule("40001")
+    save_schedule("GRP_A", [], fetched_at=datetime(2026, 5, 26, 9, 0, tzinfo=TZ))
+    fetched, events = load_schedule("GRP_A")
     assert events == []
     assert fetched is not None
