@@ -92,3 +92,16 @@ def test_load_skips_groups_without_schedule_json(tmp_groups_dir):
     svc = ScheduleService()
     assert svc.events == []
     assert svc.known_groups == frozenset({"GRP_A"})
+
+
+def test_service_dirs_are_not_groups(tmp_groups_dir):
+    """cache/ и logs/ — служебные подпапки data/, а не группы.
+
+    При пустом whitelist (SCHEDULE_API_GROUP_* не заданы) в группы попадали все
+    подпапки подряд, и logs/ рендерился как «❗️ ... для <prefix>logs».
+    """
+    (tmp_groups_dir / "GRP_A").mkdir()
+    (tmp_groups_dir / "cache").mkdir()
+    (tmp_groups_dir / "logs").mkdir()
+    svc = ScheduleService()
+    assert svc.known_groups == frozenset({"GRP_A"})

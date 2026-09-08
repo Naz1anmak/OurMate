@@ -23,6 +23,9 @@ from src.core.emoji import E
 
 logger = logging.getLogger(__name__)
 
+# Служебные подпапки data/ — никогда не группы (см. _detect_group_codes).
+SERVICE_DIRS = frozenset({"cache", "logs"})
+
 NO_PAIRS_TEMPLATES = [
     f"{E.NO_CLASS_BOOKS} Пар {{day}} нет, отдыхайте родные!",
     f"{E.NO_CLASS_SPARKLES} Пар {{day}} нет, удачного вам дня!",
@@ -125,13 +128,18 @@ class ScheduleService:
 
     @staticmethod
     def _detect_group_codes(base: Path) -> List[str]:
-        """Подпапки data/, отвечающие группам. При непустом SCHEDULE_API_GROUP_IDS — только из whitelist
-        (чтобы сёстры-папки вроде data/logs/ не считались за группу)."""
+        """Подпапки data/, отвечающие группам.
+
+        Служебные подпапки (`SERVICE_DIRS`) отсеиваются всегда: при непустом
+        SCHEDULE_API_GROUP_IDS их отфильтровал бы whitelist, но при пустом они
+        иначе считались бы группами — и `logs` рендерился бы как отдельный
+        блок «❗️ ... для <prefix>logs».
+        """
         if not base.is_dir():
             return []
         candidates = sorted(
             entry.name for entry in base.iterdir()
-            if entry.is_dir() and not entry.name.startswith(".") and entry.name != "cache"
+            if entry.is_dir() and not entry.name.startswith(".") and entry.name not in SERVICE_DIRS
         )
         if SCHEDULE_API_GROUP_IDS:
             return [c for c in candidates if c in SCHEDULE_API_GROUP_IDS]
