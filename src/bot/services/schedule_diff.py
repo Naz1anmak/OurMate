@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from src.bot.services.schedule_service import ScheduleEvent
+from src.core.emoji import E
 
 
 _WEEKDAYS = ["в понедельник", "во вторник", "в среду", "в четверг", "в пятницу", "в субботу", "в воскресенье"]
@@ -112,7 +113,7 @@ def _is_time_only_change(before: ScheduleEvent, after: ScheduleEvent) -> bool:
 
 
 def _format_groups(codes: list[str]) -> str:
-    """Форматирует список кодов групп: '40001' / '40001 и 40002' / '40001, 40002 и 40003'."""
+    """Форматирует список кодов групп: 'GRP_A' / 'GRP_A и GRP_B' / 'GRP_A, GRP_B и GRP_C'."""
     ordered = sorted(codes)
     if len(ordered) == 1:
         return ordered[0]
@@ -132,7 +133,7 @@ def render(summary: DiffSummary, *, known_groups: frozenset[str]) -> str | None:
     if summary.is_empty():
         return None
     if summary.is_appearance:
-        return "🗓️ Появилось расписание!"
+        return f"{E.NO_CLASS_CALENDAR} Появилось расписание!"
 
     # Кластеризуем DayDiff по (date, old_keys, new_keys)
     clusters: dict[tuple[date, frozenset, frozenset], list[DayDiff]] = defaultdict(list)
@@ -145,7 +146,7 @@ def render(summary: DiffSummary, *, known_groups: frozenset[str]) -> str | None:
         key=lambda k: (k[0], sorted(d.group_code for d in clusters[k])),
     )
 
-    lines: list[str] = ["🗓️ Расписание обновилось", ""]
+    lines: list[str] = [f"{E.NO_CLASS_CALENDAR} Расписание обновилось", ""]
     for cluster_key in sorted_keys:
         cluster_date = cluster_key[0]
         diffs = clusters[cluster_key]
@@ -163,16 +164,16 @@ def render(summary: DiffSummary, *, known_groups: frozenset[str]) -> str | None:
         # Внутри кластера дифы идентичны → берём первый
         rep = diffs[0]
         pair_blocks: list[str] = []
-        # ✅ — пара заняла слот удалённой (замена предмета в то же время начала),
-        # 🆕 — пара реально новая (в этом слоте раньше ничего не было).
+        # E.CHECK — пара заняла слот удалённой (замена предмета в то же время начала),
+        # E.NEW — пара реально новая (в этом слоте раньше ничего не было).
         removed_starts = {r.start for r in rep.removed}
         for e in rep.added:
-            emoji = "✅" if e.start in removed_starts else "🆕"
+            emoji = f"{E.CHECK}" if e.start in removed_starts else f"{E.NEW}"
             pair_blocks.append(_format_event_line(emoji, e))
         for e in rep.removed:
-            pair_blocks.append(_format_event_line("❌", e))
+            pair_blocks.append(_format_event_line(f"{E.CROSS}", e))
         for before, after in rep.changed:
-            emoji = "⏰" if _is_time_only_change(before, after) else "✏️"
+            emoji = f"{E.ALARM_CLOCK}" if _is_time_only_change(before, after) else f"{E.THINK_PENCIL}"
             pair_blocks.append(_format_change_line(emoji, before, after))
 
         inner = "\n\n".join(pair_blocks)
@@ -183,7 +184,7 @@ def render(summary: DiffSummary, *, known_groups: frozenset[str]) -> str | None:
 
 
 def _format_event_line(emoji: str, e: ScheduleEvent) -> str:
-    """'✅ HH:MM–HH:MM · Тип\\n<b>Предмет</b>' (или без '· Тип', если kind пуст).
+    """'{E.CHECK} HH:MM–HH:MM · Тип\\n<b>Предмет</b>' (или без '· Тип', если kind пуст).
 
     Предмет эскейпится через html.escape — на случай если API расписания вернёт `<`/`>`/`&`,
     которые сломали бы Telegram parse_mode=HTML.
@@ -194,7 +195,7 @@ def _format_event_line(emoji: str, e: ScheduleEvent) -> str:
 
 
 def _format_change_line(emoji: str, before: ScheduleEvent, after: ScheduleEvent) -> str:
-    """'⏰ HH:MM–HH:MM → HH:MM–HH:MM · Тип\\n<b>Предмет</b>'."""
+    """'{E.ALARM_CLOCK} HH:MM–HH:MM → HH:MM–HH:MM · Тип\\n<b>Предмет</b>'."""
     times = f"{before.start:%H:%M}–{before.end:%H:%M} → {after.start:%H:%M}–{after.end:%H:%M}"
     head = f"{emoji} {times} · {after.kind}" if after.kind else f"{emoji} {times}"
     return f"{head}\n<b>{html.escape(after.summary)}</b>"

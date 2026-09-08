@@ -268,7 +268,7 @@ async def handle_public_commands(message: Message, ctx: dict) -> bool:
         if result.diff_message:
             text_parts.append(result.diff_message)
         else:
-            text_parts.append("✅ Готово, расписание не изменилось.")
+            text_parts.append(f"{E.CHECK} Готово, расписание не изменилось.")
         if result.failed_groups:
             text_parts.append(f"❗️ Не удалось обновить: {', '.join(result.failed_groups)}")
 
