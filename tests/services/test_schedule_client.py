@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from aioresponses import aioresponses
 
-from src.bot.services.schedule_client import ScheduleClient, ScheduleError
+from src.bot.services.schedule_client import DEFAULT_USER_AGENT, ScheduleClient, ScheduleError
 
 FIXTURE = json.loads((Path(__file__).parent.parent / "fixtures" / "schedule_week_sample.json").read_text())
 
@@ -47,3 +47,17 @@ def test_public_url_format():
     url = client.public_url(99000, date(2026, 5, 25))
     # Без zero-padding в дате, как в реальном API
     assert url == "https://schedule.example/faculty/125/groups/99000?date=2026-5-25"
+
+
+@pytest.mark.asyncio
+async def test_fetch_week_sends_named_user_agent():
+    """Запрос уходит с браузерным UA, а не с дефолтным aiohttp."""
+    client = ScheduleClient(base_url="https://schedule.example", faculty_id=125, timeout=5)
+    with aioresponses() as m:
+        m.get("https://schedule.example/api/v1/ruz/scheduler/99000?date=2026-05-25", payload=FIXTURE)
+        await client.fetch_week(99000, date(2026, 5, 25))
+        headers = next(iter(m.requests.values()))[0].kwargs["headers"]
+    assert headers["User-Agent"] == DEFAULT_USER_AGENT
+    assert "Mozilla/5.0" in headers["User-Agent"]
+    assert "aiohttp" not in headers["User-Agent"]
+    assert headers["Accept"].startswith("application/json")

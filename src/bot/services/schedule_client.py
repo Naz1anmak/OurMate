@@ -6,16 +6,30 @@ import aiohttp
 
 logger = logging.getLogger(__name__)
 
+# UA обычного браузера: дефолтный `Python/aiohttp` в чужих логах читается как парсер,
+# а запросов у нас единицы в сутки к тому же публичному эндпоинту, который дёргает их
+# собственный фронтенд. Меняется аргументом конструктора.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/26.5 Safari/605.1.15"
+)
+
 
 class ScheduleError(Exception):
     """Ошибка обращения к API расписания (сеть, 5xx, невалидный JSON)."""
 
 
 class ScheduleClient:
-    def __init__(self, base_url: str, faculty_id: int, timeout: int):
+    def __init__(self, base_url: str, faculty_id: int, timeout: int,
+                 user_agent: str = DEFAULT_USER_AGENT):
         self.base_url = base_url.rstrip("/")
         self.faculty_id = faculty_id
         self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self.headers = {
+            "User-Agent": user_agent,
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "ru-RU,ru;q=0.9",
+        }
 
     async def fetch_week(self, group_id: int, monday: date) -> list[dict]:
         """Возвращает плоский список lessons за неделю с подмешанным __date."""
@@ -25,7 +39,7 @@ class ScheduleClient:
         for attempt in range(2):
             try:
                 async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                    async with session.get(url) as resp:
+                    async with session.get(url, headers=self.headers) as resp:
                         if resp.status >= 500:
                             raise ScheduleError(f"HTTP {resp.status} от API расписания")
                         if resp.status != 200:
