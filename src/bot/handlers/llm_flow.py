@@ -30,6 +30,28 @@ def _visible_length(html_text: str) -> int:
     no_tags = _TAG_RE.sub("", html_text)
     return len(_html.unescape(no_tags))
 
+# Парные маркеры markdown в порядке разбора: fence раньше одиночного backtick, ** раньше *.
+_STREAM_MARKERS = ("```", "**", "__", "`", "*", "_")
+
+
+def _stream_safe_prefix(text: str) -> str:
+    """Обрезает промежуточный кадр стрима до места, где разметка целая.
+
+    `render_html_with_code` конвертирует только закрытые пары, поэтому недописанное `**жирное`
+    показалось бы голыми звёздочками, а следующий кадр их схлопнул — отсюда мигание. Незакрытый
+    маркер откусываем вместе с хвостом; если маркеров нет — отрезаем последнее слово, чтобы кадр
+    не обрывался на его середине. Финал через эту обрезку не идёт: там текст уже полный.
+    """
+    for marker in _STREAM_MARKERS:
+        if text.count(marker) % 2:
+            return text[:text.rfind(marker)].rstrip()
+
+    if not text or text[-1].isspace():
+        return text.rstrip()
+    cut = max(text.rfind(" "), text.rfind("\n"))
+    return text[:cut].rstrip() if cut > 0 else ""
+
+
 def _trim_html(text: str, visible_limit: int = 4050, hard_limit: int = 4700) -> str:
     """Обрезаем с учётом видимой длины: теги не считаются, но есть жёсткий потолок по сырому HTML."""
     if _visible_length(text) <= visible_limit and len(text) <= hard_limit:
@@ -181,13 +203,19 @@ class StreamRenderer:
         # вовсе — длинный ответ уходил десятками эдитов и ловил флуд-контроль на финале.
         if (len(self.buffer) - self.last_sent_len) < self.min_chars or (now - self.last_flush) < self.min_interval:
             return
+        safe = _stream_safe_prefix(self.buffer)
+        if len(safe) <= self.last_sent_len:
+            # Весь прирост — внутри незакрытой разметки: показывать нечего, бюджет не тратим.
+            return
         if not self._budget_left(now):
             # Бюджет минуты выбран: молчим, буфер продолжает копиться — ничего не теряется,
             # а освободившееся место окно отдаст само, когда старые эдиты из него выпадут.
             return
         self._edits.append(now)
-        await self._render(self.buffer)
-        self.last_sent_len = len(self.buffer)
+        await self._render(safe)
+        # Считаем по показанному, а не по буферу: иначе недописанный хвост учитывался бы как
+        # отрисованный и следующий кадр ждал бы лишние min_chars.
+        self.last_sent_len = len(safe)
         self.last_flush = now
 
     async def _render(self, text: str) -> None:

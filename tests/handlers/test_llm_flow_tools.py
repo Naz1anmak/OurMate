@@ -286,7 +286,7 @@ async def test_stream_renderer_group_respects_time_floor():
     await r.start("ожидаю…")
     message.bot.edit_message_text.reset_mock()
     for _ in range(20):
-        await r.feed("х" * 300)         # символов с запасом, но время не прошло
+        await r.feed("х" * 299 + " ")   # символов с запасом, но время не прошло
     assert message.bot.edit_message_text.await_count == 1
 
 
@@ -334,7 +334,7 @@ async def test_stream_renderer_short_answer_is_not_throttled():
     r._now = lambda: clock[0]
     for _ in range(6):                       # ~1000 символов за ~15 с генерации
         clock[0] += 2.5
-        await r.feed("х" * 170)
+        await r.feed("х" * 169 + " ")
     assert message.bot.edit_message_text.await_count == 6
 
 
@@ -351,7 +351,7 @@ async def test_stream_renderer_long_answer_hits_budget_cap():
     r._now = lambda: clock[0]
     for _ in range(30):                      # ~4500 символов, всё в пределах одной минуты
         clock[0] += 1.5
-        await r.feed("х" * 170)
+        await r.feed("х" * 169 + " ")
     assert message.bot.edit_message_text.await_count == r.EDIT_BUDGET_PER_MIN
     assert len(r.buffer) > 4000              # буфер копится, ничего не теряем
 
@@ -369,8 +369,72 @@ async def test_stream_renderer_budget_frees_after_window():
     r._now = lambda: clock[0]
     for _ in range(30):
         clock[0] += 1.5
-        await r.feed("х" * 170)
+        await r.feed("х" * 169 + " ")
     spent = message.bot.edit_message_text.await_count
     clock[0] += 61                           # минута прошла, окно очистилось
-    await r.feed("х" * 170)
+    await r.feed("х" * 169 + " ")
     assert message.bot.edit_message_text.await_count == spent + 1
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("готово **жирн", "готово"),                      # незакрытый bold откушен целиком
+        ("готово **жирное** дальше", "готово **жирное**"),  # закрытый bold цел, режется лишь слово
+        ("текст `код", "текст"),                          # незакрытый inline-code
+        ("текст ```py\nx = 1", "текст"),                  # незакрытый fence
+        ("текст _кур", "текст"),                          # незакрытый italic
+        ("обычное сло", "обычное"),                       # половина слова
+        ("обычное слово ", "обычное слово"),              # хвост уже на границе
+    ],
+)
+def test_stream_safe_prefix_cuts_unfinished_markup(raw, expected):
+    from src.bot.handlers.llm_flow import _stream_safe_prefix
+    assert _stream_safe_prefix(raw) == expected
+
+
+@pytest.mark.asyncio
+async def test_stream_frame_has_no_dangling_markers():
+    """В кадр стрима не должны попадать голые ** от ещё не закрытого жирного."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    message.bot.edit_message_text.reset_mock()
+    await r.feed("х" * 150 + " начало **жирного")
+    sent = message.bot.edit_message_text.await_args.kwargs["text"]
+    assert "**" not in sent and sent.endswith("начало")
+
+
+@pytest.mark.asyncio
+async def test_stream_skips_frame_when_growth_is_all_unclosed():
+    """Если весь прирост — незакрытая разметка, кадр не тратит бюджет эдитов."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    clock = [0.0]
+    r._now = lambda: clock[0]
+    clock[0] += 5
+    await r.feed("х" * 150 + " конец ")        # кадр показан целиком, придержанного хвоста нет
+    message.bot.edit_message_text.reset_mock()
+    spent = len(r._edits)
+    clock[0] += 5
+    await r.feed(" **" + "ж" * 200)                # прирост целиком внутри незакрытого bold
+    message.bot.edit_message_text.assert_not_awaited()
+    assert len(r._edits) == spent
+
+
+@pytest.mark.asyncio
+async def test_finalize_keeps_full_text():
+    """Финал отрисовывается целиком: обрезка хвоста — только для промежуточных кадров."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    await r.finalize("итог **жирным** и хвост")
+    sent = message.bot.edit_message_text.await_args.kwargs["text"]
+    assert "<b>жирным</b>" in sent and sent.endswith("хвост")
