@@ -1,5 +1,6 @@
 """Потоковая и финальная отправка ответов LLM."""
 import logging
+from collections import deque
 import time
 import html as _html
 import re
@@ -110,6 +111,13 @@ TOOL_INDICATORS = {
 class StreamRenderer:
     """Живой стрим: группа — эдиты плейсхолдера, ЛС — драфты. feed() — приёмник токенов."""
 
+    # Telegram даёт ~20 эдитов в минуту на групповой чат, причём окно скользящее. Бюджет стрима
+    # держим ниже с запасом на плейсхолдер, тул-индикатор и — главное — финальный эдит, который
+    # обязан пройти. Короткий ответ в бюджет укладывается целиком и тормозов не замечает;
+    # длинный упирается в потолок, и пауза между эдитами растёт сама собой.
+    EDIT_BUDGET_PER_MIN = 14
+    EDIT_WINDOW_SEC = 60.0
+
     def __init__(self, message, *, prefix: str = ""):
         self.message = message
         self.is_group = message.chat.type in ("group", "supergroup")
@@ -121,12 +129,13 @@ class StreamRenderer:
         self.buffer = prefix
         self.last_sent_len = len(prefix)
         self.last_flush = 0.0
-        # Оба порога — обязательные (см. feed). В группе Telegram даёт ~20 эдитов в минуту на чат,
-        # и основной ограничитель здесь — символы: на предельных 4050 видимых (потолок _trim_html)
-        # 250 дают максимум 16 эдитов, то есть в лимит не упираемся при любой длине ответа.
-        # Поле 2.5 с страхует от быстрой генерации, не превращая стрим в редкие подёргивания.
-        self.min_interval = 2.5 if self.is_group else 0.5
-        self.min_chars = 250 if self.is_group else 40
+        # Базовая частота: оба порога обязательны (см. feed). Держим её высокой — короткий ответ
+        # должен рисоваться живо; от превышения лимита защищает бюджет окна, а не эти пороги.
+        self.min_interval = 1.0 if self.is_group else 0.5
+        self.min_chars = 100 if self.is_group else 40
+        # Отметки эдитов за последнюю минуту: лимит Telegram скользящий, поэтому и учёт скользящий.
+        self._edits: deque[float] = deque()
+        self._now = time.monotonic
 
     async def start(self, placeholder_text: str) -> None:
         """В группе показывает заглушку ожидания; в ЛС стрим идёт драфтами без отдельного плейсхолдера."""
@@ -156,13 +165,27 @@ class StreamRenderer:
         self.buffer = self.prefix
         self.last_sent_len = len(self.prefix)
 
+    def _budget_left(self, now: float) -> bool:
+        """Есть ли в скользящем окне место под ещё один эдит. В ЛС бюджет не считаем: там драфты,
+        они в лимит сообщений не идут."""
+        if self.use_draft:
+            return True
+        while self._edits and now - self._edits[0] > self.EDIT_WINDOW_SEC:
+            self._edits.popleft()
+        return len(self._edits) < self.EDIT_BUDGET_PER_MIN
+
     async def feed(self, token: str) -> None:
         self.buffer += token
-        now = time.monotonic()
+        now = self._now()
         # Раньше здесь было `and`: хватало набежавших символов, и поле по времени не работало
         # вовсе — длинный ответ уходил десятками эдитов и ловил флуд-контроль на финале.
         if (len(self.buffer) - self.last_sent_len) < self.min_chars or (now - self.last_flush) < self.min_interval:
             return
+        if not self._budget_left(now):
+            # Бюджет минуты выбран: молчим, буфер продолжает копиться — ничего не теряется,
+            # а освободившееся место окно отдаст само, когда старые эдиты из него выпадут.
+            return
+        self._edits.append(now)
         await self._render(self.buffer)
         self.last_sent_len = len(self.buffer)
         self.last_flush = now
@@ -184,7 +207,7 @@ class StreamRenderer:
         except TelegramRetryAfter as exc:
             # Упёрлись в флуд-контроль: молчим до конца окна, иначе добиваем бюджет впустую
             # и рискуем потерять финальную доставку.
-            self.last_flush = time.monotonic() + exc.retry_after
+            self.last_flush = self._now() + exc.retry_after
             logger.debug("StreamRenderer render: флуд-контроль, пауза %s с", exc.retry_after)
         except Exception as exc:  # noqa: BLE001
             logger.debug("StreamRenderer render failed: %s", exc)

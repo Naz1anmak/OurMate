@@ -319,3 +319,58 @@ async def test_finalize_falls_back_to_new_message_on_flood():
     ok = await r.finalize("готовый ответ")
     assert ok is True
     message.reply.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_short_answer_is_not_throttled():
+    """Короткий ответ укладывается в минутный бюджет целиком — рисуем часто, окно не мешает."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    message.bot.edit_message_text.reset_mock()
+    clock = [0.0]
+    r._now = lambda: clock[0]
+    for _ in range(6):                       # ~1000 символов за ~15 с генерации
+        clock[0] += 2.5
+        await r.feed("х" * 170)
+    assert message.bot.edit_message_text.await_count == 6
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_long_answer_hits_budget_cap():
+    """Длинный ответ упирается в бюджет окна: эдиты прекращаются, буфер продолжает копиться."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    message.bot.edit_message_text.reset_mock()
+    clock = [0.0]
+    r._now = lambda: clock[0]
+    for _ in range(30):                      # ~4500 символов, всё в пределах одной минуты
+        clock[0] += 1.5
+        await r.feed("х" * 170)
+    assert message.bot.edit_message_text.await_count == r.EDIT_BUDGET_PER_MIN
+    assert len(r.buffer) > 4000              # буфер копится, ничего не теряем
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_budget_frees_after_window():
+    """Окно скользящее: когда старые эдиты выпадают из минуты, стрим оживает."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    message.bot.edit_message_text.reset_mock()
+    clock = [0.0]
+    r._now = lambda: clock[0]
+    for _ in range(30):
+        clock[0] += 1.5
+        await r.feed("х" * 170)
+    spent = message.bot.edit_message_text.await_count
+    clock[0] += 61                           # минута прошла, окно очистилось
+    await r.feed("х" * 170)
+    assert message.bot.edit_message_text.await_count == spent + 1
