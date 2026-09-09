@@ -109,14 +109,14 @@ async def test_stream_renderer_streamed_flag_false_without_feed():
 
 @pytest.mark.asyncio
 async def test_stream_renderer_group_streams_immediately():
-    """В группе стрим идёт с первого же feed, без ожидания."""
+    """В группе первый рендер идёт сразу, как набран min_chars, без ожидания таймера."""
     from src.bot.handlers.llm_flow import StreamRenderer
     message = AsyncMock()
     message.chat.type = "supergroup"
     r = StreamRenderer(message)
     await r.start("ожидаю…")
     message.bot.edit_message_text.reset_mock()
-    await r.feed("привет, это достаточно длинный кусок чтобы точно отрендериться")
+    await r.feed("привет, " + "х" * 300)      # символов больше min_chars
     assert r.streamed is True
     message.bot.edit_message_text.assert_awaited()
 
@@ -274,3 +274,48 @@ async def test_run_schedule_aware_notifies_owner_on_llm_error(monkeypatch):
         message, [], "", "u", "вопрос", False, {}, registry=object())
     assert res is True
     assert notified["n"] == 1                        # владелец оповещён об ошибке LLM
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_group_respects_time_floor():
+    """Порог по символам не отменяет поле по времени: подряд идущие feed'ы не флудят эдитами."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    message.bot.edit_message_text.reset_mock()
+    for _ in range(20):
+        await r.feed("х" * 300)         # символов с запасом, но время не прошло
+    assert message.bot.edit_message_text.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_renderer_group_waits_for_min_chars():
+    """Прошедшего времени мало: пока не набрано min_chars, эдита нет."""
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    message.bot.edit_message_text.reset_mock()
+    r.last_flush = 0.0                 # время как будто давно прошло
+    await r.feed("коротко")
+    message.bot.edit_message_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_finalize_falls_back_to_new_message_on_flood():
+    """Флуд-контроль на эдите не должен съедать ответ: финал уходит новым сообщением."""
+    from aiogram.exceptions import TelegramRetryAfter
+    from aiogram.methods import EditMessageText
+    from src.bot.handlers.llm_flow import StreamRenderer
+    message = AsyncMock()
+    message.chat.type = "supergroup"
+    r = StreamRenderer(message)
+    await r.start("ожидаю…")
+    message.bot.edit_message_text.side_effect = TelegramRetryAfter(
+        method=EditMessageText(chat_id=1, message_id=1, text="x"), message="flood", retry_after=41)
+    ok = await r.finalize("готовый ответ")
+    assert ok is True
+    message.reply.assert_awaited()

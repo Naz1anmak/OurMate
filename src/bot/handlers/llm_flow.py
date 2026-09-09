@@ -5,6 +5,7 @@ import html as _html
 import re
 
 from aiogram.types import Message
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.methods import SendMessageDraft
 
 from src.bot.services.llm_service import LLMServiceError, stream_with_tools
@@ -120,8 +121,11 @@ class StreamRenderer:
         self.buffer = prefix
         self.last_sent_len = len(prefix)
         self.last_flush = 0.0
-        self.min_interval = 1.2 if self.is_group else 0.8
-        self.min_chars = 110 if self.is_group else 50
+        # Оба порога — обязательные (см. feed). В группе Telegram даёт ~20 эдитов в минуту на чат:
+        # поле 4 с держит нас на 15/мин, оставляя запас на плейсхолдер, тул-индикатор и финал.
+        # 200 символов — второй предохранитель: на предельных 4050 видимых это максимум 18 эдитов.
+        self.min_interval = 4.0 if self.is_group else 0.5
+        self.min_chars = 200 if self.is_group else 40
 
     async def start(self, placeholder_text: str) -> None:
         """В группе показывает заглушку ожидания; в ЛС стрим идёт драфтами без отдельного плейсхолдера."""
@@ -154,7 +158,9 @@ class StreamRenderer:
     async def feed(self, token: str) -> None:
         self.buffer += token
         now = time.monotonic()
-        if (len(self.buffer) - self.last_sent_len) < self.min_chars and (now - self.last_flush) < self.min_interval:
+        # Раньше здесь было `and`: хватало набежавших символов, и поле по времени не работало
+        # вовсе — длинный ответ уходил десятками эдитов и ловил флуд-контроль на финале.
+        if (len(self.buffer) - self.last_sent_len) < self.min_chars or (now - self.last_flush) < self.min_interval:
             return
         await self._render(self.buffer)
         self.last_sent_len = len(self.buffer)
@@ -174,6 +180,11 @@ class StreamRenderer:
                                                          text=rendered, parse_mode="HTML",
                                                          disable_web_page_preview=True)
                 self.streamed = True
+        except TelegramRetryAfter as exc:
+            # Упёрлись в флуд-контроль: молчим до конца окна, иначе добиваем бюджет впустую
+            # и рискуем потерять финальную доставку.
+            self.last_flush = time.monotonic() + exc.retry_after
+            logger.debug("StreamRenderer render: флуд-контроль, пауза %s с", exc.retry_after)
         except Exception as exc:  # noqa: BLE001
             logger.debug("StreamRenderer render failed: %s", exc)
 
@@ -211,9 +222,30 @@ class StreamRenderer:
             else:
                 await self.message.reply(safe, parse_mode="HTML", disable_web_page_preview=True)
             return True
+        except TelegramRetryAfter as exc:
+            logger.warning("StreamRenderer finalize: флуд-контроль (retry_after=%s), шлём отдельным сообщением",
+                           exc.retry_after)
+            return await self._finalize_as_new_message(safe)
         except Exception as exc:  # noqa: BLE001
             logger.warning("StreamRenderer finalize failed: %s", exc)
             return False
+
+    async def _finalize_as_new_message(self, safe: str) -> bool:
+        """Фолбэк на флуд-контроле: лимит на новые сообщения отдельный и стримом не выбран,
+        поэтому ответ доставляем отдельным сообщением, а недорисованный плейсхолдер убираем."""
+        try:
+            await self.message.reply(safe, parse_mode="HTML", disable_web_page_preview=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("StreamRenderer finalize fallback failed: %s", exc)
+            return False
+        if self.placeholder:
+            try:
+                await self.message.bot.delete_message(
+                    self.placeholder.chat.id, self.placeholder.message_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("StreamRenderer finalize fallback: плейсхолдер не убран (%s)", exc)
+            self.placeholder = None
+        return True
 
 
 SCHEDULE_PRESENTATION_NOTE = (
