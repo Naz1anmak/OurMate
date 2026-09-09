@@ -14,7 +14,7 @@ from aiogram.methods import DeleteWebhook
 from src.bot.setup import build_bot_and_dispatcher
 from src.bot.scheduler.birthday_scheduler import start_birthday_scheduler
 from src.bot.scheduler.schedule_scheduler import start_schedule_scheduler
-from src.bot.scheduler.pinned_schedule_scheduler import start_pinned_schedule_scheduler
+from src.bot.scheduler.pinned_schedule_scheduler import PinnedScheduleScheduler
 from src.bot.scheduler.schedule_auto_refresh_scheduler import start_schedule_auto_refresh_scheduler
 from src.bot.services.schedule_client import ScheduleClient
 from src.bot.services.schedule_refresher import ScheduleRefresher
@@ -52,7 +52,9 @@ async def main() -> None:
 
         start_birthday_scheduler(bot)
         schedule_scheduler_instance = start_schedule_scheduler(bot)
-        pinned_scheduler_instance = start_pinned_schedule_scheduler(bot)
+        # Создаём, но не стартуем: start() сразу ставит первый прогон задачей, и до
+        # инъекции refresher (ниже) он успел бы отработать без обновления из API.
+        pinned_scheduler_instance = PinnedScheduleScheduler(bot)
         auto_refresh_instance = start_schedule_auto_refresh_scheduler(bot)
         reminder_scheduler_instance = start_reminder_scheduler(bot)
         await reminder_scheduler_instance.start()
@@ -92,6 +94,9 @@ async def main() -> None:
             logger.info("Автообновление расписания включено, группы: %s", list(SCHEDULE_API_GROUP_IDS))
         else:
             logger.info("Автообновление расписания выключено (SCHEDULE_AUTO_UPDATE_ENABLED=false)")
+
+        # refresher роздан — теперь первый прогон закрепа гарантированно с обновлением.
+        pinned_scheduler_instance.start()
 
         # Общий реестр тулов для NL-вопросов (работает и без refresher — тулы берут глобальный schedule_service).
         tool_registry = build_schedule_registry(refresher=refresher)

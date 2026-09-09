@@ -184,11 +184,6 @@ class PinnedScheduleScheduler:
     def stop(self):
         self.scheduler.shutdown()
 
-def start_pinned_schedule_scheduler(bot: Bot):
-    scheduler = PinnedScheduleScheduler(bot)
-    scheduler.start()
-    return scheduler
-
 def _build_pinned_text() -> Optional[str]:
     """Формирует текст закреплённого сообщения. None => удалить закреп."""
     effective_date, day_label, base_title_today = schedule_service.get_effective_date_with_titles(TIMEZONE)
