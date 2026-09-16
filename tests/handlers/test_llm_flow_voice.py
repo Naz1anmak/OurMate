@@ -70,6 +70,13 @@ def test_should_send_voice_length_boundary(voice_on):
     assert should_send_voice(text="а" * 30 + " (laughs)", **kw) is False
 
 
+def test_voice_audience_allowed_helper():
+    assert flow._voice_audience_allowed(_ctx(), True) is True
+    assert flow._voice_audience_allowed(_ctx(), False) is False
+    assert flow._voice_audience_allowed(_ctx(is_owner=True), False) is True
+    assert flow._voice_audience_allowed(_ctx(is_whitelisted_private=True), False) is True
+
+
 def test_should_send_voice_pm_access(voice_on):
     kw = dict(is_voice=True, text=LONG, called_tools=[], is_group_chat=False)
     assert should_send_voice(tool_context=_ctx(), **kw) is False
@@ -177,6 +184,34 @@ async def test_reset_buffer_resets_voice_mode(fake_sender):
     assert r.voice_mode is None
 
 
+async def test_show_tool_indicator_recreates_placeholder_after_voice_discard(fake_sender):
+    """Раунд 1 ушёл в voice-режим и discard() снёс плейсхолдер; раунд 2 вызывает тул —
+    show_tool_indicator обязан завести новый плейсхолдер, а не молчать."""
+    message, r = _renderer("supergroup", detect_voice=True)
+    await r.start("Думаю…")
+    await r.feed("[voice] Ну привет, как дела у вас там")
+    assert r.placeholder is None                            # discard снёс плейсхолдер
+    await r.show_tool_indicator("web_search")
+    assert r.placeholder is not None                         # создан заново
+    message.reply.assert_awaited_with(flow.TOOL_INDICATORS["web_search"], parse_mode="HTML")
+
+
+async def test_reset_buffer_and_stream_alive_after_tool_round(fake_sender):
+    """После reset_buffer (сброс на старте тула) следующий feed() снова должен рисовать кадры —
+    воспроизводим полный путь через on_tool_start-подобную последовательность."""
+    message, r = _renderer("supergroup", detect_voice=True)
+    await r.start("Думаю…")
+    await r.feed("[voice] Ну привет, как дела у вас там")
+    assert r.voice_mode is True
+    await r.stop_voice_action()
+    r.reset_buffer()
+    await r.show_tool_indicator("web_search")
+    assert r.voice_mode is None
+    message.bot.edit_message_text.reset_mock()
+    await r.feed("Второй раунд: обычный длинный текстовый ответ после тула")
+    message.bot.edit_message_text.assert_awaited()           # стрим второго раунда снова виден
+
+
 async def test_finalize_stops_voice_action(fake_sender):
     message, r = _renderer("supergroup", detect_voice=True)
     await r.start("Думаю…")
@@ -229,7 +264,7 @@ async def test_flow_group_sends_voice(monkeypatch):
     assert message.reply_voice.await_args.args[0].data == b"OggS"
     message.bot.edit_message_text.assert_not_awaited()      # текстового финала нет
     message.bot.delete_message.assert_awaited()             # «Думаю…» убрано
-    assert saved["answer"] == f"{LONG} (laughs)"            # в контексте без маркера
+    assert saved["answer"] == LONG                          # в контексте без маркера и без тегов пауз/эмоций
     assert notified["n"] == 0
 
 
@@ -274,11 +309,69 @@ async def test_flow_voice_forbidden_pm_no_owner_notify(monkeypatch):
     assert notified["n"] == 0
 
 
+async def test_flow_detect_voice_off_for_pm_stranger(monkeypatch):
+    """ЛС не-владельцу/не-whitelisted детект [voice] на стриме не включаем — незачем показывать
+    «записывает голосовое», если ответ всё равно уйдёт текстом."""
+    captured = {}
+    real_renderer = flow.StreamRenderer
+
+    class SpyRenderer(real_renderer):
+        def __init__(self, *a, **kw):
+            captured["detect_voice"] = kw.get("detect_voice")
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(flow, "StreamRenderer", SpyRenderer)
+    _patch_flow(monkeypatch, f"[voice] {LONG}")
+    message = _flow_message("private")
+    await flow.run_schedule_aware_response(message, [], "", "u", "q", False, {}, registry=object())
+    assert captured["detect_voice"] is False
+
+
+async def test_flow_detect_voice_on_for_pm_owner(monkeypatch):
+    captured = {}
+    real_renderer = flow.StreamRenderer
+
+    class SpyRenderer(real_renderer):
+        def __init__(self, *a, **kw):
+            captured["detect_voice"] = kw.get("detect_voice")
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(flow, "StreamRenderer", SpyRenderer)
+    _patch_flow(monkeypatch, f"[voice] {LONG}")
+    message = _flow_message("private")
+    await flow.run_schedule_aware_response(message, [], "", "u", "q", False,
+                                           {"is_owner": True}, registry=object())
+    assert captured["detect_voice"] is True
+
+
 async def test_flow_voice_marker_with_tools_goes_text(monkeypatch):
     _patch_flow(monkeypatch, f"[voice] {LONG}", called_tools=["web_search"])
     message = _flow_message("supergroup")
     await flow.run_schedule_aware_response(message, [], "", "u", "q", False, {}, registry=object())
     message.reply_voice.assert_not_awaited()
+
+
+async def test_flow_voice_action_stopped_on_unexpected_error(monkeypatch):
+    """run_tool_loop падает НЕ LLMServiceError'ом уже после входа в voice mode — фоновый
+    chat action обязан погаснуть, а исключение пробрасываться дальше."""
+    async def boom_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None, **kw):
+        await llm_call(messages, None)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(flow, "run_tool_loop", boom_loop)
+    monkeypatch.setattr(flow, "is_voice_enabled", lambda: True)
+    monkeypatch.setattr(flow, "ChatActionSender", FakeSender)
+    FakeSender.instances = []
+
+    async def fake_stream_with_tools(msgs, tools, *, on_content_token):
+        await on_content_token(f"{VOICE_MARKER} " + LONG)
+
+    monkeypatch.setattr(flow, "stream_with_tools", fake_stream_with_tools)
+    message = _flow_message("supergroup")
+    with pytest.raises(RuntimeError, match="boom"):
+        await flow.run_schedule_aware_response(message, [], "", "u", "q", False, {}, registry=object())
+    assert FakeSender.instances[0].entered
+    assert FakeSender.instances[0].exited
 
 
 def test_flow_label_voice():

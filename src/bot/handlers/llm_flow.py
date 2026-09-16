@@ -103,6 +103,11 @@ def strip_voice_tags(text: str) -> str:
     return _VOICE_TAG_RE.sub("", text).strip()
 
 
+def _voice_audience_allowed(tool_context: dict, is_group_chat: bool) -> bool:
+    """Голос разрешён этой аудитории: любая группа, либо в ЛС — владелец/whitelisted."""
+    return is_group_chat or bool(tool_context.get("is_owner") or tool_context.get("is_whitelisted_private"))
+
+
 def should_send_voice(*, is_voice: bool, text: str, called_tools: list[str],
                       tool_context: dict, is_group_chat: bool) -> bool:
     """Голос — только по маркеру модели, без тулов, не короче порога; в ЛС — владельцу и whitelisted."""
@@ -110,7 +115,7 @@ def should_send_voice(*, is_voice: bool, text: str, called_tools: list[str],
         return False
     if len(strip_voice_tags(text)) < VOICE_MIN_CHARS:
         return False
-    return is_group_chat or bool(tool_context.get("is_owner") or tool_context.get("is_whitelisted_private"))
+    return _voice_audience_allowed(tool_context, is_group_chat)
 
 
 def format_final_answer(first_name: str, answer_body: str, has_context: bool) -> str:
@@ -220,15 +225,21 @@ class StreamRenderer:
                 self.placeholder = None
 
     async def show_tool_indicator(self, tool_name: str) -> None:
-        """В группе подменяет плейсхолдер на тул-индикатор (web_search и т.п.). В ЛС — ничего."""
+        """В группе подменяет плейсхолдер на тул-индикатор (web_search и т.п.). В ЛС — ничего.
+        Если плейсхолдера уже нет (например, discard() убрал его при входе в voice-режим на
+        раунде 1) — создаём заново тем же способом, что start(), иначе индикатор тула и
+        последующий стрим второго раунда молча теряются."""
         text = TOOL_INDICATORS.get(tool_name)
-        if not text or not self.is_group or not self.placeholder:
+        if not text or not self.is_group:
             return
         try:
-            await self.message.bot.edit_message_text(
-                chat_id=self.placeholder.chat.id,
-                message_id=self.placeholder.message_id,
-                text=text, parse_mode="HTML")
+            if self.placeholder:
+                await self.message.bot.edit_message_text(
+                    chat_id=self.placeholder.chat.id,
+                    message_id=self.placeholder.message_id,
+                    text=text, parse_mode="HTML")
+            else:
+                self.placeholder = await self.message.reply(text, parse_mode="HTML")
         except Exception as exc:  # noqa: BLE001
             logger.debug("show_tool_indicator failed: %s", exc)
 
@@ -508,7 +519,8 @@ async def run_schedule_aware_response(
     if voice_enabled:
         messages = _inject_system_note(messages, VOICE_NOTE)
     prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
-    renderer = StreamRenderer(message, prefix=prefix, detect_voice=voice_enabled)
+    detect_voice = voice_enabled and _voice_audience_allowed(tool_context, is_group_chat)
+    renderer = StreamRenderer(message, prefix=prefix, detect_voice=detect_voice)
     await renderer.start(pick_placeholder_variant().text)
 
     # Один и тот же приёмник на обе фазы стрима. На старте тула буфер сбрасывается (reset_buffer),
@@ -517,78 +529,87 @@ async def run_schedule_aware_response(
         return await stream_with_tools(msgs, tools, on_content_token=renderer.feed)
 
     async def on_tool_start(name: str) -> None:
+        # Раунд 1 мог решить, что ответ голосовой (voice_mode=True) и уйти в фоновый chat action —
+        # гасим его перед вторым раундом, иначе «записывает голосовое» повиснет поверх тул-индикатора.
+        await renderer.stop_voice_action()
         renderer.reset_buffer()
         await renderer.show_tool_indicator(name)
 
+    # На любом выходе из тела ниже (штатный return, необработанное исключение, CancelledError)
+    # обязаны погасить фоновый chat action «записывает голосовое» — иначе он висит вечно.
+    # stop_voice_action идемпотентен, повторный явный вызов внутри тела не мешает.
     try:
-        result: ToolLoopResult = await run_tool_loop(
-            messages, tool_context, registry=registry, llm_call=llm_call,
-            max_tool_rounds=2, on_tool_start=on_tool_start)
-    except LLMServiceError as exc:
-        logger.warning("tool-flow LLM error: %s", exc)
-        await renderer.finalize(ERROR_NOTICE_PLAIN)
-        await notify_owner_error(
-            message.bot, exc,
-            tg_id=message.from_user.id if message.from_user else None,
-            username=message.from_user.username if message.from_user else None,
-            context=f"LLM tool-flow ({'GR' if is_group_chat else 'PM'})",
-            extra=f"chat_id={message.chat.id}; запрос: {text_for_llm[:300]}")
-        return True
-
-    if result.denial:
-        await renderer.finalize(result.denial)
-        return True
-
-    # Маркер [voice] срезаем всегда (даже при выключенной фиче); теги эмоций в тексте — мусор.
-    is_voice, answer_text = strip_voice_marker(result.text or "")
-    text_body = strip_voice_tags(answer_text) if is_voice else answer_text
-    final_answer = format_final_answer(first_name, text_body, has_context)
-    # При подавленном финале (тул сам отправил карточку) в контекст кладём служебную пометку
-    # тула вместо пустого ответа — чтобы продолжения («перенеси на 16:00») имели опору.
-    if result.suppress_text and result.context_note:
-        context_answer = result.context_note
-    elif is_group_chat:
-        context_answer = format_final_answer("", answer_text, has_context)
-    else:
-        context_answer = format_final_answer(first_name, answer_text, has_context)
-    context_service.save_context(message.chat.id, text_for_llm, context_answer)
-
-    # Тул уже отправил готовое сообщение (карточка/подтверждение напоминания) — финальную
-    # фразу LLM не показываем, только убираем плейсхолдер ожидания. Контекст уже сохранён выше.
-    if result.suppress_text:
-        await renderer.stop_voice_action()
-        await renderer.discard()
-        await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
-        logger.info("%s; Бот (tool: %s) для %s: [тихо — тул отправил сообщение сам]",
-                    "GR" if is_group_chat else "PM",
-                    ", ".join(result.called_tools) or "?", user_login or "?")
-        return True
-
-    if should_send_voice(is_voice=is_voice, text=answer_text, called_tools=result.called_tools,
-                         tool_context=tool_context, is_group_chat=is_group_chat):
-        delivered = await _deliver_voice(message, answer_text, is_group_chat=is_group_chat)
-        if delivered:
-            await renderer.stop_voice_action()
-            await renderer.discard()  # идемпотентно: «Думаю…» могло остаться, если маркер не прошёл через feed
-            await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
-            logger.info("%s; Бот (%s) для %s: %s", "GR" if is_group_chat else "PM",
-                        _flow_label(streamed=False, called_tools=result.called_tools, voice=True),
-                        user_login or "?", answer_text)
+        try:
+            result: ToolLoopResult = await run_tool_loop(
+                messages, tool_context, registry=registry, llm_call=llm_call,
+                max_tool_rounds=2, on_tool_start=on_tool_start)
+        except LLMServiceError as exc:
+            logger.warning("tool-flow LLM error: %s", exc)
+            await renderer.finalize(ERROR_NOTICE_PLAIN)
+            await notify_owner_error(
+                message.bot, exc,
+                tg_id=message.from_user.id if message.from_user else None,
+                username=message.from_user.username if message.from_user else None,
+                context=f"LLM tool-flow ({'GR' if is_group_chat else 'PM'})",
+                extra=f"chat_id={message.chat.id}; запрос: {text_for_llm[:300]}")
             return True
 
-    if not await renderer.finalize(final_answer):
-        logger.warning("%s; tool-flow finalize не доставил ответ для %s",
-                       "GR" if is_group_chat else "PM", user_login or "?")
-        await notify_owner_error(
-            message.bot, Exception("finalize failed"),
-            tg_id=message.from_user.id if message.from_user else None,
-            username=message.from_user.username if message.from_user else None,
-            context=f"Telegram delivery tool-flow ({'GR' if is_group_chat else 'PM'})",
-            extra=f"chat_id={message.chat.id}; ответ: {final_answer[:300]}")
-        return True
+        if result.denial:
+            await renderer.finalize(result.denial)
+            return True
 
-    await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
-    flow_label = _flow_label(streamed=renderer.streamed, called_tools=result.called_tools)
-    logger.info("%s; Бот (%s) для %s: %s", "GR" if is_group_chat else "PM",
-                flow_label, user_login or "?", final_answer)
-    return True
+        # Маркер [voice] срезаем всегда (даже при выключенной фиче); теги эмоций в тексте — мусор.
+        is_voice, answer_text = strip_voice_marker(result.text or "")
+        text_body = strip_voice_tags(answer_text) if is_voice else answer_text
+        final_answer = format_final_answer(first_name, text_body, has_context)
+        # При подавленном финале (тул сам отправил карточку) в контекст кладём служебную пометку
+        # тула вместо пустого ответа — чтобы продолжения («перенеси на 16:00») имели опору.
+        if result.suppress_text and result.context_note:
+            context_answer = result.context_note
+        elif is_group_chat:
+            context_answer = format_final_answer("", text_body, has_context)
+        else:
+            context_answer = format_final_answer(first_name, text_body, has_context)
+        context_service.save_context(message.chat.id, text_for_llm, context_answer)
+
+        # Тул уже отправил готовое сообщение (карточка/подтверждение напоминания) — финальную
+        # фразу LLM не показываем, только убираем плейсхолдер ожидания. Контекст уже сохранён выше.
+        if result.suppress_text:
+            await renderer.stop_voice_action()
+            await renderer.discard()
+            await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
+            logger.info("%s; Бот (tool: %s) для %s: [тихо — тул отправил сообщение сам]",
+                        "GR" if is_group_chat else "PM",
+                        ", ".join(result.called_tools) or "?", user_login or "?")
+            return True
+
+        if should_send_voice(is_voice=is_voice, text=answer_text, called_tools=result.called_tools,
+                             tool_context=tool_context, is_group_chat=is_group_chat):
+            delivered = await _deliver_voice(message, answer_text, is_group_chat=is_group_chat)
+            if delivered:
+                await renderer.stop_voice_action()
+                await renderer.discard()  # идемпотентно: «Думаю…» могло остаться, если маркер не прошёл через feed
+                await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
+                logger.info("%s; Бот (%s) для %s: %s", "GR" if is_group_chat else "PM",
+                            _flow_label(streamed=False, called_tools=result.called_tools, voice=True),
+                            user_login or "?", answer_text)
+                return True
+
+        if not await renderer.finalize(final_answer):
+            logger.warning("%s; tool-flow finalize не доставил ответ для %s",
+                           "GR" if is_group_chat else "PM", user_login or "?")
+            await notify_owner_error(
+                message.bot, Exception("finalize failed"),
+                tg_id=message.from_user.id if message.from_user else None,
+                username=message.from_user.username if message.from_user else None,
+                context=f"Telegram delivery tool-flow ({'GR' if is_group_chat else 'PM'})",
+                extra=f"chat_id={message.chat.id}; ответ: {final_answer[:300]}")
+            return True
+
+        await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
+        flow_label = _flow_label(streamed=renderer.streamed, called_tools=result.called_tools)
+        logger.info("%s; Бот (%s) для %s: %s", "GR" if is_group_chat else "PM",
+                    flow_label, user_login or "?", final_answer)
+        return True
+    finally:
+        await renderer.stop_voice_action()

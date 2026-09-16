@@ -87,6 +87,7 @@ async def mp3_to_ogg(mp3: bytes) -> bytes:
         out, err = await asyncio.wait_for(proc.communicate(mp3), timeout=FFMPEG_TIMEOUT_SEC)
     except asyncio.TimeoutError as exc:
         proc.kill()
+        await proc.wait()
         raise TTSServiceError("ffmpeg таймаут") from exc
     if proc.returncode != 0 or not out:
         raise TTSServiceError(f"ffmpeg код {proc.returncode}: {err.decode(errors='replace')[:300]}")

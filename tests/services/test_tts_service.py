@@ -61,6 +61,28 @@ async def test_synthesize_voice_composes(monkeypatch):
     assert await tts.synthesize_voice("привет") == b"OggS"
 
 
+async def test_mp3_to_ogg_timeout_waits_after_kill(monkeypatch):
+    calls = []
+
+    class FakeProc:
+        def kill(self):
+            calls.append("kill")
+
+        async def wait(self):
+            calls.append("wait")
+
+        async def communicate(self, data):
+            raise tts.asyncio.TimeoutError()
+
+    async def fake_exec(*args, **kwargs):
+        return FakeProc()
+
+    monkeypatch.setattr(tts.asyncio, "create_subprocess_exec", fake_exec)
+    with pytest.raises(TTSServiceError, match="таймаут"):
+        await tts.mp3_to_ogg(b"ID3")
+    assert calls == ["kill", "wait"]
+
+
 async def test_mp3_to_ogg_nonzero_exit(monkeypatch):
     class FakeProc:
         returncode = 1
