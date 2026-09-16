@@ -5,6 +5,7 @@
 """
 import asyncio
 import logging
+import re
 import ssl
 
 import aiohttp
@@ -94,8 +95,13 @@ async def mp3_to_ogg(mp3: bytes) -> bytes:
     return out
 
 
+def prepare_speech_text(text: str) -> str:
+    """Тире между словами MiniMax проглатывает без паузы — заменяем на короткую паузу."""
+    return re.sub(r"\s+[—–]\s+", " <#0.3#> ", text)
+
+
 async def synthesize_voice(text: str) -> bytes:
     """Текст → готовые байты OGG/Opus для sendVoice."""
-    status, body = await _request_t2a(text)
+    status, body = await _request_t2a(prepare_speech_text(text))
     mp3 = parse_t2a_response(status, body)
     return await mp3_to_ogg(mp3)

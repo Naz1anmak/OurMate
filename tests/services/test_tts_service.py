@@ -105,3 +105,9 @@ async def test_mp3_to_ogg_real_ffmpeg():
         capture_output=True, check=True).stdout
     ogg = await tts.mp3_to_ogg(mp3)
     assert ogg[:4] == b"OggS"
+
+
+def test_prepare_speech_text_turns_dash_into_pause():
+    assert tts.prepare_speech_text("Дела как у всех в сентябре — в аудитории") == \
+        "Дела как у всех в сентябре <#0.3#> в аудитории"
+    assert tts.prepare_speech_text("имя-отчество") == "имя-отчество"
