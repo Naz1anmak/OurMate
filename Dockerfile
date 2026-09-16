@@ -7,9 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     TZ=Europe/Moscow
 
-# tzdata нужен для zoneinfo (Europe/Moscow), curl полезен для отладки
+# tzdata нужен для zoneinfo (Europe/Moscow), curl полезен для отладки,
+# ffmpeg перекодирует mp3 от TTS в OGG/Opus для голосовых сообщений
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tzdata curl \
+ && apt-get install -y --no-install-recommends tzdata curl ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -57,6 +57,16 @@ TAVILY_URL = _get_env("TAVILY_URL", "https://api.tavily.com/search", log_default
 TAVILY_MAX_RESULTS = _get_env("TAVILY_MAX_RESULTS", 5, cast=int, log_default=True)
 TAVILY_SEARCH_DEPTH = _get_env("TAVILY_SEARCH_DEPTH", "basic", log_default=True)
 
+# ===== ГОЛОС (MiniMax TTS) =====
+# Пустой ключ или voice_id → голосовые ответы выключены, бот отвечает только текстом.
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY") or None
+MINIMAX_VOICE_ID = os.getenv("MINIMAX_VOICE_ID") or None
+MINIMAX_TTS_MODEL = _get_env("MINIMAX_TTS_MODEL", "speech-2.8-hd", log_default=False)
+# api-uw.minimax.io — альтернативный endpoint с меньшей задержкой до первого аудио.
+MINIMAX_API_BASE = _get_env("MINIMAX_API_BASE", "https://api.minimax.io", log_default=False).rstrip("/")
+# Ответ короче порога всегда уходит текстом, даже если модель пометила его [voice].
+VOICE_MIN_CHARS = _get_env("VOICE_MIN_CHARS", 35, cast=int, log_default=False)
+
 # ===== Напоминания =====
 REMINDER_DB_PATH = _get_env("REMINDER_DB_PATH", "data/reminders.db", log_default=True)
 REMINDER_MISFIRE_HOURS = _get_env("REMINDER_MISFIRE_HOURS", 24, cast=int, log_default=True)
