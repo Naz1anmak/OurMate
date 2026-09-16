@@ -61,6 +61,7 @@ async def handle_private_chat(message: Message, bot_username: str, bot_id: int, 
         "is_group": False,
         "is_group_main": False,
         "is_owner": bool(ctx and ctx.get("is_owner")),
+        "is_whitelisted_private": bool(ctx and ctx.get("is_whitelisted_private")),
     }
     await run_schedule_aware_response(
         message, messages, first_name, user_login, text_for_llm,

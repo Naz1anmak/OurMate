@@ -184,3 +184,102 @@ async def test_finalize_stops_voice_action(fake_sender):
     await r.finalize("текстовый фолбэк")
     assert fake_sender.instances[0].exited
     message.reply.assert_awaited()                          # плейсхолдера нет → reply
+
+
+from src.bot.services.llm_tools import ToolLoopResult
+from src.bot.services.tts_service import TTSServiceError
+
+
+def _flow_message(chat_type):
+    message = AsyncMock()
+    message.chat.type = chat_type
+    message.chat.id = 1
+    message.from_user.id = 7
+    message.from_user.username = "u"
+    return message
+
+
+def _patch_flow(monkeypatch, text, *, called_tools=None, synth=None):
+    async def fake_loop(messages, tool_context, *, registry, llm_call, on_tool_start=None, **kw):
+        return ToolLoopResult(text=text, called_tools=called_tools or [])
+
+    async def ok_synth(t):
+        return b"OggS"
+
+    saved, notified = {}, {"n": 0}
+
+    async def fake_notify(*a, **k):
+        notified["n"] += 1
+
+    monkeypatch.setattr(flow, "run_tool_loop", fake_loop)
+    monkeypatch.setattr(flow, "synthesize_voice", synth or ok_synth)
+    monkeypatch.setattr(flow, "notify_owner_error", fake_notify)
+    monkeypatch.setattr(flow, "is_voice_enabled", lambda: True)
+    monkeypatch.setattr(flow, "ChatActionSender", FakeSender)
+    monkeypatch.setattr(flow.context_service, "save_context",
+                        lambda chat_id, q, a: saved.update(answer=a))
+    return saved, notified
+
+
+async def test_flow_group_sends_voice(monkeypatch):
+    saved, notified = _patch_flow(monkeypatch, f"[voice]\n{LONG} (laughs)")
+    message = _flow_message("supergroup")
+    await flow.run_schedule_aware_response(message, [], "", "u", "q", False, {}, registry=object())
+    message.reply_voice.assert_awaited_once()
+    assert message.reply_voice.await_args.args[0].data == b"OggS"
+    message.bot.edit_message_text.assert_not_awaited()      # текстового финала нет
+    message.bot.delete_message.assert_awaited()             # «Думаю…» убрано
+    assert saved["answer"] == f"{LONG} (laughs)"            # в контексте без маркера
+    assert notified["n"] == 0
+
+
+async def test_flow_pm_whitelisted_sends_voice(monkeypatch):
+    _patch_flow(monkeypatch, f"[voice] {LONG}")
+    message = _flow_message("private")
+    await flow.run_schedule_aware_response(message, [], "", "u", "q", False,
+                                           {"is_whitelisted_private": True}, registry=object())
+    message.answer_voice.assert_awaited_once()
+
+
+async def test_flow_pm_stranger_gets_text(monkeypatch):
+    _patch_flow(monkeypatch, f"[voice] {LONG} (sighs)")
+    message = _flow_message("private")
+    await flow.run_schedule_aware_response(message, [], "", "u", "q", False, {}, registry=object())
+    message.answer_voice.assert_not_awaited()
+    sent = message.answer.await_args.args[0]
+    assert "[voice]" not in sent and "(sighs)" not in sent
+
+
+async def test_flow_tts_error_falls_back_to_text(monkeypatch):
+    async def boom(t):
+        raise TTSServiceError("minimax down")
+
+    _, notified = _patch_flow(monkeypatch, f"[voice] {LONG}", synth=boom)
+    message = _flow_message("supergroup")
+    await flow.run_schedule_aware_response(message, [], "", "u", "q", False, {}, registry=object())
+    message.reply_voice.assert_not_awaited()
+    message.reply.assert_awaited()                          # текстовый фолбэк
+    assert notified["n"] == 1
+
+
+async def test_flow_voice_forbidden_pm_no_owner_notify(monkeypatch):
+    from aiogram.exceptions import TelegramBadRequest
+    _, notified = _patch_flow(monkeypatch, f"[voice] {LONG}")
+    message = _flow_message("private")
+    message.answer_voice.side_effect = TelegramBadRequest(
+        method=AsyncMock(), message="Bad Request: VOICE_MESSAGES_FORBIDDEN")
+    await flow.run_schedule_aware_response(message, [], "", "u", "q", False,
+                                           {"is_owner": True}, registry=object())
+    message.answer.assert_awaited()                         # текстом
+    assert notified["n"] == 0
+
+
+async def test_flow_voice_marker_with_tools_goes_text(monkeypatch):
+    _patch_flow(monkeypatch, f"[voice] {LONG}", called_tools=["web_search"])
+    message = _flow_message("supergroup")
+    await flow.run_schedule_aware_response(message, [], "", "u", "q", False, {}, registry=object())
+    message.reply_voice.assert_not_awaited()
+
+
+def test_flow_label_voice():
+    assert flow._flow_label(streamed=False, called_tools=[], voice=True) == "LLM voice"

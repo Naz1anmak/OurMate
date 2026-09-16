@@ -5,8 +5,8 @@ import time
 import html as _html
 import re
 
-from aiogram.types import Message
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.types import BufferedInputFile, Message
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import SendMessageDraft
 from aiogram.enums import ChatAction
 from aiogram.utils.chat_action import ChatActionSender
@@ -15,7 +15,7 @@ from src.bot.services.llm_service import LLMServiceError, stream_with_tools
 from src.bot.services.llm_tools import run_tool_loop, ToolLoopResult
 from src.bot.services.context_service import context_service
 from src.bot.services.usage_limit import enforce_usage_limit
-from src.bot.services.tts_service import is_voice_enabled
+from src.bot.services.tts_service import TTSServiceError, is_voice_enabled, synthesize_voice
 from src.config.settings import VOICE_MIN_CHARS
 
 from src.bot.handlers.errors import notify_owner_error
@@ -439,9 +439,9 @@ VOICE_NOTE = (
 )
 
 
-def _flow_label(*, streamed: bool, called_tools: list[str]) -> str:
-    """Метка для лога: ось доставки (LLM / LLM stream) + факт вызова тулов."""
-    delivery = "LLM stream" if streamed else "LLM"
+def _flow_label(*, streamed: bool, called_tools: list[str], voice: bool = False) -> str:
+    """Метка для лога: ось доставки (LLM / LLM stream / LLM voice) + факт вызова тулов."""
+    delivery = "LLM voice" if voice else ("LLM stream" if streamed else "LLM")
     parts = [delivery]
     if called_tools:
         parts.append(f"tool: {', '.join(called_tools)}")
@@ -456,6 +456,34 @@ def _inject_system_note(messages: list, note: str) -> list:
         at += 1
     msgs.insert(at, {"role": "system", "content": note})
     return msgs
+
+
+async def _deliver_voice(message, text: str, *, is_group_chat: bool) -> bool:
+    """Синтез и отправка голосового. False — не вышло, вызывающий шлёт тот же ответ текстом."""
+    tg_id = message.from_user.id if message.from_user else None
+    username = message.from_user.username if message.from_user else None
+    label = "GR" if is_group_chat else "PM"
+    try:
+        voice = BufferedInputFile(await synthesize_voice(text), filename="voice.ogg")
+        if is_group_chat:
+            await message.reply_voice(voice)
+        else:
+            await message.answer_voice(voice)
+        return True
+    except TelegramBadRequest as exc:
+        if "VOICE_MESSAGES_FORBIDDEN" in str(exc):
+            # Пользователь запретил себе голосовые — это не сбой, просто отвечаем текстом.
+            logger.info("%s; голосовые запрещены у получателя, шлём текст", label)
+            return False
+        await notify_owner_error(message.bot, exc, tg_id=tg_id, username=username,
+                                 context=f"Telegram voice delivery ({label})",
+                                 extra=f"chat_id={message.chat.id}")
+        return False
+    except Exception as exc:  # noqa: BLE001 — TTSServiceError и любой сбой доставки → текстовый фолбэк
+        logger.warning("%s; голосовой ответ не отправлен: %s", label, exc)
+        await notify_owner_error(message.bot, exc, tg_id=tg_id, username=username,
+                                 context=f"TTS ({label})", extra=f"chat_id={message.chat.id}")
+        return False
 
 
 async def run_schedule_aware_response(
@@ -476,8 +504,11 @@ async def run_schedule_aware_response(
     messages = _inject_system_note(messages, WEB_SEARCH_NOTE)
     messages = _inject_system_note(messages, REMINDER_NOTE)
     messages = _inject_system_note(messages, NOTES_NOTE)
+    voice_enabled = is_voice_enabled()
+    if voice_enabled:
+        messages = _inject_system_note(messages, VOICE_NOTE)
     prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
-    renderer = StreamRenderer(message, prefix=prefix)
+    renderer = StreamRenderer(message, prefix=prefix, detect_voice=voice_enabled)
     await renderer.start(pick_placeholder_variant().text)
 
     # Один и тот же приёмник на обе фазы стрима. На старте тула буфер сбрасывается (reset_buffer),
@@ -508,26 +539,42 @@ async def run_schedule_aware_response(
         await renderer.finalize(result.denial)
         return True
 
-    final_answer = format_final_answer(first_name, result.text or "", has_context)
+    # Маркер [voice] срезаем всегда (даже при выключенной фиче); теги эмоций в тексте — мусор.
+    is_voice, answer_text = strip_voice_marker(result.text or "")
+    text_body = strip_voice_tags(answer_text) if is_voice else answer_text
+    final_answer = format_final_answer(first_name, text_body, has_context)
     # При подавленном финале (тул сам отправил карточку) в контекст кладём служебную пометку
     # тула вместо пустого ответа — чтобы продолжения («перенеси на 16:00») имели опору.
     if result.suppress_text and result.context_note:
         context_answer = result.context_note
     elif is_group_chat:
-        context_answer = format_final_answer("", result.text or "", has_context)
+        context_answer = format_final_answer("", answer_text, has_context)
     else:
-        context_answer = final_answer
+        context_answer = format_final_answer(first_name, answer_text, has_context)
     context_service.save_context(message.chat.id, text_for_llm, context_answer)
 
     # Тул уже отправил готовое сообщение (карточка/подтверждение напоминания) — финальную
     # фразу LLM не показываем, только убираем плейсхолдер ожидания. Контекст уже сохранён выше.
     if result.suppress_text:
+        await renderer.stop_voice_action()
         await renderer.discard()
         await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
         logger.info("%s; Бот (tool: %s) для %s: [тихо — тул отправил сообщение сам]",
                     "GR" if is_group_chat else "PM",
                     ", ".join(result.called_tools) or "?", user_login or "?")
         return True
+
+    if should_send_voice(is_voice=is_voice, text=answer_text, called_tools=result.called_tools,
+                         tool_context=tool_context, is_group_chat=is_group_chat):
+        delivered = await _deliver_voice(message, answer_text, is_group_chat=is_group_chat)
+        if delivered:
+            await renderer.stop_voice_action()
+            await renderer.discard()  # идемпотентно: «Думаю…» могло остаться, если маркер не прошёл через feed
+            await send_tool_loop_extras(message, deferred_messages=result.deferred_messages, denial=None)
+            logger.info("%s; Бот (%s) для %s: %s", "GR" if is_group_chat else "PM",
+                        _flow_label(streamed=False, called_tools=result.called_tools, voice=True),
+                        user_login or "?", answer_text)
+            return True
 
     if not await renderer.finalize(final_answer):
         logger.warning("%s; tool-flow finalize не доставил ответ для %s",
