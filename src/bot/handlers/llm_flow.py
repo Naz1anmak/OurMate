@@ -8,11 +8,15 @@ import re
 from aiogram.types import Message
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.methods import SendMessageDraft
+from aiogram.enums import ChatAction
+from aiogram.utils.chat_action import ChatActionSender
 
 from src.bot.services.llm_service import LLMServiceError, stream_with_tools
 from src.bot.services.llm_tools import run_tool_loop, ToolLoopResult
 from src.bot.services.context_service import context_service
 from src.bot.services.usage_limit import enforce_usage_limit
+from src.bot.services.tts_service import is_voice_enabled
+from src.config.settings import VOICE_MIN_CHARS
 
 from src.bot.handlers.errors import notify_owner_error
 from src.utils.render_utils import render_html_with_code
@@ -66,6 +70,48 @@ def _trim_html(text: str, visible_limit: int = 4050, hard_limit: int = 4700) -> 
         truncated = text[:visible_limit]
 
     return truncated.rstrip() + "…"
+
+VOICE_MARKER = "[voice]"
+
+# Теги эмоций и паузы MiniMax (speech-2.8): в голосе звучат, в тексте — мусор.
+_VOICE_TAG_RE = re.compile(
+    r"\s*\((?:laughs|chuckle|coughs|clear-throat|groans|breath|pant|inhale|exhale|gasps|sniffs|"
+    r"sighs|snorts|burps|lip-smacking|humming|hissing|emm|sneezes)\)"
+    r"|\s*<#\d+(?:\.\d+)?#>")
+
+
+def detect_voice_marker(text: str) -> bool | None:
+    """По началу ответа: True — голос, False — текст, None — рано судить (пришла часть маркера)."""
+    head = text.lstrip()
+    if head.startswith(VOICE_MARKER):
+        return True
+    if VOICE_MARKER.startswith(head):
+        return None
+    return False
+
+
+def strip_voice_marker(text: str) -> tuple[bool, str]:
+    """Срезает маркер [voice] в начале ответа. Маркер не в начале — не маркер."""
+    head = text.lstrip()
+    if head.startswith(VOICE_MARKER):
+        return True, head[len(VOICE_MARKER):].lstrip()
+    return False, text
+
+
+def strip_voice_tags(text: str) -> str:
+    """Убирает теги эмоций и паузы, когда голосовой ответ всё-таки уходит текстом."""
+    return _VOICE_TAG_RE.sub("", text).strip()
+
+
+def should_send_voice(*, is_voice: bool, text: str, called_tools: list[str],
+                      tool_context: dict, is_group_chat: bool) -> bool:
+    """Голос — только по маркеру модели, без тулов, не короче порога; в ЛС — владельцу и whitelisted."""
+    if not (is_voice and is_voice_enabled()) or called_tools:
+        return False
+    if len(strip_voice_tags(text)) < VOICE_MIN_CHARS:
+        return False
+    return is_group_chat or bool(tool_context.get("is_owner") or tool_context.get("is_whitelisted_private"))
+
 
 def format_final_answer(first_name: str, answer_body: str, has_context: bool) -> str:
     """Форматирует финальный ответ с обращением по имени, если контекст пуст."""
@@ -341,6 +387,17 @@ NOTES_NOTE = (
     "Если в одном сообщении просят несколько действий (например добавить и сразу дать примечание) "
     "— вызови нужные тулы по очереди, не ограничивайся текстом. Карточку бот перерисует сам; "
     "ты отвечай одной короткой фразой."
+)
+
+VOICE_NOTE = (
+    "Голосовые ответы. Если обращение НЕ техническое — болтовня, шутка, подкол, приветствие, "
+    "просьба ответить дерзко или с характером — и для ответа не нужен ни один тул, начни ответ "
+    f"с отдельной первой строки {VOICE_MARKER}, а дальше напиши реплику, которую произнесут вслух: "
+    "живым разговорным языком, без markdown, списков, эмодзи, ссылок и обращения по имени в начале. "
+    "Изредка, где к месту, можно вставить паузу вида <#0.5#>. Звуки в скобках (смех, вздохи) "
+    "не используй. "
+    f"Технические и учебные вопросы, расписание, списки, напоминания, поиск — БЕЗ {VOICE_MARKER}, "
+    "обычным текстовым ответом."
 )
 
 
