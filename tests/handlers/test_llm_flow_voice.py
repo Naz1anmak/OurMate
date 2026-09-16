@@ -92,10 +92,12 @@ def test_should_send_voice_blockers(voice_on, monkeypatch):
     assert should_send_voice(is_voice=True, called_tools=[], **kw) is False
 
 
-def test_voice_note_mentions_marker_without_sound_tags():
+def test_voice_note_allows_only_calm_sound_tags():
     assert VOICE_MARKER in flow.VOICE_NOTE
     assert "<#0.5#>" in flow.VOICE_NOTE
-    assert "(laughs)" not in flow.VOICE_NOTE
+    for tag in ("(sighs)", "(chuckle)", "(emm)"):
+        assert tag in flow.VOICE_NOTE
+    assert "(sneezes)" not in flow.VOICE_NOTE
 
 
 class FakeSender:
