@@ -186,7 +186,7 @@ class StreamRenderer:
     EDIT_BUDGET_PER_MIN = 14
     EDIT_WINDOW_SEC = 60.0
 
-    def __init__(self, message, *, prefix: str = ""):
+    def __init__(self, message, *, prefix: str = "", detect_voice: bool = False):
         self.message = message
         self.is_group = message.chat.type in ("group", "supergroup")
         self.use_draft = message.chat.type == "private"
@@ -197,6 +197,11 @@ class StreamRenderer:
         self.buffer = prefix
         self.last_sent_len = len(prefix)
         self.last_flush = 0.0
+        # Голос: None — ещё не ясно по началу ответа, True — ответ уйдёт голосовым (стрим молчит),
+        # False — обычный текст. detect_voice=False — детект выключен, стрим как раньше.
+        self.detect_voice = detect_voice
+        self.voice_mode: bool | None = None
+        self._voice_action: ChatActionSender | None = None
         # Базовая частота: оба порога обязательны (см. feed). Держим её высокой — короткий ответ
         # должен рисоваться живо; от превышения лимита защищает бюджет окна, а не эти пороги.
         self.min_interval = 1.0 if self.is_group else 0.5
@@ -227,11 +232,34 @@ class StreamRenderer:
         except Exception as exc:  # noqa: BLE001
             logger.debug("show_tool_indicator failed: %s", exc)
 
+    async def _enter_voice_mode(self) -> None:
+        """Убираем «Думаю…» и держим в шапке «записывает голосовое», пока не придёт аудио."""
+        await self.discard()
+        if self._voice_action is None:
+            self._voice_action = ChatActionSender(
+                bot=self.message.bot, chat_id=self.message.chat.id, action=ChatAction.RECORD_VOICE)
+            try:
+                await self._voice_action.__aenter__()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("StreamRenderer voice action start failed: %s", exc)
+                self._voice_action = None
+
+    async def stop_voice_action(self) -> None:
+        """Гасит фоновый chat action. Идемпотентно."""
+        if self._voice_action is None:
+            return
+        action, self._voice_action = self._voice_action, None
+        try:
+            await action.__aexit__(None, None, None)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("StreamRenderer voice action stop failed: %s", exc)
+
     def reset_buffer(self) -> None:
         """Сброс буфера на префикс при старте тула: до-тульная болтовня не должна примешаться
         к пост-тульному ответу следующего раунда (web_search и т.п.)."""
         self.buffer = self.prefix
         self.last_sent_len = len(self.prefix)
+        self.voice_mode = None
 
     def _budget_left(self, now: float) -> bool:
         """Есть ли в скользящем окне место под ещё один эдит. В ЛС бюджет не считаем: там драфты,
@@ -244,6 +272,15 @@ class StreamRenderer:
 
     async def feed(self, token: str) -> None:
         self.buffer += token
+        if self.detect_voice and self.voice_mode is None:
+            decided = detect_voice_marker(self.buffer[len(self.prefix):])
+            if decided is None:
+                return  # пришла только часть маркера — ничего не показываем
+            self.voice_mode = decided
+            if decided:
+                await self._enter_voice_mode()
+        if self.voice_mode:
+            return  # голосовой ответ: токены копятся, кадры не рисуем
         now = self._now()
         # Раньше здесь было `and`: хватало набежавших символов, и поле по времени не работало
         # вовсе — длинный ответ уходил десятками эдитов и ловил флуд-контроль на финале.
@@ -308,6 +345,7 @@ class StreamRenderer:
 
     async def finalize(self, final_text: str) -> bool:
         """Фиксирует финал: эдит плейсхолдера (группа) или реальное сообщение (ЛС — драфт эфемерен)."""
+        await self.stop_voice_action()
         safe = _trim_html(render_html_with_code(final_text))
         try:
             if self.use_draft:
