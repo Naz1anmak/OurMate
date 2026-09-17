@@ -41,3 +41,10 @@ def test_build_llm_messages_injects_time_context_system():
     assert messages[1]["role"] == "system"           # контекст времени
     assert "сегодня" in messages[1]["content"].lower()
     assert messages[-1] == {"role": "user", "content": "что в субботу?"}
+
+
+def test_label_group_speaker_prefixes_author():
+    from src.bot.handlers.chat_context import label_group_speaker
+    assert label_group_speaker("Нифига себе", "Мария") == "Мария: Нифига себе"
+    assert label_group_speaker("", "Мария") == ""
+    assert label_group_speaker("привет", "") == "привет"

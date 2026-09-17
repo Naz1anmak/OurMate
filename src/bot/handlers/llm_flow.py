@@ -463,6 +463,14 @@ def _flow_label(*, streamed: bool, called_tools: list[str], voice: bool = False)
     return "; ".join(parts)
 
 
+GROUP_SPEAKERS_NOTE = (
+    "Это групповой чат: пишут разные люди, перед каждой репликой стоит имя автора («Имя: текст»). "
+    "Отвечай автору последнего сообщения, род обращения выбирай по его имени и не переноси на него "
+    "то, что говорили другие. Сам ответ имя-префиксом не начинай. Замечание про обращение на «Вы» "
+    "и по имени-отчеству делай только на явную фамильярность в твой адрес и не повторяй, если уже делал."
+)
+
+
 def _inject_system_note(messages: list, note: str) -> list:
     """Вставляет system-заметку после ведущих system-сообщений, не мутируя исходный список."""
     msgs = list(messages)
@@ -519,6 +527,8 @@ async def run_schedule_aware_response(
     messages = _inject_system_note(messages, WEB_SEARCH_NOTE)
     messages = _inject_system_note(messages, REMINDER_NOTE)
     messages = _inject_system_note(messages, NOTES_NOTE)
+    if is_group_chat:
+        messages = _inject_system_note(messages, GROUP_SPEAKERS_NOTE)
     voice_enabled = is_voice_enabled()
     if voice_enabled:
         messages = _inject_system_note(messages, VOICE_NOTE)

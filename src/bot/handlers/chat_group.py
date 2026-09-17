@@ -11,6 +11,7 @@ from src.bot.handlers.chat_context import (
     extract_user_login,
     strip_bot_mention,
     build_group_llm_input,
+    label_group_speaker,
     build_llm_messages,
 )
 from src.bot.handlers.llm_flow import run_schedule_aware_response, ERROR_NOTICE_PLAIN
@@ -82,6 +83,7 @@ async def handle_group_chat(message: Message, bot_username: str, bot_id: int, ct
     first_name = get_first_name_by_user_id(message.from_user.id, birthday_service.users)
     existing_context = context_service.get_context(chat_id)
     has_context = bool(existing_context)
+    text_for_llm = label_group_speaker(text_for_llm, first_name or user_name)
     llm_input_text = build_group_llm_input(message, text_for_llm, bot_id)
     messages = build_llm_messages(chat_id, llm_input_text)
 

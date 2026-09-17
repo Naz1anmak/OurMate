@@ -118,6 +118,14 @@ def build_group_llm_input(
         "Пользователь обратился к тебе в реплае без дополнительного текста."
     )
 
+def label_group_speaker(text: str, speaker: str) -> str:
+    """В группе контекст общий на чат — подписываем автора, чтобы LLM не путал собеседников."""
+    text = (text or "").strip()
+    if not text or not speaker:
+        return text
+    return f"{speaker}: {text}"
+
+
 def build_llm_messages(chat_id: int, current_text: str, user_id: int | None = None) -> list:
     """Формирует список сообщений для отправки в LLM."""
     messages = [
