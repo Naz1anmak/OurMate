@@ -532,11 +532,13 @@ async def run_schedule_aware_response(
     messages = _inject_system_note(messages, NOTES_NOTE)
     if is_group_chat:
         messages = _inject_system_note(messages, GROUP_SPEAKERS_NOTE)
-    voice_enabled = is_voice_enabled()
-    if voice_enabled:
+    # Инструкцию про [voice] даём только тем, кому голос реально дойдёт: иначе модель ставит
+    # маркер, ответ уходит текстом (should_send_voice), а в контексте следа не остаётся — и дальше
+    # она уверяет собеседника, что «отвечает голосом».
+    detect_voice = is_voice_enabled() and _voice_audience_allowed(tool_context, is_group_chat)
+    if detect_voice:
         messages = _inject_system_note(messages, VOICE_NOTE)
     prefix = f"{first_name}, " if (first_name and not has_context and not is_group_chat) else ""
-    detect_voice = voice_enabled and _voice_audience_allowed(tool_context, is_group_chat)
     renderer = StreamRenderer(message, prefix=prefix, detect_voice=detect_voice)
     await renderer.start(pick_placeholder_variant().text)
 
