@@ -7,8 +7,8 @@ services:
     environment:
       TZ: Europe/Moscow
     volumes:
-      # Папка с birthdays.json, кэшами планировщиков и .ics-файлами расписания.
-      # Bind-mount, чтобы можно было править birthdays.json и подкидывать .ics
+      # Папка с birthdays.json, SQLite-базами, кэшами планировщиков и логами.
+      # Bind-mount, чтобы можно было править birthdays.json и читать data/logs/
       # прямо на VPS, без захода в контейнер.
       - ./data:/app/data
     logging:

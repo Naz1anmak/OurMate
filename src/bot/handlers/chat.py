@@ -86,14 +86,6 @@ async def on_mention_or_reply(message: Message):
         return
 
     if ctx:
-        if ctx["normalized_text"] == "напоминания":
-            await handle_reminders_command(message)
-            return
-
-        if ctx["normalized_text"] == "списки":
-            await handle_lists_command(message)
-            return
-
         audience = access.classify(ctx["normalized_text"])
         if audience is not None:
             decision = access.resolve(audience, ctx)
@@ -101,13 +93,19 @@ async def on_mention_or_reply(message: Message):
                 await access.send_denial(message, decision.denial)
                 return
             if audience is access.Audience.EVERYONE:
-                await handle_help_command(message, ctx["normalized_text"])
+                if ctx["normalized_text"] == "напоминания":
+                    await handle_reminders_command(message)
+                else:
+                    await handle_help_command(message, ctx["normalized_text"])
             elif audience is access.Audience.UNSUBSCRIBE:
                 await handle_unsubscribe_command(message, ctx["normalized_text"])
             elif audience is access.Audience.OWNER:
                 await handle_owner_command(message)
             elif audience is access.Audience.GROUP_ONLY:
-                await handle_ping_command(message)
+                if ctx["normalized_text"] == "списки":
+                    await handle_lists_command(message)
+                else:
+                    await handle_ping_command(message)
             else:  # Audience.PUBLIC / GROUP_OR_OWNER → общий роутер команд
                 await handle_public_commands(message, ctx)
             return

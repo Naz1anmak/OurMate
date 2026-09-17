@@ -34,6 +34,8 @@ def _ctx(*, is_owner=False, is_group_chat=False, is_group_main=False, is_whiteli
     ("пары завтра", Audience.PUBLIC),
     ("обнови расписание", Audience.GROUP_OR_OWNER),
     ("пинг", Audience.GROUP_ONLY),
+    ("списки", Audience.GROUP_ONLY),
+    ("напоминания", Audience.EVERYONE),
     ("logs", Audience.OWNER),
     ("full logs", Audience.OWNER),
     ("проверка ссылок", Audience.OWNER),
@@ -166,6 +168,12 @@ def test_ping_in_main_group_allowed():
 
 def test_ping_owner_in_group_allowed():
     assert resolve(Audience.GROUP_ONLY, _ctx(is_group_chat=True, is_owner=True)) == Decision(True, None)
+
+
+def test_lists_in_private_denied():
+    """«списки» — фича только беседы: в ЛС отказ, а не пустой обзор."""
+    d = resolve(classify("списки"), _ctx(is_group_chat=False, is_whitelisted_private=True))
+    assert d == Decision(False, DenialReason.GROUP_ONLY)
 
 
 def test_ping_foreign_group_denied():

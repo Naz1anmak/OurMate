@@ -73,7 +73,7 @@ _ALLOW = Decision(allowed=True, denial=None)
 
 def classify(normalized_text: str) -> Audience | None:
     """Командное слово → требуемая аудитория. None → это не команда (→ LLM)."""
-    if normalized_text in ("help", "команды"):
+    if normalized_text in ("help", "команды", "напоминания"):
         return Audience.EVERYONE
     if normalized_text == "отписаться":
         return Audience.UNSUBSCRIBE
@@ -81,7 +81,7 @@ def classify(normalized_text: str) -> Audience | None:
         return Audience.GROUP_OR_OWNER
     if is_public_command(normalized_text):
         return Audience.PUBLIC
-    if normalized_text == "пинг":
+    if normalized_text in ("пинг", "списки"):
         return Audience.GROUP_ONLY
     if normalized_text in OWNER_COMMANDS:
         return Audience.OWNER
