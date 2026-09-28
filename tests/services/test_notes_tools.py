@@ -74,12 +74,27 @@ async def test_create_list_duplicate(store):
 
 
 @pytest.mark.asyncio
-async def test_show_list_ambiguous(store):
+async def test_show_list_defaults_to_latest(store):
     await store.create(chat_id=-100, title="A", author_id=1, formal=False)
     await store.create(chat_id=-100, title="B", author_id=1, formal=False)
     res = await nt.show_list(tool_context=_ctx(), store=store)  # без title, >1
-    assert res["ok"] is False and res["error"] == "ambiguous"
-    assert set(res["titles"]) == {"A", "B"}
+    latest = await store.get_by_title(-100, "B")
+    assert res["ok"] is True and res["id"] == latest["id"]
+
+
+@pytest.mark.asyncio
+async def test_swap_without_title_hits_latest_list(store):
+    old = await store.create(chat_id=-100, title="Старая", author_id=42, formal=False)
+    new = await store.create(chat_id=-100, title="Свежая", author_id=42, formal=False)
+    for nid in (old, new):
+        for uid in (1, 2, 3):
+            await store.add_member(nid, user_id=uid, username=None, tg_name=f"U{uid}")
+    ctx = _ctx()
+    res = await nt.swap_in_list(a="1", b="3", tool_context=ctx, store=store, users=[])
+    assert res["ok"] is True and res["id"] == new
+    assert [m["user_id"] for m in await store.members(new)] == [3, 2, 1]
+    assert [m["user_id"] for m in await store.members(old)] == [1, 2, 3]
+    assert any("<b>Свежая</b>: Поменяны местами" in t for _c, t, _kw in ctx["bot"].sent)
 
 
 @pytest.mark.asyncio

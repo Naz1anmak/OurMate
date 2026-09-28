@@ -105,6 +105,16 @@ class NotesStore:
             row = await cur.fetchone()
             return dict(row) if row else None
 
+    async def latest_for_chat(self, chat_id: int) -> dict | None:
+        """Самый свежий список беседы (по дате создания) или None."""
+        async with self._db() as db:
+            await self._setup(db)
+            cur = await db.execute(
+                "SELECT * FROM notes WHERE chat_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+                (chat_id,))
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
     async def list_for_chat(self, chat_id: int) -> list[dict]:
         async with self._db() as db:
             await self._setup(db)
