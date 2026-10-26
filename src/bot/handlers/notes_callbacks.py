@@ -24,13 +24,15 @@ async def _require_can_modify(query: CallbackQuery, note_id: int, chat_id: int) 
     """Гейт мутирующих колбэков (fmt/del/clr): вернуть note, если можно, иначе None + алерт.
 
     Кнопки в группе видны всем, а callback_data подделываем — поэтому право на
-    изменение проверяем на сервере: автор списка или владелец беседы, та же беседа.
+    изменение проверяем на сервере: автор списка, владелец бота или админ беседы,
+    та же беседа.
     """
     note = await notes_store.get(note_id)
     is_owner = query.from_user.id == OWNER_CHAT_ID
     if (not note or note["chat_id"] != chat_id
-            or not ns.can_modify(note, user_id=query.from_user.id, is_owner=is_owner)):
-        await query.answer("Только автор списка или владелец беседы", show_alert=True)
+            or not await ns.may_modify(note, user_id=query.from_user.id, is_owner=is_owner,
+                                       bot=query.message.bot)):
+        await query.answer("Только автор списка или админ беседы", show_alert=True)
         return None
     return note
 

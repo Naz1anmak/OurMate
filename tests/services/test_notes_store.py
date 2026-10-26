@@ -191,13 +191,35 @@ async def test_cleanup_old(store):
     # Состарить запись напрямую в БД.
     import aiosqlite
     async with aiosqlite.connect(store.db_path) as db:
-        await db.execute("UPDATE notes SET created_at = datetime('now', '-40 days') WHERE id = ?", (old,))
+        await db.execute("UPDATE notes SET created_at = datetime('now', '-40 days'), "
+                         "updated_at = datetime('now', '-40 days') WHERE id = ?", (old,))
         await db.commit()
     removed = await store.cleanup_old(days=30)
     assert removed == 1
     assert await store.get(old) is None
     assert await store.count(old) == 0     # members старого вычищены
     assert await store.get(fresh) is not None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_old_keeps_recently_edited(store):
+    nid = await store.create(chat_id=-1, title="active", author_id=1, formal=False)
+    import aiosqlite
+    async with aiosqlite.connect(store.db_path) as db:
+        await db.execute("UPDATE notes SET created_at = datetime('now', '-40 days'), "
+                         "updated_at = datetime('now', '-40 days') WHERE id = ?", (nid,))
+        await db.commit()
+    await store.add_member(nid, user_id=5, username="u")  # правка освежает updated_at
+    assert await store.cleanup_old(days=30) == 0
+    assert await store.get(nid) is not None
+
+
+@pytest.mark.asyncio
+async def test_member_changes_touch_updated_at(store):
+    nid = await store.create(chat_id=-1, title="t", author_id=1, formal=False)
+    assert (await store.get(nid))["updated_at"] is None  # правок ещё не было
+    await store.add_member(nid, user_id=5, username="u")
+    assert (await store.get(nid))["updated_at"] is not None
 
 
 @pytest.mark.asyncio

@@ -1,10 +1,18 @@
 """Логика и рендер списков: карточка, обзор, резолв имени, права. Образцы — ping_service/reminder_service."""
+import logging
+import time
 from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from src.core.emoji import E
 from src.utils.text_utils import roster_full_name
+
+logger = logging.getLogger(__name__)
+
+# Кеш админов беседы: {chat_id: (monotonic-время, frozenset user_id)}.
+_ADMIN_TTL = 600
+_admin_cache: dict[int, tuple[float, frozenset[int]]] = {}
 
 
 def _roster():
@@ -72,6 +80,31 @@ def render_overview(notes: list[dict]) -> str:
 
 def can_modify(note: dict, *, user_id: int, is_owner: bool) -> bool:
     return is_owner or note["author_id"] == user_id
+
+
+async def chat_admin_ids(bot, chat_id: int) -> frozenset[int]:
+    """user_id создателя и админов беседы (getChatAdministrators), кеш на _ADMIN_TTL.
+    При ошибке API — прошлое значение из кеша или пусто (права не расширяем)."""
+    cached = _admin_cache.get(chat_id)
+    now = time.monotonic()
+    if cached and now - cached[0] < _ADMIN_TTL:
+        return cached[1]
+    try:
+        admins = await bot.get_chat_administrators(chat_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("notes: getChatAdministrators(%s) не удался: %s", chat_id, exc)
+        return cached[1] if cached else frozenset()
+    ids = frozenset(m.user.id for m in admins)
+    _admin_cache[chat_id] = (now, ids)
+    return ids
+
+
+async def may_modify(note: dict, *, user_id: int, is_owner: bool, bot) -> bool:
+    """Право менять чужое в списке: автор, владелец бота или админ беседы.
+    Админов спрашиваем у Telegram только если быстрые проверки не прошли."""
+    if can_modify(note, user_id=user_id, is_owner=is_owner):
+        return True
+    return user_id in await chat_admin_ids(bot, note["chat_id"])
 
 
 def format_keyboard(note_id: int) -> InlineKeyboardMarkup:

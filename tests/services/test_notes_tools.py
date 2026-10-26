@@ -33,6 +33,28 @@ class _FakeBot:
         return type("CM", (), {"status": self._member_status, "user": user})()
 
 
+@pytest.fixture(autouse=True)
+def _reset_admin_cache():
+    from src.bot.services import notes_service
+    notes_service._admin_cache.clear()
+    yield
+    notes_service._admin_cache.clear()
+
+
+class _AdminBot(_FakeBot):
+    """Бот, у которого getChatAdministrators возвращает заданных user_id."""
+
+    def __init__(self, admin_ids):
+        super().__init__()
+        self.admin_calls = 0
+        self._admin_ids = admin_ids
+
+    async def get_chat_administrators(self, chat_id):
+        self.admin_calls += 1
+        return [type("CM", (), {"user": type("U", (), {"id": uid})()})()
+                for uid in self._admin_ids]
+
+
 @pytest.fixture
 async def store(tmp_path):
     s = NotesStore(str(tmp_path / "notes.db"))
@@ -510,3 +532,37 @@ async def test_clear_invalidates_button_without_new_snapshot(store):
     markup_edits = [e for e in ctx["bot"].edited if e[0] == "markup"]
     assert any(mid == 555 and rm is None for _tag, _cid, mid, rm in markup_edits)
     assert await store.get_undo(nid) is None
+
+
+@pytest.mark.asyncio
+async def test_chat_admin_can_swap_foreign_list(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
+    for uid in (1, 2):
+        await store.add_member(nid, user_id=uid, username=None, tg_name=f"U{uid}")
+    ctx = _ctx(bot=_AdminBot([42]))  # 42 — не автор, но админ беседы
+    res = await nt.swap_in_list(a="1", b="2", tool_context=ctx, store=store, users=[])
+    assert res["ok"] is True
+    assert [m["user_id"] for m in await store.members(nid)] == [2, 1]
+
+
+@pytest.mark.asyncio
+async def test_non_admin_still_forbidden_and_admins_cached(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=1, formal=False)
+    for uid in (1, 2):
+        await store.add_member(nid, user_id=uid, username=None, tg_name=f"U{uid}")
+    bot = _AdminBot([7])
+    for _ in range(2):
+        res = await nt.swap_in_list(a="1", b="2", tool_context=_ctx(bot=bot),
+                                    store=store, users=[])
+        assert res == {"ok": False, "error": "forbidden"}
+    assert bot.admin_calls == 1  # второй раз — из кеша
+
+
+@pytest.mark.asyncio
+async def test_author_skips_admin_lookup(store):
+    nid = await store.create(chat_id=-100, title="Q", author_id=42, formal=False)
+    for uid in (1, 2):
+        await store.add_member(nid, user_id=uid, username=None, tg_name=f"U{uid}")
+    bot = _AdminBot([])
+    res = await nt.swap_in_list(a="1", b="2", tool_context=_ctx(bot=bot), store=store, users=[])
+    assert res["ok"] is True and bot.admin_calls == 0

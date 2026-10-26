@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS notes (
     card_message_id INTEGER,
     undo_json       TEXT,
     created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT,
     UNIQUE(chat_id, title_lower)
 );
 
@@ -40,7 +41,22 @@ _MEMBER_MIGRATIONS = {
 
 _NOTE_MIGRATIONS = {
     "undo_json": "ALTER TABLE notes ADD COLUMN undo_json TEXT",
+    "updated_at": "ALTER TABLE notes ADD COLUMN updated_at TEXT",
 }
+
+# updated_at — время последней правки списка (для ретеншна «месяц без изменений»).
+# Триггеры, а не ручной touch в каждом методе: участников меняют много путей
+# (кнопки, тулы, undo, выход из беседы). Создаются после миграций — нужна колонка.
+_TRIGGERS = """
+CREATE TRIGGER IF NOT EXISTS note_members_touch_ins AFTER INSERT ON note_members
+BEGIN UPDATE notes SET updated_at = datetime('now') WHERE id = NEW.note_id; END;
+CREATE TRIGGER IF NOT EXISTS note_members_touch_upd AFTER UPDATE ON note_members
+BEGIN UPDATE notes SET updated_at = datetime('now') WHERE id = NEW.note_id; END;
+CREATE TRIGGER IF NOT EXISTS note_members_touch_del AFTER DELETE ON note_members
+BEGIN UPDATE notes SET updated_at = datetime('now') WHERE id = OLD.note_id; END;
+CREATE TRIGGER IF NOT EXISTS notes_touch AFTER UPDATE OF title, formal ON notes
+BEGIN UPDATE notes SET updated_at = datetime('now') WHERE id = NEW.id; END;
+"""
 
 
 class NotesStore:
@@ -58,6 +74,7 @@ class NotesStore:
             await self._setup(db)
             await db.executescript(_SCHEMA)
             await self._migrate(db)
+            await db.executescript(_TRIGGERS)
             await db.commit()
 
     async def _migrate(self, db: aiosqlite.Connection) -> None:
@@ -388,18 +405,20 @@ class NotesStore:
             return cur.rowcount
 
     async def cleanup_old(self, *, days: int = NOTES_RETENTION_DAYS) -> int:
-        """Удаляет списки старше N дней (по created_at) вместе с их участниками."""
+        """Удаляет списки, которые не меняли N дней (последняя правка, а если правок
+        не было — создание), вместе с их участниками."""
         async with self._db() as db:
             await self._setup(db)
-            await db.execute(
-                "DELETE FROM note_members WHERE note_id IN "
-                "(SELECT id FROM notes WHERE created_at < datetime('now', ?))",
-                (f"-{days} days",))
+            # Сначала фиксируем id: удаление участников дёргает триггер и «освежает» updated_at.
             cur = await db.execute(
-                "DELETE FROM notes WHERE created_at < datetime('now', ?)",
+                "SELECT id FROM notes WHERE COALESCE(updated_at, created_at) < datetime('now', ?)",
                 (f"-{days} days",))
+            ids = [r["id"] for r in await cur.fetchall()]
+            for nid in ids:
+                await db.execute("DELETE FROM notes WHERE id = ?", (nid,))
+                await db.execute("DELETE FROM note_members WHERE note_id = ?", (nid,))
             await db.commit()
-            return cur.rowcount
+            return len(ids)
 
 
 notes_store = NotesStore()
