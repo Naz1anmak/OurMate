@@ -691,7 +691,7 @@ async def delete_list(title: str, *, tool_context: dict, store=notes_store) -> d
     await _invalidate_undo(tool_context, store, note["id"])  # гасим прежнюю кнопку undo
     await tool_context["bot"].send_message(
         tool_context["chat_id"],
-        f"{E.CROSS} Удалить список «{escape(note['title'])}» целиком?",
+        f"{E.CROSS} Удалить список «{escape(note['title'])}»?",
         parse_mode="HTML", reply_markup=ns.confirm_keyboard(note["id"], "del", "keep"))
     return {"ok": True, "id": note["id"], "_silent": True,
             "_context_note": f"[предложено удаление списка «{note['title']}», ждёт подтверждения]"}
