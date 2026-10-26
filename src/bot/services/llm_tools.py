@@ -77,6 +77,10 @@ async def run_tool_loop(
     deferred: list[str] = []
     called: list[str] = []
     silent = False
+    # Какой-то тул вернул ошибку. Тогда «тихий» сосед (напр. show_list с «Вот») не должен
+    # глушить ответ: иначе отказ (forbidden и т.п.) молча теряется, а пользователь видит
+    # только карточку и думает, что всё сделано.
+    failed = False
     context_note: Optional[str] = None
     work = list(messages)
     rounds = 0
@@ -87,7 +91,7 @@ async def run_tool_loop(
 
         if not reply.tool_calls:
             return ToolLoopResult(text=reply.content or "", deferred_messages=deferred,
-                                  called_tools=called, suppress_text=silent)
+                                  called_tools=called, suppress_text=silent and not failed)
 
         # Гейт доступа: если любой запрошенный тул закрыт — короткое замыкание на заглушку.
         for tc in reply.tool_calls:
@@ -125,6 +129,8 @@ async def run_tool_loop(
                     logger.warning("Тул %s упал: %s", name, exc)
                     result = {"error": "tool_failed"}
             deferred.extend(result.pop("_deferred", []) or [])
+            if result.get("ok") is False or "error" in result:
+                failed = True
             if result.pop("_silent", False):
                 silent = True
             note = result.pop("_context_note", None)
@@ -142,7 +148,7 @@ async def run_tool_loop(
         # deferred здесь гасим: _silent-тул сам владеет выводом в чат, а накопленный deferred —
         # это служебный lookup (напр. list_reminders перед update/cancel), который иначе вывалит
         # весь список рядом с карточкой правки (баг «второго срабатывания» при редактировании).
-        if silent:
+        if silent and not failed:
             return ToolLoopResult(text="", deferred_messages=[],
                                   called_tools=called, suppress_text=True,
                                   context_note=context_note)
@@ -151,4 +157,4 @@ async def run_tool_loop(
         if rounds > max_tool_rounds:
             reply = await llm_call(work, None)  # финал без тулов
             return ToolLoopResult(text=reply.content or "", deferred_messages=deferred,
-                                  called_tools=called, suppress_text=silent)
+                                  called_tools=called, suppress_text=silent and not failed)

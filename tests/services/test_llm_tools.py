@@ -209,3 +209,30 @@ async def test_loop_limit_forces_final():
                               {"schedule_allowed": True}, registry=reg, llm_call=llm_call)
     assert res.text == "не понял дату, уточни"
     assert calls[-1]["tools"] is None    # финальный вызов — без тулов
+
+
+@pytest.mark.asyncio
+async def test_silent_tool_does_not_hide_sibling_error():
+    """move_in_list → forbidden и show_list (_silent) в одном раунде: отказ не глотается —
+    идёт финальный вызов LLM, и его текст показывается."""
+    async def move(*, tool_context, **kw):
+        return {"ok": False, "error": "forbidden"}
+
+    async def show(*, tool_context, **kw):
+        return {"ok": True, "_silent": True, "_context_note": "[указал на карточку]"}
+
+    reg = ToolRegistry()
+    reg.register("move_in_list", ToolSpec(
+        schema={"type": "function", "function": {"name": "move_in_list"}}, func=move, gate=None))
+    reg.register("show_list", ToolSpec(
+        schema={"type": "function", "function": {"name": "show_list"}}, func=show, gate=None))
+    llm_call, calls = _fake_llm([
+        LLMReply(tool_calls=[_tool_call("move_in_list", {"position": 1}),
+                             _tool_call("show_list", {}, tc_id="tc2")]),
+        LLMReply(content="Не могу — переставлять может только автор списка или админ беседы."),
+    ])
+    res = await run_tool_loop([{"role": "user", "content": "пятое на первое"}],
+                              {}, registry=reg, llm_call=llm_call, max_tool_rounds=2)
+    assert res.suppress_text is False
+    assert "админ беседы" in res.text
+    assert len(calls) == 2
