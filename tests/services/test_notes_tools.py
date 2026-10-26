@@ -566,3 +566,31 @@ async def test_author_skips_admin_lookup(store):
     bot = _AdminBot([])
     res = await nt.swap_in_list(a="1", b="2", tool_context=_ctx(bot=bot), store=store, users=[])
     assert res["ok"] is True and bot.admin_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_by_partial_title(store):
+    nid = await store.create(chat_id=-100, title="МТПО 28 сентября", author_id=42, formal=False)
+    await store.create(chat_id=-100, title="Мтпо комиссия", author_id=42, formal=False)
+    ctx = _ctx()
+    res = await nt.delete_list("28 сентября", tool_context=ctx, store=store)
+    assert res["ok"] is True and res["id"] == nid
+    assert "МТПО 28 сентября" in ctx["bot"].sent[-1][1]  # подтверждение с полным названием
+
+
+@pytest.mark.asyncio
+async def test_partial_title_ambiguous_and_not_found(store):
+    await store.create(chat_id=-100, title="МТПО 28 сентября", author_id=42, formal=False)
+    await store.create(chat_id=-100, title="Мтпо комиссия", author_id=42, formal=False)
+    res = await nt.delete_list("мтпо", tool_context=_ctx(), store=store)
+    assert res["error"] == "ambiguous"
+    assert set(res["titles"]) == {"МТПО 28 сентября", "Мтпо комиссия"}
+    res = await nt.delete_list("физра", tool_context=_ctx(), store=store)
+    assert res["error"] == "not_found" and len(res["titles"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_delete_without_title_does_not_pick_latest(store):
+    await store.create(chat_id=-100, title="A", author_id=42, formal=False)
+    res = await nt.delete_list("", tool_context=_ctx(), store=store)
+    assert res["ok"] is False and res["error"] == "not_found"

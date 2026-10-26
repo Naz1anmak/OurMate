@@ -18,13 +18,31 @@ def _foreign(tool_context: dict) -> bool:
     return not (tool_context.get("is_group") and tool_context.get("is_group_main"))
 
 
-async def _find_note(tool_context: dict, store, title: str) -> dict | None:
-    """Список по названию; без названия — самый свежий в беседе. Иначе модель при
-    нескольких списках сама выбирает «похожий» по названию и правит старую очередь."""
+async def _find_note(tool_context: dict, store, title: str, *,
+                     allow_latest: bool = True) -> tuple[dict | None, dict | None]:
+    """(список, None) или (None, ошибка для модели).
+
+    Без названия — самый свежий список беседы (allow_latest): иначе модель при нескольких
+    списках сама выбирает «похожий» и правит старую очередь. С названием — точное совпадение,
+    затем по части названия («удали список 28 сентября» → «МТПО 28 сентября»): одно
+    совпадение — оно, несколько — ambiguous с вариантами, ни одного — not_found с названиями."""
+    chat_id = tool_context["chat_id"]
     title = (title or "").strip()
+    if not title and allow_latest:
+        note = await store.latest_for_chat(chat_id)
+        return (note, None) if note else (None, {"ok": False, "error": "not_found"})
     if title:
-        return await store.get_by_title(tool_context["chat_id"], title)
-    return await store.latest_for_chat(tool_context["chat_id"])
+        note = await store.get_by_title(chat_id, title)
+        if note:
+            return note, None
+    notes = await store.list_for_chat(chat_id)
+    needle = title.lower()
+    hits = [n for n in notes if needle and needle in n["title"].lower()]
+    if len(hits) == 1:
+        return hits[0], None
+    if len(hits) > 1:
+        return None, {"ok": False, "error": "ambiguous", "titles": [n["title"] for n in hits]}
+    return None, {"ok": False, "error": "not_found", "titles": [n["title"] for n in notes]}
 
 
 async def _refresh_card(tool_context: dict, store, note: dict) -> None:
@@ -118,9 +136,9 @@ async def create_list(title: str, *, tool_context: dict, store=notes_store) -> d
 async def show_list(title: str = "", *, tool_context: dict, store=notes_store) -> dict:
     if _foreign(tool_context):
         return {"ok": False, "error": "foreign_group"}
-    note = await _find_note(tool_context, store, title)
-    if not note:
-        return {"ok": False, "error": "not_found"}
+    note, err = await _find_note(tool_context, store, title)
+    if err:
+        return err
     # Карточка уже есть в чате — не плодим новую с кнопками, просто указываем на неё
     # коротким reply. Новую карточку шлём только если её нет/удалили.
     card_id = note.get("card_message_id")
@@ -139,8 +157,9 @@ async def show_list(title: str = "", *, tool_context: dict, store=notes_store) -
 
 
 _TITLE_HINT = ("Название списка. Указывай, только если пользователь явно назвал конкретный "
-               "список; иначе оставь пустым — бот возьмёт самый свежий список беседы. "
-               "Не подставляй название старого списка по догадке.")
+               "список (можно часть названия, как он сказал: «28 сентября»); иначе оставь "
+               "пустым — бот возьмёт самый свежий список беседы. Не подставляй название "
+               "старого списка по догадке. ambiguous → переспроси, какой из titles.")
 
 CREATE_SCHEMA = {
     "type": "function",
@@ -254,9 +273,9 @@ async def add_to_list(title: str = "", who: str = "", position: int = 0, note_te
     if users is None:
         from src.bot.services.birthday_service import birthday_service
         users = birthday_service.users
-    note = await _find_note(tool_context, store, title)
-    if not note:
-        return {"ok": False, "error": "not_found"}
+    note, err = await _find_note(tool_context, store, title)
+    if err:
+        return err
     target = _resolve_target(who, tool_context, users)
     if "error" in target:
         # @ник резолвится только через ростер ДР (Bot API не даёт username→id);
@@ -385,9 +404,9 @@ async def remove_from_list(title: str = "", who: str = "", *, tool_context: dict
     if users is None:
         from src.bot.services.birthday_service import birthday_service
         users = birthday_service.users
-    note = await _find_note(tool_context, store, title)
-    if not note:
-        return {"ok": False, "error": "not_found"}
+    note, err = await _find_note(tool_context, store, title)
+    if err:
+        return err
     if not await ns.may_modify(note, user_id=tool_context["user_id"],
                                is_owner=tool_context["is_owner"],
                                bot=tool_context["bot"]):
@@ -439,9 +458,9 @@ async def move_in_list(title: str = "", who: str = "", position: int = 0, *, too
     if users is None:
         from src.bot.services.birthday_service import birthday_service
         users = birthday_service.users
-    note = await _find_note(tool_context, store, title)
-    if not note:
-        return {"ok": False, "error": "not_found"}
+    note, err = await _find_note(tool_context, store, title)
+    if err:
+        return err
     if not await ns.may_modify(note, user_id=tool_context["user_id"],
                                is_owner=tool_context["is_owner"],
                                bot=tool_context["bot"]):
@@ -500,9 +519,9 @@ async def swap_in_list(title: str = "", a: str = "", b: str = "", *, tool_contex
     if users is None:
         from src.bot.services.birthday_service import birthday_service
         users = birthday_service.users
-    note = await _find_note(tool_context, store, title)
-    if not note:
-        return {"ok": False, "error": "not_found"}
+    note, err = await _find_note(tool_context, store, title)
+    if err:
+        return err
     if not await ns.may_modify(note, user_id=tool_context["user_id"],
                                is_owner=tool_context["is_owner"],
                                bot=tool_context["bot"]):
@@ -555,9 +574,9 @@ async def _member_prep(title, who, tool_context, store, users):
     if users is None:
         from src.bot.services.birthday_service import birthday_service
         users = birthday_service.users
-    note = await _find_note(tool_context, store, title)
-    if not note:
-        return None, None, {"ok": False, "error": "not_found"}
+    note, err = await _find_note(tool_context, store, title)
+    if err:
+        return None, None, err
     members = await store.members(note["id"])
     # who пустой и не reply/mention → по умолчанию сам отправитель («измени моё имя»).
     if not (who or "").strip() and not tool_context.get("reply_user") \
@@ -653,9 +672,11 @@ async def _guarded(title, tool_context, store):
     """Общий гейт для delete/clear: вернуть (note, None) или (None, err_dict)."""
     if _foreign(tool_context):
         return None, {"ok": False, "error": "foreign_group"}
-    note = await store.get_by_title(tool_context["chat_id"], (title or "").strip())
-    if not note:
-        return None, {"ok": False, "error": "not_found"}
+    # Без названия свежий список не подставляем — удаление/очистка только по явному названию
+    # (можно частичному: кнопка подтверждения всё равно покажет полное).
+    note, err = await _find_note(tool_context, store, title, allow_latest=False)
+    if err:
+        return None, err
     if not await ns.may_modify(note, user_id=tool_context["user_id"],
                                is_owner=tool_context["is_owner"],
                                bot=tool_context["bot"]):
@@ -697,7 +718,9 @@ DELETE_SCHEMA = {
                         "подтверждение кнопками — ответь кратко."),
         "parameters": {
             "type": "object",
-            "properties": {"title": {"type": "string"}},
+            "properties": {"title": {
+                "type": "string",
+                "description": "Название списка, можно часть («28 сентября»). Обязательно."}},
             "required": ["title"],
         },
     },
@@ -711,7 +734,9 @@ CLEAR_SCHEMA = {
                         "(автор или админ беседы). Бот спросит подтверждение — ответь кратко."),
         "parameters": {
             "type": "object",
-            "properties": {"title": {"type": "string"}},
+            "properties": {"title": {
+                "type": "string",
+                "description": "Название списка, можно часть («28 сентября»). Обязательно."}},
             "required": ["title"],
         },
     },
